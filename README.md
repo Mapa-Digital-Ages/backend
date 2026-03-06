@@ -18,6 +18,7 @@ Project Setup
 
     Docker Compose Installed automatically with Docker Desktop.
 
+------------------------------------------------------------------------
 
 - macOS:
 
@@ -41,6 +42,7 @@ Project Setup
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
     ```
 
+------------------------------------------------------------------------
 
 - Linux (Ubuntu/Debian):
 
@@ -94,6 +96,10 @@ Project Setup
     After completing steps 1 and 2, run:
 
         docker compose up --build
+    
+    If everything is working fine, you should see this:
+
+    ![alt text](.github/images/run_succes.png)
 
     To verify that everything is working, open:
 
@@ -104,3 +110,7 @@ Project Setup
     Example:
 
     ![](.github/images/rest_request.png)
+
+    If everything is working fine, you should see this:
+
+    ![alt text](.github/images/request_success.png)
