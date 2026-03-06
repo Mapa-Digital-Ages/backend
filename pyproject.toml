@@ -1,0 +1,41 @@
+[project]
+name = "ages-backend"
+version = "0.0.1"
+description = "Mapa digital backend code"
+readme = "README.md"
+requires-python = "~=3.12.0"
+dependencies = [
+    "dotenv>=0.9.9",
+    "fastapi>=0.135.1",
+    "pydantic-settings>=2.13.1",
+    "uvicorn>=0.41.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E","W","F","I","B","C4","UP","D"]
+ignore = ["E203","D104"]
+
+[tool.ruff.lint.per-file-ignores]
+"__init__.py" = ["D100","D104","F401"]
+"test_*.py" = ["D100","D101","D102","F401"]
+"tests/**/*.py" = ["D100","D101","D102","F401"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[dependency-groups]
+dev = [
+    "coverage>=7.13.1",
+    "ruff>=0.14.13",
+]

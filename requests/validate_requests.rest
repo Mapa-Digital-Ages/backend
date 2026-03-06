@@ -1,0 +1,13 @@
+@BaseUrl = {{$dotenv BASE_URL}}
+
+### Check if it is alive
+POST {{BaseUrl}}
+
+### Request Test
+POST {{BaseUrl}}/validate
+Content-Type: application/json
+
+{
+    "sender": "Owner",
+    "text": "Opa! Mensagem aqui."
+}
