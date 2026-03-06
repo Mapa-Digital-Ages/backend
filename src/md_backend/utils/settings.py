@@ -12,6 +12,7 @@ class Settings(BaseSettings):
     )
 
     TEST_VARIABLE: str
+    # other variables set here:
 
 
 settings = Settings()  # type: ignore

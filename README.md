@@ -1,31 +1,106 @@
-1. Install:
-    - Python 3.12.13:
-        - Windows: winget install Python.Python.3.12
-        - MacOS: brew install python@3.12
-        - Linux (Ubuntu/Debian): sudo apt update && sudo apt install -y python3.12 python3.12-venv python3.12-dev
+Project Setup
 
-    - Docker:
-        - Windows: winget install -e --id Docker.DockerDesktop
-        - MacOS: brew install --cask docker-desktop
-        - Linux (Ubuntu/Debian): sudo apt update && sudo apt install -y docker.io
+1. Install Dependencies
 
-    - Docker compose:
-        - Windows: installed automatically with Docker Desktop
-        - MacOS: installed automatically with Docker Desktop
-        - Linux (Ubuntu/Debian): sudo apt install -y docker-compose-plugin
+- Windows:
 
-PS: If you use mac/linux and you don't have brew you should see a doctor...
-In case you need to see a doctor, run this in the terminal:
+    Python 3.12.13:
 
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```bash
+    winget install Python.Python.3.12
+    ```
 
-2. Create a file with the name '.env' with the content in '.env-example'. This will be our private variables.
+    Docker:
 
-3. Vscode Extensions:
-    - Ruff
-    - Rest Client
+    ```bash
+    winget install -e --id Docker.DockerDesktop
+    ```
 
-4. Run Application:
-    After following steps 1 and 2, simply run on terminal: docker compose up --build
+    Docker Compose Installed automatically with Docker Desktop.
 
-    To see if it is working, click in "Send Request" in requests/validate_request.rest ![example](github/image.png)
+
+- macOS:
+
+    Python 3.12.13:
+
+    ```bash
+    brew install python@3.12
+    ```
+
+    Docker:
+
+    ```bash
+    brew install --cask docker-desktop
+    ```
+
+    Docker Compose Installed automatically with Docker Desktop.
+
+    If you do not have Homebrew installed, run:
+
+    ```bash
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    ```
+
+
+- Linux (Ubuntu/Debian):
+
+    Python 3.12.13:
+
+    ```bash
+    sudo apt update
+    sudo apt install -y python3.12 python3.12-venv python3.12-dev
+    ```
+
+    Docker:
+
+    ```bash
+    sudo apt update
+    sudo apt install -y docker.io
+    ```
+
+    Docker Compose:
+
+    ```bash
+    sudo apt install -y docker-compose-plugin
+    ```
+
+------------------------------------------------------------------------
+
+2. Environment Variables
+
+    Create a file named:
+
+        .env
+
+    Copy the contents from:
+
+        .env-example
+
+    This file will contain the project’s private environment variables.
+
+------------------------------------------------------------------------
+
+3. VSCode Extensions
+
+    Install the following extensions:
+
+    -   Ruff
+    -   REST Client
+
+------------------------------------------------------------------------
+
+4. Run the Application
+
+    After completing steps 1 and 2, run:
+
+        docker compose up --build
+
+    To verify that everything is working, open:
+
+        requests/validate_request.rest
+
+    Then click “Send Request”.
+
+    Example:
+
+    ![](.github/images/rest_request.png)
