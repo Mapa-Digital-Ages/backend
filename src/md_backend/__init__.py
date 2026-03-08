@@ -1,6 +1,6 @@
 """Package metadata and information."""
 
-__name__ = "ages_backend"
+__name__ = "md_backend"
 __version__ = "0.0.1"
 
 

@@ -95,22 +95,25 @@ Project Setup
 
     After completing steps 1 and 2, run:
 
-        docker compose up --build
-    
-    If everything is working fine, you should see this:
+    1. Docker:
+            `docker compose up --build`
+        
+        If everything is working fine, you should see this:
 
-    ![alt text](.github/images/run_succes.png)
+        ![alt text](.github/images/run_succes.png)
 
-    To verify that everything is working, open:
+        To verify that everything is working, open: `requests/validate_request.rest`
 
-        requests/validate_request.rest
+        Then click `“Send Request”`.
 
-    Then click “Send Request”.
+        Example:
 
-    Example:
+        ![](.github/images/rest_request.png)
 
-    ![](.github/images/rest_request.png)
+        If everything works, you should see this:
 
-    If everything is working fine, you should see this:
+        ![alt text](.github/images/request_success.png)`
 
-    ![alt text](.github/images/request_success.png)
+    2. VSCode:
+
+        In order to debbug your code, you must run the application via VSCode. Simply click "F5" and the application will start.

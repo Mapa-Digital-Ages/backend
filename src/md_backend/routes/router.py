@@ -1,8 +1,8 @@
 """Router file."""
 
-# from ages_backend.routes.another_router import another_router
-# from ages_backend.routes.another_router1 import another_router1
-# from ages_backend.routes.another_router2 import another_router2
+# from md_backend.routes.another_router import another_router
+# from md_backend.routes.another_router1 import another_router1
+# from md_backend.routes.another_router2 import another_router2
 from fastapi import APIRouter
 
 from md_backend.routes.validate_router import validate_router
