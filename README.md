@@ -89,6 +89,14 @@ Project Setup
     -   Ruff
     -   REST Client
 
+    After installing Ruff, follow this steps:
+
+    1. Open any python file
+    2. Type "Control + Shift + P" (in MacOS Command + Shift + P)
+    3. In the text box type: "Format Document With":
+        ![alt text](.github/images/format_document.png)
+    4. Select Ruff
+
 ------------------------------------------------------------------------
 
 4. Run the Application

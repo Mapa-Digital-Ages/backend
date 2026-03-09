@@ -11,7 +11,7 @@ class Settings(BaseSettings):
         env_file=find_dotenv(), env_file_encoding="utf-8", extra="ignore"
     )
 
-    TEST_VARIABLE: str
+    TEST_VARIABLE: str = ""
     # other variables set here:
 
 
