@@ -1,59 +1,59 @@
-# name: CI
+name: CI
 
-# on:
-#   pull_request:
-#     branches: [ "main" ]
-#   push:
-#     branches: [ "main" ]
+on:
+  pull_request:
+    branches: [ "main" ]
+  push:
+    branches: [ "main" ]
 
-# jobs:
-#   build-and-compile:
-#     name: Build & Compile
-#     runs-on: ubuntu-latest
+jobs:
+  build-and-compile:
+    name: Build & Compile
+    runs-on: ubuntu-latest
 
-#     steps:
-#       - name: Checkout
-#         uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-#       - name: Set up Python
-#         uses: actions/setup-python@v5
-#         with:
-#           python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-#       - name: Set up uv
-#         uses: astral-sh/setup-uv@v6
-#         with:
-#           enable-cache: true
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
 
-#       - name: Install deps (uv)
-#         run: uv sync --dev --all-extras --frozen
+      - name: Install deps (uv)
+        run: uv sync --dev --all-extras --frozen
 
-#       - name: Compile check (syntax)
-#         run: uv run python -m compileall -q .
+      - name: Compile check (syntax)
+        run: uv run python -m compileall -q .
 
-#   tests-and-coverage:
-#     name: Tests & Coverage (>= 70%)
-#     runs-on: ubuntu-latest
-#     needs: build-and-compile
+  tests-and-coverage:
+    name: Tests & Coverage (>= 70%)
+    runs-on: ubuntu-latest
+    needs: build-and-compile
 
-#     steps:
-#       - name: Checkout
-#         uses: actions/checkout@v4
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-#       - name: Set up Python
-#         uses: actions/setup-python@v5
-#         with:
-#           python-version: "3.12"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-#       - name: Set up uv
-#         uses: astral-sh/setup-uv@v6
-#         with:
-#           enable-cache: true
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
 
-#       - name: Install deps (uv)
-#         run: uv sync --dev --all-extras --frozen
+      - name: Install deps (uv)
+        run: uv sync --dev --all-extras --frozen
 
-#       - name: Run tests with coverage gate (unittest)
-#         run: |
-#           uv run coverage run -m unittest discover -s .
-#           uv run coverage report -m --fail-under=70
+      - name: Run tests with coverage gate (unittest)
+        run: |
+          uv run coverage run -m unittest discover -s .
+          uv run coverage report -m --fail-under=70
