@@ -2,7 +2,6 @@
 __pycache__/
 *.py[cod]
 *$py.class
-*.pyc
 
 # C extensions
 *.so
@@ -139,3 +138,11 @@ dmypy.json
 .flake8
 Pipfile
 node_modules/
+
+# Terraform
+terraform/environments/prod/terraform.tfvars
+terraform/environments/prod/.terraform/
+terraform/environments/prod/*.tfstate
+terraform/environments/prod/*.tfstate.backup
+# Keep .terraform.lock.hcl committed (reproducible provider versions)
+.env.local
