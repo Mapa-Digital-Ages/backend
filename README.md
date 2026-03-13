@@ -103,25 +103,40 @@ Project Setup
 
     After completing steps 1 and 2, run:
 
-    1. Docker:
-            `docker compose up --build`
+    1. VSCode:
+
+        1. Go to the backend folder path in your terminal: (cd path)
+        2. Run the following commands:
+            ```bash
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+            ```
+            Validate that UV is installed, perhaps a restart is needed.
+            ```bash
+            uv sync
+            ```
+
+            Then click "F5" to run.
+
+    2. Docker:
+        ```bash
+        docker compose up --build
+        ```
         
-        If everything is working fine, you should see this:
+    3. If everything works fine, you should see this:
 
         ![alt text](.github/images/run_succes.png)
 
-        To verify that everything is working, open: `requests/validate_request.rest`
+    4. Test:
 
-        Then click `“Send Request”`.
+        1. Open: `requests/validate_request.rest`
 
-        Example:
+        2. Click `“Send Request”`.
 
-        ![](.github/images/rest_request.png)
+            Example:
 
-        If everything works, you should see this:
+            ![](.github/images/rest_request.png)
 
-        ![alt text](.github/images/request_success.png)`
+            If everything works, you should see this:
 
-    2. VSCode:
+            ![alt text](.github/images/request_success.png)`
 
-        In order to debbug your code, you must run the application via VSCode. Simply click "F5" and the application will start.
