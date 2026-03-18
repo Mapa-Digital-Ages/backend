@@ -1,5 +1,10 @@
-### Description
+- [ ] Feature
+- [ ] Fix
 
-> Describe the big picture of your changes here to communicate what the pull request is. If related to a user story or feature within ADO, be sure to link to that work item.
+## Link da Tarefa
 
-[Describe it here]
+[Título da tarefa](https://link para a tarefa no ClickUp)
+
+## Descrição
+
+[Descreva brevemente o propósito e as principais mudanças e adições que foram feitas nesta solicitação de Merge]
