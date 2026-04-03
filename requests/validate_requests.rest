@@ -8,6 +8,6 @@ POST {{BaseUrl}}/validate
 Content-Type: application/json
 
 {
-    "sender": "Owner",
-    "text": "Opa! Mensagem aqui."
+    "num1": 67,
+    "num2": 69 
 }

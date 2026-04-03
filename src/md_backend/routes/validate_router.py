@@ -14,10 +14,10 @@ validate_router = APIRouter(prefix="/validate")
 
 @validate_router.post("")
 async def validate(request: ValidateRequest):
-    """Receive text and sender and process it."""
-    text = request.text
-    sender = request.sender
+    """Receive two numbers and sum them."""
+    num1 = request.num1
+    num2 = request.num2
 
-    final_message = await validate_service.process_text(text=text, sender=sender)
+    result = await validate_service.sum_numbers(num1=num1, num2=num2)
 
-    return JSONResponse(content=final_message, status_code=status.HTTP_200_OK)
+    return JSONResponse(content={"result": result}, status_code=status.HTTP_200_OK)

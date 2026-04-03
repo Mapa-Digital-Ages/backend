@@ -6,5 +6,5 @@ from pydantic import BaseModel
 class ValidateRequest(BaseModel):
     """Validate request model."""
 
-    text: str
-    sender: str
+    num1: int
+    num2: int
