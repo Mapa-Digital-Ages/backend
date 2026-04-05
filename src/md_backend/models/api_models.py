@@ -8,3 +8,8 @@ class ValidateRequest(BaseModel):
 
     text: str
     sender: str
+
+class LoginRequest(BaseModel):
+    
+    email: str
+    password: str
