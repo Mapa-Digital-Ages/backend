@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     )
 
     TEST_VARIABLE: str = ""
+    ADMIN_EMAIL: str = ""
+    ADMIN_PASSWORD: str = ""
     # other variables set here:
 
 
