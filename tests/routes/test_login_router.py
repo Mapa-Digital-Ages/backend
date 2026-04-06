@@ -10,21 +10,40 @@ from md_backend.main import app
 
 class TestLoginRouter(unittest.TestCase):
     def setUp(self):
-        """Setup method to initialize the TestClient."""
-        self.test_client = TestClient(app, raise_server_exceptions=False)
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.test_client = self.ctx.__enter__()
+        self.test_client.post(
+            "/register", json={"email": "login@test.com", "password": "validpass123"}
+        )
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
 
     def test_login_success(self):
-        """Test login with valid credentials."""
         response = self.test_client.post(
-            "/login", json={"email": "admin@test.com", "password": "secret"}
+            "/login", json={"email": "login@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"detail": "Login successful!"})
+        data = response.json()
+        self.assertIn("access_token", data)
+        self.assertEqual(data["token_type"], "bearer")
 
-    def test_login_invalid_credentials(self):
-        """Test login with wrong credentials."""
+    def test_login_wrong_password(self):
         response = self.test_client.post(
-            "/login", json={"email": "errado@test.com", "password": "errado"}
+            "/login", json={"email": "login@test.com", "password": "wrongpassword"}
         )
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "Credenciais inválidas."})
+        self.assertEqual(response.json(), {"detail": "Credenciais inválidas"})
+
+    def test_login_nonexistent_user(self):
+        response = self.test_client.post(
+            "/login", json={"email": "ghost@test.com", "password": "validpass123"}
+        )
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json(), {"detail": "Credenciais inválidas"})
+
+    def test_login_invalid_email(self):
+        response = self.test_client.post(
+            "/login", json={"email": "not-an-email", "password": "validpass123"}
+        )
+        self.assertEqual(response.status_code, 422)
