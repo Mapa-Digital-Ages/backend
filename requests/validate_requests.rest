@@ -3,9 +3,20 @@
 ### Check if it is alive
 POST {{BaseUrl}}
 
+### Login (run this first to get the token)
+# @name login
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "user@example.com",
+    "password": "securepassword123"
+}
+
 ### Request Test
 POST {{BaseUrl}}/validate
 Content-Type: application/json
+Authorization: Bearer {{login.response.body.access_token}}
 
 {
     "sender": "Owner",

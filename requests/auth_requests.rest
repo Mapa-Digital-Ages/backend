@@ -1,0 +1,19 @@
+@BaseUrl = {{$dotenv BASE_URL}}
+
+### Register
+POST {{BaseUrl}}/register
+Content-Type: application/json
+
+{
+    "email": "user@example.com",
+    "password": "securepassword123"
+}
+
+### Login
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "user@example.com",
+    "password": "securepassword123"
+}
