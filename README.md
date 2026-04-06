@@ -139,5 +139,3 @@ Project Setup Startup
             If everything works, you should see this:
 
             ![alt text](.github/images/request_success.png)`
-
-dnkan
