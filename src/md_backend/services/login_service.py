@@ -1,10 +1,25 @@
-from md_backend.utils.settings import settings
+"""Login service for user authentication."""
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from md_backend.models.db_models import User
+from md_backend.utils.security import create_access_token, verify_password
+
 
 class LoginService:
-    
-    async def login(self, email: str, password: str) -> dict:
+    """Service for handling user login."""
 
-        if email == settings.ADMIN_EMAIL and password == settings.ADMIN_PASSWORD:
-            return {"detail": "Login successful"}
-        
-        return None
+    async def login(self, email: str, password: str, session: AsyncSession) -> dict | None:
+        """Authenticate user and return JWT token, or None if invalid."""
+        result = await session.execute(select(User).where(User.email == email))
+        user = result.scalar_one_or_none()
+
+        if user is None:
+            return None
+
+        if not verify_password(password, user.hashed_password):
+            return None
+
+        token = create_access_token({"sub": user.email, "user_id": user.id})
+        return {"access_token": token, "token_type": "bearer"}

@@ -12,9 +12,15 @@ class Settings(BaseSettings):
     )
 
     TEST_VARIABLE: str = ""
-    ADMIN_EMAIL: str = ""
-    ADMIN_PASSWORD: str = ""
-    # other variables set here:
+
+    # Database
+    DATABASE_URL: str = ""
+
+    # Security
+    JWT_SECRET_KEY: str = ""
+    JWT_ALGORITHM: str = "HS256"
+    JWT_EXPIRATION_MINUTES: int = 30
+    PASSWORD_PEPPER: str = ""
 
 
 settings = Settings()  # type: ignore
