@@ -27,4 +27,4 @@ class RegisterService:
             await session.rollback()
             return None
 
-        return {"detail": "User registered successfully"}
+        return {"detail": "Cadastro realizado. Aguardando aprovacao."}
