@@ -1,0 +1,10 @@
+@BaseUrl = {{$dotenv BASE_URL}}
+
+### Setup - Create first superadmin (only works once)
+POST {{BaseUrl}}/setup
+Content-Type: application/json
+
+{
+    "email": "admin@admin.com",
+    "password": "admin123"
+}

@@ -1,0 +1,38 @@
+@BaseUrl = {{$dotenv BASE_URL}}
+
+### Login as superadmin (run this first to get the token)
+# @name adminLogin
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "admin@admin.com",
+    "password": "admin123"
+}
+
+
+### List all users
+GET {{BaseUrl}}/admin/users
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+### List users filtered by status (aguardando, negado, aprovado)
+GET {{BaseUrl}}/admin/users?user_status=aprovado
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+### Approve user
+PATCH {{BaseUrl}}/admin/users/user12@example.com/status
+Content-Type: application/json
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+{
+    "status": "aprovadp"
+}
+
+### Deny user
+PATCH {{BaseUrl}}/admin/users/user12@example.com/status
+Content-Type: application/json
+Authorization: Bearer {{adminLogin.response.body.access_token}}
+
+{
+    "status": "negado"
+}
