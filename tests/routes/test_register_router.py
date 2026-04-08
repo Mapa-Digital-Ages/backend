@@ -21,7 +21,7 @@ class TestRegisterRouter(unittest.TestCase):
             "/register", json={"email": "newuser@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json(), {"detail": "User registered successfully"})
+        self.assertEqual(response.json(), {"detail": "Cadastro realizado. Aguardando aprovacao."})
 
     def test_register_duplicate_email(self):
         self.test_client.post(
