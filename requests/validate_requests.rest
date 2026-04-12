@@ -1,4 +1,4 @@
-@BaseUrl = {{$dotenv BASE_URL}}
+@BaseUrl = http://localhost:8000
 
 ### Check if it is alive
 POST {{BaseUrl}}

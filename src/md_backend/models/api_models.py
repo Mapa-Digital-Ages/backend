@@ -13,6 +13,7 @@ class ValidateRequest(BaseModel):
 class RegisterRequest(BaseModel):
     """Register request model."""
 
+    name: str = Field()
     email: EmailStr
     password: str = Field(min_length=8)
 
@@ -22,13 +23,6 @@ class LoginRequest(BaseModel):
 
     email: EmailStr
     password: str
-
-
-class TokenResponse(BaseModel):
-    """Token response model."""
-
-    access_token: str
-    token_type: str = "bearer"
 
 
 class SetupRequest(BaseModel):
@@ -43,6 +37,7 @@ class UserResponse(BaseModel):
 
     id: int
     email: str
+    name: str
     status: str
     is_superadmin: bool
     created_at: str

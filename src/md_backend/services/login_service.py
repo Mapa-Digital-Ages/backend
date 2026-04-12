@@ -22,10 +22,15 @@ class LoginService:
             return {"error": "invalid_credentials"}
 
         if user.status == UserStatus.AGUARDANDO:
-            return {"error": "aguardando", "detail": "Conta aguardando aprovacao"}
+            return {"error": "AGUARDANDO"}
 
         if user.status == UserStatus.NEGADO:
-            return {"error": "negado", "detail": "Conta negada"}
+            return {"error": "NEGADO"}
 
         token = create_access_token({"sub": user.email, "user_id": user.id})
-        return {"access_token": token, "token_type": "bearer"}
+        return {
+            "token": token,
+            "role": user.role,
+            "email": user.email,
+            "name": user.name,
+        }

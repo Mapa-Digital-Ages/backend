@@ -13,12 +13,12 @@ register_router = APIRouter(prefix="/register")
 
 
 @register_router.post("")
-async def register(
+async def register_responsavel(
     request: RegisterRequest, session: AsyncSession = Depends(get_db_session)
 ):
     """Register a new user."""
     result = await register_service.register(
-        email=request.email, password=request.password, session=session
+        email=request.email, password=request.password, name=request.name, session=session
     )
 
     if result is None:

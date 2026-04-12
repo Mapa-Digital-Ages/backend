@@ -1,4 +1,4 @@
-@BaseUrl = {{$dotenv BASE_URL}}
+@BaseUrl = http://localhost:8000
 
 ### Login as superadmin (run this first to get the token)
 # @name adminLogin
@@ -13,25 +13,29 @@ Content-Type: application/json
 
 ### List all users
 GET {{BaseUrl}}/admin/users
-Authorization: Bearer {{adminLogin.response.body.access_token}}
+Authorization: Bearer {{adminLogin.response.body.token}}
 
 ### List users filtered by status (aguardando, negado, aprovado)
-GET {{BaseUrl}}/admin/users?user_status=aprovado
-Authorization: Bearer {{adminLogin.response.body.access_token}}
+GET {{BaseUrl}}/admin/users?user_status=aguardando
+Authorization: Bearer {{adminLogin.response.body.token}}
+
+### List users filtered by status (aguardando, negado, aprovado)
+GET {{BaseUrl}}/admin/users?role=responsavel
+Authorization: Bearer {{adminLogin.response.body.token}}
 
 ### Approve user
 PATCH {{BaseUrl}}/admin/users/user12@example.com/status
 Content-Type: application/json
-Authorization: Bearer {{adminLogin.response.body.access_token}}
+Authorization: Bearer {{adminLogin.response.body.token}}
 
 {
-    "status": "aprovadp"
+    "status": "aprovado"
 }
 
 ### Deny user
-PATCH {{BaseUrl}}/admin/users/user12@example.com/status
+PATCH {{BaseUrl}}/admin/users/user123@example.com/status
 Content-Type: application/json
-Authorization: Bearer {{adminLogin.response.body.access_token}}
+Authorization: Bearer {{adminLogin.response.body.token}}
 
 {
     "status": "negado"

@@ -26,9 +26,9 @@ async def login(request: LoginRequest, session: AsyncSession = Depends(get_db_se
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
-    if result.get("error") in ("aguardando", "negado"):
+    if result.get("error"):
         return JSONResponse(
-            content={"detail": result["detail"]},
+            content={"detail": result["error"]},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 

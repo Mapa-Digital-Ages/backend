@@ -1,4 +1,4 @@
-@BaseUrl = {{$dotenv BASE_URL}}
+@BaseUrl = http://localhost:8000
 
 ### Setup - Create first superadmin (only works once)
 POST {{BaseUrl}}/setup

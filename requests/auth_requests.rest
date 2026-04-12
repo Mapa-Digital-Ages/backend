@@ -1,10 +1,11 @@
-@BaseUrl = {{$dotenv BASE_URL}}
+@BaseUrl = http://localhost:8000
 
 ### Register
 POST {{BaseUrl}}/register
 Content-Type: application/json
 
 {
+    "name": "user12",
     "email": "user12@example.com",
     "password": "securepassword123"
 }

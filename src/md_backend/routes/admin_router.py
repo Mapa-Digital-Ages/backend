@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import UpdateStatusRequest
-from md_backend.models.db_models import UserStatus
+from md_backend.models.db_models import RoleEnum, UserStatus
 from md_backend.services.admin_service import AdminService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_superadmin
@@ -18,19 +18,31 @@ admin_router = APIRouter(prefix="/admin")
 async def list_users(
     session: AsyncSession = Depends(get_db_session),
     user_status: str | None = None,
+    role: str | None = None,
 ):
     """List all users, optionally filtered by status."""
     status_filter = None
+    role_filter = None
     if user_status is not None:
         try:
             status_filter = UserStatus(user_status)
         except ValueError:
             return JSONResponse(
-                content={"detail": "Status invalido. Use: aguardando, negado, aprovado"},
+                content={"detail": "Status invalido."},
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+    if role is not None:
+        try:
+            role_filter = RoleEnum(role)
+        except ValueError:
+            return JSONResponse(
+                content={"detail": "Role invalido."},
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
 
-    users = await admin_service.list_users(session=session, status_filter=status_filter)
+    users = await admin_service.list_users(
+        session=session, status_filter=status_filter, role=role_filter
+    )
     return JSONResponse(content=users, status_code=status.HTTP_200_OK)
 
 

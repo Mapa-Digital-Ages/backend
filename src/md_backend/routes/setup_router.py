@@ -16,7 +16,7 @@ setup_router = APIRouter(prefix="/setup")
 async def setup(request: SetupRequest, session: AsyncSession = Depends(get_db_session)):
     """Create the first superadmin. Only works once."""
     result = await setup_service.create_superadmin(
-        email=request.email, password=request.password, session=session
+        email=request.email, password=request.password, name="admin", session=session
     )
 
     if result is None:

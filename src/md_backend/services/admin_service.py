@@ -3,19 +3,24 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import User, UserStatus
+from md_backend.models.db_models import RoleEnum, User, UserStatus
 
 
 class AdminService:
     """Service for admin operations on users."""
 
     async def list_users(
-        self, session: AsyncSession, status_filter: UserStatus | None = None
+        self,
+        session: AsyncSession,
+        status_filter: UserStatus | None = None,
+        role: RoleEnum | None = None,
     ) -> list[dict]:
         """List all users, optionally filtered by status."""
         query = select(User).order_by(User.created_at.desc())
         if status_filter is not None:
             query = query.where(User.status == status_filter)
+        if role is not None:
+            query = query.where(User.role == role)
 
         result = await session.execute(query)
         users = result.scalars().all()
@@ -24,7 +29,9 @@ class AdminService:
             {
                 "id": user.id,
                 "email": user.email,
+                "name": user.name,
                 "status": user.status.value,
+                "role": user.role,
                 "is_superadmin": user.is_superadmin,
                 "created_at": user.created_at.isoformat(),
             }
@@ -50,7 +57,9 @@ class AdminService:
         return {
             "id": user.id,
             "email": user.email,
+            "name": user.name,
             "status": user.status.value,
+            "role": user.role,
             "is_superadmin": user.is_superadmin,
             "created_at": user.created_at.isoformat(),
         }
