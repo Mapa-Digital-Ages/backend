@@ -5,9 +5,14 @@ description = "Mapa digital backend code"
 readme = "README.md"
 requires-python = "~=3.12.0"
 dependencies = [
+    "asyncpg>=0.30",
     "dotenv>=0.9.9",
+    "email-validator>=2.1",
     "fastapi>=0.135.1",
+    "bcrypt>=4.0",
     "pydantic-settings>=2.13.1",
+    "PyJWT>=2.8",
+    "sqlalchemy[asyncio]>=2.0",
     "uvicorn>=0.41.0",
 ]
 
@@ -18,7 +23,7 @@ src = ["src"]
 
 [tool.ruff.lint]
 select = ["E","W","F","I","B","C4","UP","D"]
-ignore = ["E203","D104"]
+ignore = ["E203","D104","B008"]
 
 [tool.ruff.lint.per-file-ignores]
 "__init__.py" = ["D100","D104","F401"]
@@ -36,6 +41,7 @@ line-ending = "auto"
 
 [dependency-groups]
 dev = [
+    "aiosqlite>=0.20",
     "coverage>=7.13.1",
     "httpx>=0.28",
     "pytest>=8.0",
@@ -47,12 +53,14 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src"]
+concurrency = ["greenlet", "thread"]
 omit = [
     "src/__init__.py",
     "src/md_backend/__init__.py",
     "src/md_backend/models/__init__.py",
     "src/md_backend/routes/__init__.py",
     "src/md_backend/services/__init__.py",
+    "src/md_backend/utils/__init__.py",
 ]
 
 [tool.coverage.report]
