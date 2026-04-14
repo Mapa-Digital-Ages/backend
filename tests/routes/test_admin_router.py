@@ -26,7 +26,8 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_list_users_filter_by_status(self):
         self.test_client.post(
-            "/register", json={"email": "adm_filter@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "adm_filter@test.com", "password": "validpass123", "name": "Filter"},
         )
         response = self.test_client.get(
             "/admin/users", params={"user_status": "aguardando"}, headers=self.admin_headers
@@ -49,6 +50,24 @@ class TestAdminRouter(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 422)
 
+    def test_list_users_filter_by_role(self):
+        self.test_client.post(
+            "/register",
+            json={"email": "adm_role@test.com", "password": "validpass123", "name": "Role"},
+        )
+        response = self.test_client.get(
+            "/admin/users", params={"role": "responsavel"}, headers=self.admin_headers
+        )
+        self.assertEqual(response.status_code, 200)
+        for user in response.json():
+            self.assertEqual(user["role"], "responsavel")
+
+    def test_list_users_invalid_role_filter(self):
+        response = self.test_client.get(
+            "/admin/users", params={"role": "invalido"}, headers=self.admin_headers
+        )
+        self.assertEqual(response.status_code, 422)
+
     def test_list_users_without_auth(self):
         response = self.test_client.get("/admin/users")
         self.assertEqual(response.status_code, 401)
@@ -63,7 +82,8 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_approve_user(self):
         self.test_client.post(
-            "/register", json={"email": "adm_approve@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "adm_approve@test.com", "password": "validpass123", "name": "Approve"},
         )
         response = self.test_client.patch(
             "/admin/users/adm_approve@test.com/status",
@@ -75,7 +95,8 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_deny_user(self):
         self.test_client.post(
-            "/register", json={"email": "adm_deny@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "adm_deny@test.com", "password": "validpass123", "name": "Deny"},
         )
         response = self.test_client.patch(
             "/admin/users/adm_deny@test.com/status",

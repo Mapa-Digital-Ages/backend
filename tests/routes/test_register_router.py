@@ -18,29 +18,33 @@ class TestRegisterRouter(unittest.TestCase):
 
     def test_register_success(self):
         response = self.test_client.post(
-            "/register", json={"email": "newuser@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "newuser@test.com", "password": "validpass123", "name": "New User"},
         )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json(), {"detail": "Cadastro realizado. Aguardando aprovacao."})
 
     def test_register_duplicate_email(self):
         self.test_client.post(
-            "/register", json={"email": "duplicate@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "duplicate@test.com", "password": "validpass123", "name": "Dup"},
         )
         response = self.test_client.post(
-            "/register", json={"email": "duplicate@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "duplicate@test.com", "password": "validpass123", "name": "Dup"},
         )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json(), {"detail": "Email already registered"})
 
     def test_register_invalid_email(self):
         response = self.test_client.post(
-            "/register", json={"email": "not-an-email", "password": "validpass123"}
+            "/register",
+            json={"email": "not-an-email", "password": "validpass123", "name": "Bad"},
         )
         self.assertEqual(response.status_code, 422)
 
     def test_register_short_password(self):
         response = self.test_client.post(
-            "/register", json={"email": "short@test.com", "password": "short"}
+            "/register", json={"email": "short@test.com", "password": "short", "name": "Short"}
         )
         self.assertEqual(response.status_code, 422)

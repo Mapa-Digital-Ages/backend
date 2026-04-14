@@ -25,22 +25,26 @@ class TestLoginRouter(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIn("access_token", data)
-        self.assertEqual(data["token_type"], "bearer")
+        self.assertIn("token", data)
+        self.assertIn("role", data)
+        self.assertIn("email", data)
+        self.assertIn("name", data)
 
     def test_login_aguardando_user(self):
         self.test_client.post(
-            "/register", json={"email": "waiting_lg@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "waiting_lg@test.com", "password": "validpass123", "name": "Wait"},
         )
         response = self.test_client.post(
             "/login", json={"email": "waiting_lg@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"detail": "Conta aguardando aprovacao"})
+        self.assertEqual(response.json(), {"detail": "AGUARDANDO"})
 
     def test_login_negado_user(self):
         self.test_client.post(
-            "/register", json={"email": "denied_lg@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "denied_lg@test.com", "password": "validpass123", "name": "Denied"},
         )
         self.test_client.patch(
             "/admin/users/denied_lg@test.com/status",
@@ -52,11 +56,12 @@ class TestLoginRouter(unittest.TestCase):
             "/login", json={"email": "denied_lg@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"detail": "Conta negada"})
+        self.assertEqual(response.json(), {"detail": "NEGADO"})
 
     def test_login_wrong_password(self):
         self.test_client.post(
-            "/register", json={"email": "wrongpw_lg@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "wrongpw_lg@test.com", "password": "validpass123", "name": "Wrong"},
         )
         response = self.test_client.post(
             "/login", json={"email": "wrongpw_lg@test.com", "password": "wrongpassword"}

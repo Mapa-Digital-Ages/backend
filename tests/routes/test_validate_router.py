@@ -36,9 +36,9 @@ class TestValidateRouter(unittest.TestCase):
 
     def test_validate_aguardando_user_returns_403(self):
         self.test_client.post(
-            "/register", json={"email": "val_wait@test.com", "password": "validpass123"}
+            "/register",
+            json={"email": "val_wait@test.com", "password": "validpass123", "name": "Wait"},
         )
-        # Approve to get token, then revoke
         self.test_client.patch(
             "/admin/users/val_wait@test.com/status",
             json={"status": "aprovado"},
@@ -47,8 +47,7 @@ class TestValidateRouter(unittest.TestCase):
         login_resp = self.test_client.post(
             "/login", json={"email": "val_wait@test.com", "password": "validpass123"}
         )
-        user_token = login_resp.json()["access_token"]
-        # Set back to negado to test rejection
+        user_token = login_resp.json()["token"]
         self.test_client.patch(
             "/admin/users/val_wait@test.com/status",
             json={"status": "negado"},

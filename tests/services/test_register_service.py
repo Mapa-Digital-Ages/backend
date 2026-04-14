@@ -23,7 +23,9 @@ class TestRegisterServiceIntegrityError(unittest.TestCase):
         mock_session.add = MagicMock()
         mock_session.commit.side_effect = IntegrityError("", "", Exception())
 
-        result = asyncio.run(service.register("race@test.com", "validpass123", mock_session))
+        result = asyncio.run(
+            service.register("race@test.com", "validpass123", "Race", mock_session)
+        )
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()

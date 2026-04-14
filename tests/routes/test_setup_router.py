@@ -17,11 +17,9 @@ class TestSetupRouter(unittest.TestCase):
         self.ctx.__exit__(None, None, None)
 
     def test_setup_creates_superadmin(self):
-        # Try setup - may already exist from shared DB
         response = self.test_client.post(
             "/setup", json={"email": "sa_create@test.com", "password": "adminpass123"}
         )
-        # If first time, 201; if already exists, 409
         self.assertIn(response.status_code, (201, 409))
         if response.status_code == 201:
             self.assertEqual(response.json(), {"detail": "Superadmin criado com sucesso"})
@@ -30,16 +28,13 @@ class TestSetupRouter(unittest.TestCase):
         self.test_client.post(
             "/setup", json={"email": "sa_canlogin@test.com", "password": "adminpass123"}
         )
-        # If setup already done by another test, register+approve this user instead
         response = self.test_client.post(
             "/login", json={"email": "sa_canlogin@test.com", "password": "adminpass123"}
         )
-        # If this user was created as superadmin, login works
         if response.status_code == 200:
-            self.assertIn("access_token", response.json())
+            self.assertIn("token", response.json())
 
     def test_setup_duplicate_returns_409(self):
-        # Ensure at least one superadmin exists
         self.test_client.post(
             "/setup", json={"email": "sa_dup@test.com", "password": "adminpass123"}
         )

@@ -20,7 +20,7 @@ class TestSetupService(unittest.TestCase):
         mock_session.add = MagicMock()
 
         result = asyncio.run(
-            service.create_superadmin("admin@test.com", "adminpass123", mock_session)
+            service.create_superadmin("admin@test.com", "adminpass123", "Admin", mock_session)
         )
 
         self.assertIsNotNone(result)
@@ -39,7 +39,7 @@ class TestSetupService(unittest.TestCase):
         mock_session.execute.return_value = mock_result
 
         result = asyncio.run(
-            service.create_superadmin("admin2@test.com", "adminpass123", mock_session)
+            service.create_superadmin("admin2@test.com", "adminpass123", "Admin", mock_session)
         )
 
         self.assertIsNone(result)
