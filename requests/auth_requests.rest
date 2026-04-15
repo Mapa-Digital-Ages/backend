@@ -1,7 +1,7 @@
 @BaseUrl = http://localhost:8000
 
 ### Register
-POST {{BaseUrl}}/register
+POST {{BaseUrl}}/register/responsavel
 Content-Type: application/json
 
 {
@@ -10,11 +10,21 @@ Content-Type: application/json
     "password": "securepassword123"
 }
 
+### Register
+POST {{BaseUrl}}/register/aluno
+Content-Type: application/json
+
+{
+    "name": "user12",
+    "email": "user112@example.com",
+    "password": "securepassword123"
+}
+
 ### Login
 POST {{BaseUrl}}/login
 Content-Type: application/json
 
 {
-    "email": "user12@example.com",
+    "email": "user112@example.com",
     "password": "securepassword123"
 }
