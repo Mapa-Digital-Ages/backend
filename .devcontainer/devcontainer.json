@@ -1,0 +1,20 @@
+{
+  "name": "MD Backend Dev",
+  "dockerComposeFile": ["../docker-compose.yml", "docker-compose.yml"],
+  "service": "backend",
+  "workspaceFolder": "/app",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.debugpy",
+        "humao.rest-client"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/app/.venv/bin/python"
+      }
+    }
+  },
+  "postCreateCommand": "pip install uv && uv sync && uv pip install debugpy",
+  "forwardPorts": [8000, 5432, 5050]
+}

@@ -1,0 +1,18 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: backend-dev
+    volumes:
+      - .:/app:cached
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/appdb
+    ports:
+      - "8000:8000"
+    command: sleep infinity
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - app-network
