@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import User, UserStatus
+from md_backend.models.db_models import RoleEnum, User, UserStatus
 from md_backend.utils.security import create_access_token, verify_password
 
 
@@ -21,11 +21,12 @@ class LoginService:
         if not verify_password(password, user.hashed_password):
             return {"error": "invalid_credentials"}
 
-        if user.status == UserStatus.AGUARDANDO:
-            return {"error": "AGUARDANDO"}
+        if user.role == RoleEnum.RESPONSAVEL:
+            if user.status == UserStatus.AGUARDANDO:
+                return {"error": "AGUARDANDO"}
 
-        if user.status == UserStatus.NEGADO:
-            return {"error": "NEGADO"}
+            if user.status == UserStatus.NEGADO:
+                return {"error": "NEGADO"}
 
         token = create_access_token({"sub": user.email, "user_id": user.id})
         return {
