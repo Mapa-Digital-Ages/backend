@@ -36,7 +36,7 @@ class TestValidateRouter(unittest.TestCase):
 
     def test_validate_aguardando_user_returns_403(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "val_wait@test.com", "password": "validpass123", "name": "Wait"},
         )
         self.test_client.patch(

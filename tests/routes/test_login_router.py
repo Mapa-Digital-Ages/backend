@@ -32,7 +32,7 @@ class TestLoginRouter(unittest.TestCase):
 
     def test_login_aguardando_user(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "waiting_lg@test.com", "password": "validpass123", "name": "Wait"},
         )
         response = self.test_client.post(
@@ -43,7 +43,7 @@ class TestLoginRouter(unittest.TestCase):
 
     def test_login_negado_user(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "denied_lg@test.com", "password": "validpass123", "name": "Denied"},
         )
         self.test_client.patch(
@@ -60,7 +60,7 @@ class TestLoginRouter(unittest.TestCase):
 
     def test_login_wrong_password(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "wrongpw_lg@test.com", "password": "validpass123", "name": "Wrong"},
         )
         response = self.test_client.post(
