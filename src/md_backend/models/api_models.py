@@ -1,6 +1,6 @@
-import datetime
-
 """Store API models."""
+
+import datetime
 
 from pydantic import BaseModel, EmailStr, Field
 

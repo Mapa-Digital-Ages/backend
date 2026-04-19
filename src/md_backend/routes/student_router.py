@@ -10,7 +10,7 @@ from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 
 student_service = StudentService()
-student_router = APIRouter(prefix="/students")
+student_router = APIRouter(prefix="/student")
 
 
 @student_router.post(
@@ -18,10 +18,10 @@ student_router = APIRouter(prefix="/students")
     status_code=status.HTTP_201_CREATED,
     response_model=StudentResponse,
     responses={
-        201: {"description": "Student created successfully"},
-        400: {"description": "Bad request"},
-        409: {"description": "Email already registered"},
-        422: {"description": "Validation error"},
+        201: {"":""},
+        400: {"":""},
+        409: {"":""},
+        422: {"":""},
     },
 )
 async def create_student(
