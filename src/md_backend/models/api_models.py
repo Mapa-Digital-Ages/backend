@@ -47,3 +47,24 @@ class UpdateStatusRequest(BaseModel):
     """Request to update user approval status."""
 
     status: str = Field(pattern=r"^(aprovado|negado)$")
+
+class CreateSchoolRequest(BaseModel):
+    """Request body for POST /schools."""
+
+    first_name: str = Field(min_length=1, description="Primeiro nome")
+    last_name:str = Field(min_length=1, description="Sobrenome")
+    email: EmailStr = Field(description="E-mail")
+    password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
+    is_private: bool = Field(description="Indica se a escola é pública ou privada")
+    cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola") 
+
+class SchoolResponse(BaseModel):
+    """Response body returned after school creation."""
+
+    user_id: int
+    email: str
+    name: str
+    cnpj: str
+    is_private: bool
+    status: str
+    created_at: str
