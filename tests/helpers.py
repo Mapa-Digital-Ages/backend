@@ -14,7 +14,9 @@ def get_admin_headers(test_client):
 
 def create_approved_user(test_client, admin_headers, email, password="validpass123", name="Test"):
     """Register a user and approve them via admin. Returns JWT token."""
-    test_client.post("/register", json={"email": email, "password": password, "name": name})
+    test_client.post(
+        "/register/responsavel", json={"email": email, "password": password, "name": name}
+    )
     test_client.patch(
         f"/admin/users/{email}/status",
         json={"status": "aprovado"},

@@ -26,7 +26,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_list_users_filter_by_status(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "adm_filter@test.com", "password": "validpass123", "name": "Filter"},
         )
         response = self.test_client.get(
@@ -52,7 +52,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_list_users_filter_by_role(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "adm_role@test.com", "password": "validpass123", "name": "Role"},
         )
         response = self.test_client.get(
@@ -82,7 +82,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_approve_user(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "adm_approve@test.com", "password": "validpass123", "name": "Approve"},
         )
         response = self.test_client.patch(
@@ -95,7 +95,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_deny_user(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "adm_deny@test.com", "password": "validpass123", "name": "Deny"},
         )
         response = self.test_client.patch(
