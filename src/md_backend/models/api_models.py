@@ -58,7 +58,7 @@ class CreateSchoolRequest(BaseModel):
     is_private: bool = Field(description="Indica se a escola é pública ou privada")
     cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola") 
 
-class SchoolResponse(BaseModel):
+class CreateSchoolResponse(BaseModel):
     """Response body returned after school creation."""
 
     user_id: int
