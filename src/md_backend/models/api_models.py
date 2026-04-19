@@ -1,3 +1,5 @@
+import datetime
+
 """Store API models."""
 
 from pydantic import BaseModel, EmailStr, Field
@@ -47,3 +49,25 @@ class UpdateStatusRequest(BaseModel):
     """Request to update user approval status."""
 
     status: str = Field(pattern=r"^(aprovado|negado)$")
+
+class StudentResponse(BaseModel):
+    """Response model for student creation."""
+
+    id: int
+    user_id: int
+    first_name: str
+    last_name: str
+    email: str
+    birth_date: str
+    student_class: str
+    created_at: str
+
+class StudentRequest(BaseModel):
+    """Request model for creating a new student."""
+
+    first_name: str
+    last_name: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    birth_date: datetime.date
+    student_class: str

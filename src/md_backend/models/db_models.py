@@ -3,7 +3,7 @@
 import datetime
 import enum
 
-from sqlalchemy import Boolean, DateTime, Enum, String, func
+from sqlalchemy import Boolean, DateTime, Enum, String, func, ForeignKey, Date
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -46,3 +46,33 @@ class User(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+class UserProfile(Base):
+    """Base user profile table."""
+
+    __tablename__ = "user_profile"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    first_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(128), nullable=False)
+    role: Mapped[RoleEnum] = mapped_column(Enum(RoleEnum), nullable=False)
+    status: Mapped[UserStatus] = mapped_column(
+    Enum(UserStatus), nullable=False, default=UserStatus.AGUARDANDO
+    )
+    birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class StudentProfile(Base):
+    """Student-specific profile table (inherits from user_profile)."""
+
+    __tablename__ = "student_profile"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"), nullable=False, unique=True)
+    student_class: Mapped[str] = mapped_column(String(100), nullable=False)
