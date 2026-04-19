@@ -18,10 +18,10 @@ student_router = APIRouter(prefix="/student")
     status_code=status.HTTP_201_CREATED,
     response_model=StudentResponse,
     responses={
-        201: {"":""},
-        400: {"":""},
-        409: {"":""},
-        422: {"":""},
+        201: {""},
+        400: {""},
+        409: {""},
+        422: {""},
     },
 )
 async def create_student(
