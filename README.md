@@ -112,7 +112,7 @@ Project Setup Startup
             ```
             Validate that UV is installed, perhaps a restart is needed.
             ```bash
-            uv sync
+            uv x
             ```
 
             Then click "F5" to run.
