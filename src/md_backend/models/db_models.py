@@ -58,3 +58,17 @@ class School(Base):
     )
     cnpj: Mapped[str] = mapped_column(String(18), unique=True, nullable=False)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+class Student(Base):
+    """Student profile table - linked to a school."""
+
+    __tablename__ = "students"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    school_id: Mapped[int] = mapped_column(
+        ForeignKey("school.user_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

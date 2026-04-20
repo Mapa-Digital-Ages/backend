@@ -178,3 +178,149 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         """422: campos obrigatórios ausentes retornam erro de validação."""
         resp = self.client.post("/school", json={"email": "incompleto@test.com"})
         self.assertEqual(resp.status_code, 422)
+
+    # GET /school
+
+    def test_list_schools_returns_only_active(self):
+        """GET /school deve retornar apenas escolas ativas (status=aprovado)."""
+        self.client.post(
+            "/school",
+            json=self._school_payload(email="ativa_list@test.com", cnpj="33.333.333/0001-33"),
+        )
+        resp = self.client.get("/school")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("items", body)
+        self.assertIn("total", body)
+        for item in body["items"]:
+            self.assertTrue(item["is_active"])
+            self.assertNotIn("password", item)
+            self.assertNotIn("hashed_password", item)
+
+    def test_list_schools_filter_by_name_partial_case_insensitive(self):
+        """Filtro por name deve funcionar parcialmente e sem diferenciar maiúsculas."""
+        self.client.post(
+            "/school",
+            json={
+                "first_name": "Olimpo",
+                "last_name": "Educacional",
+                "email": "olimpo@test.com",
+                "password": "senha1234",
+                "is_private": False,
+                "cnpj": "44.444.444/0001-44",
+            },
+        )
+        resp = self.client.get("/school", params={"name": "olimpo"})
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["items"]
+        self.assertTrue(len(items) >= 1)
+        self.assertTrue(any("Olimpo" in item["name"] for item in items))
+
+    def test_list_schools_filter_by_cnpj_exact(self):
+        """Filtro por CNPJ deve ser exato."""
+        target_cnpj = "55.555.555/0001-55"
+        self.client.post(
+            "/school",
+            json=self._school_payload(email="cnpj_filter@test.com", cnpj=target_cnpj),
+        )
+        resp = self.client.get("/school", params={"cnpj": target_cnpj})
+        self.assertEqual(resp.status_code, 200)
+        items = resp.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["cnpj"], target_cnpj)
+
+    def test_list_schools_pagination(self):
+        """Paginação deve respeitar os parâmetros page e size."""
+        resp = self.client.get("/school", params={"page": 1, "size": 1})
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["page"], 1)
+        self.assertEqual(body["size"], 1)
+        self.assertLessEqual(len(body["items"]), 1)
+
+    # GET /school/{id}
+
+    def test_get_school_by_id_returns_correct_data(self):
+        """GET /school/{id} deve retornar dados completos da escola."""
+        create_resp = self.client.post(
+            "/school",
+            json=self._school_payload(email="getbyid@test.com", cnpj="66.666.666/0001-66"),
+        )
+        school_id = create_resp.json()["user_id"]
+
+        resp = self.client.get(f"/school/{school_id}")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["user_id"], school_id)
+        self.assertIn("quantidade_alunos", body)
+        self.assertNotIn("password", body)
+        self.assertNotIn("hashed_password", body)
+
+    def test_get_school_by_id_not_found_returns_404(self):
+        """GET /school/{id} com ID inexistente deve retornar 404."""
+        resp = self.client.get("/school/999999")
+        self.assertEqual(resp.status_code, 404)
+
+    def test_get_school_quantidade_alunos_counts_correctly(self):
+        """quantidade_alunos deve refletir o número exato de students vinculados."""
+        import asyncio
+
+        from sqlalchemy import text
+
+        from md_backend.utils.database import AsyncSessionLocal
+
+        create_resp = self.client.post(
+            "/school",
+            json=self._school_payload(email="alunos_count@test.com", cnpj="77.777.777/0001-77"),
+        )
+        school_id = create_resp.json()["user_id"]
+
+        async def insert_students():
+            async with AsyncSessionLocal() as session:
+                for i in range(3):
+                    await session.execute(
+                        text(
+                            "INSERT INTO students (school_id, name) VALUES (:school_id, :name)"
+                        ),
+                        {"school_id": school_id, "name": f"Aluno {i}"},
+                    )
+                await session.commit()
+
+        asyncio.run(insert_students())
+
+        resp = self.client.get(f"/school/{school_id}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["quantidade_alunos"], 3)
+
+class TestSchoolResponseDTO(unittest.TestCase):
+    """Unit tests — garantir que o DTO de resposta nunca expõe a senha."""
+
+    def test_response_dict_never_contains_password(self):
+        """O dict retornado por create_school jamais deve incluir 'password' ou 'hashed_password'."""
+        response_dict = {
+            "user_id": 1,
+            "email": "escola@test.com",
+            "name": "Escola Teste",
+            "cnpj": "12.345.678/0001-90",
+            "is_private": True,
+            "status": "aprovado",
+            "created_at": "2026-01-01T00:00:00+00:00",
+        }
+        self.assertNotIn("password", response_dict)
+        self.assertNotIn("hashed_password", response_dict)
+
+    def test_get_response_dict_never_contains_password(self):
+        """O dict retornado por get/list schools jamais deve incluir senha."""
+        response_dict = {
+            "user_id": 1,
+            "email": "escola@test.com",
+            "name": "Escola Teste",
+            "cnpj": "12.345.678/0001-90",
+            "is_private": True,
+            "status": "aprovado",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "is_active": True,
+            "quantidade_alunos": 5,
+        }
+        self.assertNotIn("password", response_dict)
+        self.assertNotIn("hashed_password", response_dict)

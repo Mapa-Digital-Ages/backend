@@ -58,3 +58,24 @@ class CreateSchoolRequest(BaseModel):
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     is_private: bool = Field(description="Indica se a escola é pública ou privada")
     cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola")
+
+class SchoolResponse(BaseModel):
+    """Response model for a single school - password is never included."""
+
+    user_id: int
+    email: str
+    name: str
+    cnpj: str
+    is_private: bool
+    status: str
+    created_at: str
+    is_active: bool
+    quantidade_alunos: int
+
+class SchoolListResponse(BaseModel):
+    """Paginated list of schools."""
+
+    items: list[SchoolResponse]
+    total: int
+    page: int
+    size: int
