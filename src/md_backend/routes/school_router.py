@@ -5,21 +5,15 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import CreateSchoolRequest, SchoolResponse
+from md_backend.models.api_models import CreateSchoolRequest
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_superadmin
 
 school_service = SchoolService()
 school_router = APIRouter(prefix="/school", tags=["School"])
 
 
-@school_router.post(
-    "",
-    status_code=status.HTTP_201_CREATED,
-    response_model=SchoolResponse,
-    dependencies=[Depends(get_current_superadmin)],
-)
+@school_router.post("")
 async def create_school(
     request: CreateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
