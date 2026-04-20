@@ -122,7 +122,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_create_school_success_inserts_both_tables(self):
         """201: user + school criados; resposta sem campos sensíveis."""
-        resp = self.client.post("/schools", json=self._school_payload())
+        resp = self.client.post("/school", json=self._school_payload())
         self.assertEqual(resp.status_code, 201)
         body = resp.json()
         self.assertIn("user_id", body)
@@ -135,11 +135,11 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def test_create_school_duplicate_email_returns_409(self):
         """409: segunda tentativa com mesmo e-mail deve ser rejeitada."""
         payload = self._school_payload(email="escola_dup@test.com", cnpj="11.111.111/0001-11")
-        self.client.post("/schools", json=payload)
+        self.client.post("/school", json=payload)
 
         payload2 = dict(payload)
         payload2["cnpj"] = "22.222.222/0002-22"
-        resp = self.client.post("/schools", json=payload2)
+        resp = self.client.post("/school", json=payload2)
 
         self.assertEqual(resp.status_code, 409)
         self.assertIn("E-mail ja cadastrado", resp.json()["detail"])
@@ -155,14 +155,14 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             side_effect=IntegrityError("forced", {}, Exception("forced")),
         ):
             resp = self.client.post(
-                "/schools",
+                "/school",
                 json=self._school_payload(email=email, cnpj="99.999.999/0001-99"),
             )
 
         self.assertEqual(resp.status_code, 409)
 
         resp2 = self.client.post(
-            "/schools",
+            "/school",
             json=self._school_payload(email=email, cnpj="88.888.888/0001-88"),
         )
         self.assertEqual(resp2.status_code, 201)
@@ -171,10 +171,10 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         """422: e-mail malformado é rejeitado pelo Pydantic."""
         payload = self._school_payload()
         payload["email"] = "nao-e-um-email"
-        resp = self.client.post("/schools", json=payload)
+        resp = self.client.post("/school", json=payload)
         self.assertEqual(resp.status_code, 422)
 
     def test_create_school_missing_required_fields_returns_422(self):
         """422: campos obrigatórios ausentes retornam erro de validação."""
-        resp = self.client.post("/schools", json={"email": "incompleto@test.com"})
+        resp = self.client.post("/school", json={"email": "incompleto@test.com"})
         self.assertEqual(resp.status_code, 422)
