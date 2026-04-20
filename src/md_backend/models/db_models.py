@@ -3,7 +3,7 @@
 import datetime
 import enum
 import uuid
-from typing import List, Optional  # noqa: UP035
+from typing import Optional  # noqa: UP035
 
 from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, String, Uuid, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -41,12 +41,12 @@ class UserProfile(Base):
     first_name: Mapped[str] = mapped_column(String(255), nullable=False)
     last_name: Mapped[str] = mapped_column(String(255), nullable=False)
     password: Mapped[str] = mapped_column(String(128), nullable=False)
-    phone_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -76,9 +76,9 @@ class AdminProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
-    subject_area: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    subject_area: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -97,10 +97,10 @@ class StudentProfile(Base):
     student_class: Mapped[ClassEnum] = mapped_column(
         "class", Enum(ClassEnum, name="class_enum"), nullable=False
     )
-    school_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    school_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=True
     )
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -108,7 +108,7 @@ class StudentProfile(Base):
     school: Mapped[Optional["SchoolProfile"]] = relationship(
         "SchoolProfile", back_populates="students"
     )
-    guardians: Mapped[List["GuardianProfile"]] = relationship(
+    guardians: Mapped[list["GuardianProfile"]] = relationship(
         "GuardianProfile", secondary="student_guardian", back_populates="students"
     )
 
@@ -123,12 +123,12 @@ class CompanyProfile(Base):
     )
     spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     available_spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="company_profile")
-    schools: Mapped[List["SchoolProfile"]] = relationship(
+    schools: Mapped[list["SchoolProfile"]] = relationship(
         "SchoolProfile", secondary="school_company_partnership", back_populates="companies"
     )
 
@@ -142,16 +142,16 @@ class SchoolProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    requested_spots: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="school_profile")
-    students: Mapped[List["StudentProfile"]] = relationship(
+    students: Mapped[list["StudentProfile"]] = relationship(
         "StudentProfile", back_populates="school"
     )
-    companies: Mapped[List["CompanyProfile"]] = relationship(
+    companies: Mapped[list["CompanyProfile"]] = relationship(
         "CompanyProfile", secondary="school_company_partnership", back_populates="schools"
     )
 
@@ -169,12 +169,12 @@ class GuardianProfile(Base):
         nullable=False,
         default=GuardianStatusEnum.WAITING,
     )
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="guardian_profile")
-    students: Mapped[List["StudentProfile"]] = relationship(
+    students: Mapped[list["StudentProfile"]] = relationship(
         "StudentProfile", secondary="student_guardian", back_populates="guardians"
     )
 
@@ -194,7 +194,7 @@ class SchoolCompanyPartnership(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
 
@@ -213,6 +213,6 @@ class StudentGuardian(Base):
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
-    deactivated_at: Mapped[Optional[datetime.datetime]] = mapped_column(
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
