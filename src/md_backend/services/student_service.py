@@ -4,6 +4,7 @@ import datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from md_backend.models.db_models import RoleEnum, StudentProfile, UserProfile, UserStatus
 from md_backend.utils.security import hash_password
@@ -116,6 +117,47 @@ class StudentService:
             return None
 
         user_profile, student_profile = row
+        return self._to_dict(user_profile, student_profile)
+    
+    async def update_student(
+        self,
+        session: AsyncSession,
+        student_id: int,
+        data: dict,
+    ) -> dict | None:
+        """Update a student's data. Returns None if not found."""
+        query = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(StudentProfile.id == student_id)
+        )
+        result = await session.execute(query)
+        row = result.one_or_none()
+
+        if row is None:
+            return None
+
+        user_profile, student_profile = row
+
+        user_fields = {"first_name", "last_name", "phone_number", "birth_date"}
+        student_fields = {"student_class", "school_id"}
+
+        for field, value in data.items():
+            if value is None:
+                continue
+            if field in user_fields:
+                setattr(user_profile, field, value)
+            elif field in student_fields:
+                setattr(student_profile, field, value)
+
+        try:
+            await session.commit()
+            await session.refresh(user_profile)
+            await session.refresh(student_profile)
+        except Exception:
+            await session.rollback()
+            raise
+
         return self._to_dict(user_profile, student_profile)
 
     def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:

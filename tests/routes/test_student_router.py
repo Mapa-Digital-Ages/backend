@@ -202,3 +202,65 @@ class TestStudentRouterGet(unittest.TestCase):
         response = self.test_client.get("/student/1")
         self.assertEqual(response.status_code, 401)  
     
+class TestStudentRouterPut(unittest.TestCase):
+    """Integration tests para PUT /student/{id}."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.test_client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.test_client)
+        self.valid_payload = {
+            "first_name": "John",
+            "last_name": "Doe",
+            "email": f"put.student.{uuid.uuid4()}@example.com",
+            "password": "securepass123",
+            "birth_date": "2010-05-20",
+            "student_class": "5A",
+        }
+        response = self.test_client.post(
+            "/student", json=self.valid_payload, headers=self.admin_headers
+        )
+        self.student = response.json()
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_update_student_success(self):
+        student_id = self.student["id"]
+        response = self.test_client.put(
+            f"/student/{student_id}",
+            json={"first_name": "Jane", "student_class": "6B"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["first_name"], "Jane")
+        self.assertEqual(data["student_class"], "6B")
+        self.assertEqual(data["last_name"], "Doe")
+
+    def test_update_student_not_found(self):
+        response = self.test_client.put(
+            "/student/99999",
+            json={"first_name": "Jane"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Student not found"})
+
+    def test_update_student_unauthenticated_returns_401(self):
+        response = self.test_client.put(
+            f"/student/{self.student['id']}",
+            json={"first_name": "Jane"},
+        )
+        self.assertEqual(response.status_code, 401)
+
+    def test_update_student_password_not_in_response(self):
+        student_id = self.student["id"]
+        response = self.test_client.put(
+            f"/student/{student_id}",
+            json={"first_name": "Jane"},
+            headers=self.admin_headers,
+        )
+        self.assertNotIn("password", response.json())
+        self.assertNotIn("hashed_password", response.json())
+    

@@ -8,6 +8,7 @@ from md_backend.models.api_models import StudentRequest, StudentResponse, Studen
 from md_backend.services.student_service import StudentService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
+from md_backend.models.api_models import StudentRequest, StudentResponse, StudentListResponse, StudentUpdateRequest
 
 student_service = StudentService()
 student_router = APIRouter(prefix="/student")
@@ -62,6 +63,28 @@ async def get_student(
 ):
     """Get a student by ID."""
     result = await student_service.get_student_by_id(session=session, student_id=student_id)
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+@student_router.put("/{student_id}")
+async def update_student(
+    student_id: int,
+    request: StudentUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    _: dict = Depends(get_current_approved_user),
+):
+    """Update a student by ID."""
+    result = await student_service.update_student(
+        session=session,
+        student_id=student_id,
+        data=request.model_dump(),
+    )
 
     if result is None:
         return JSONResponse(

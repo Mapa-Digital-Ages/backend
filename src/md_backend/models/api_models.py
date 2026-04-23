@@ -87,6 +87,16 @@ class StudentListResponse(BaseModel):
     is_active: bool
     created_at: str | None
 
+class StudentUpdateRequest(BaseModel):
+    """Request model for updating a student."""
+
+    first_name: str | None = None
+    last_name: str | None = None
+    phone_number: str | None = None
+    birth_date: datetime.date | None = None
+    student_class: str | None = None
+    school_id: int | None = None
+
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /schools."""
 

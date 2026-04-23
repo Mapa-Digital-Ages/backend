@@ -76,3 +76,21 @@ class TestStudentServiceGet(unittest.TestCase):
         self.assertNotIn("hashed_password", result)
         self.assertEqual(result["email"], "john@example.com")
         self.assertEqual(result["school_id"], "")
+
+    def test_update_student_returns_none_for_missing_id(self):
+        """Valida que update_student retorna None para ID inexistente."""
+        import asyncio
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.one_or_none.return_value = None
+        mock_session.execute.return_value = mock_result
+
+        result = asyncio.run(
+            self.service.update_student(
+                session=mock_session,
+                student_id=99999,
+                data={"first_name": "Jane"},
+            )
+        )
+        self.assertIsNone(result)
+
