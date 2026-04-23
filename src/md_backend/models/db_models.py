@@ -80,3 +80,13 @@ class StudentProfile(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"), nullable=False, unique=True)
     school_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"), nullable=True)
     student_class: Mapped[str] = mapped_column(String(100), nullable=False)
+class School(Base):
+    """School profile table - 1:1 with User (role=escola)."""
+
+    __tablename__ = "schools"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    cnpj: Mapped[str] = mapped_column(String(18), unique=True, nullable=False)
+    is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
