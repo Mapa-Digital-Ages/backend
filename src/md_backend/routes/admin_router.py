@@ -4,8 +4,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import UpdateStatusRequest
-from md_backend.models.db_models import RoleEnum, UserStatus
+from md_backend.models.api_models import RoleInput, UpdateStatusRequest, UserStatusInput
 from md_backend.services.admin_service import AdminService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_superadmin
@@ -25,7 +24,7 @@ async def list_users(
     role_filter = None
     if user_status is not None:
         try:
-            status_filter = UserStatus(user_status)
+            status_filter = UserStatusInput(user_status)
         except ValueError:
             return JSONResponse(
                 content={"detail": "Status invalido."},
@@ -33,7 +32,7 @@ async def list_users(
             )
     if role is not None:
         try:
-            role_filter = RoleEnum(role)
+            role_filter = RoleInput(role)
         except ValueError:
             return JSONResponse(
                 content={"detail": "Role invalido."},
@@ -53,7 +52,7 @@ async def update_user_status(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Update a user's approval status."""
-    new_status = UserStatus(request.status)
+    new_status = UserStatusInput(request.status)
     result = await admin_service.update_user_status(
         session=session, email=email, new_status=new_status
     )
