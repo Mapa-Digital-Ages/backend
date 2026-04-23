@@ -1,10 +1,10 @@
 """Student router for student registration endpoints."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, status, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import StudentRequest, StudentResponse
+from md_backend.models.api_models import StudentRequest, StudentResponse, StudentListResponse
 from md_backend.services.student_service import StudentService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
@@ -13,17 +13,7 @@ student_service = StudentService()
 student_router = APIRouter(prefix="/student")
 
 
-@student_router.post(
-    "",
-    status_code=status.HTTP_201_CREATED,
-    response_model=StudentResponse,
-    responses={
-        201: {""},
-        400: {""},
-        409: {""},
-        422: {""},
-    },
-)
+@student_router.post("")
 async def create_student(
     request: StudentRequest,
     session: AsyncSession = Depends(get_db_session),
@@ -47,3 +37,36 @@ async def create_student(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+
+@student_router.get("")
+async def list_students(
+    session: AsyncSession = Depends(get_db_session),
+    _: dict = Depends(get_current_approved_user),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+    email: str | None = Query(default=None, description="Filter by email"),
+    page: int = Query(default=1, ge=1, description="Page number"),
+    size: int = Query(default=10, ge=1, le=100, description="Page size"),
+):
+    """List all active students with optional filters and pagination."""
+    students = await student_service.get_students(
+        session=session, name=name, email=email, page=page, size=size
+    )
+    return JSONResponse(content=students, status_code=status.HTTP_200_OK)
+
+
+@student_router.get("/{student_id}")
+async def get_student(
+    student_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    _: dict = Depends(get_current_approved_user),
+):
+    """Get a student by ID."""
+    result = await student_service.get_student_by_id(session=session, student_id=student_id)
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)

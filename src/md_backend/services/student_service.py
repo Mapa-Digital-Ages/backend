@@ -63,3 +63,73 @@ class StudentService:
             "student_class": student_profile.student_class,
             "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
         }
+    
+    async def get_students(
+        self,
+        session: AsyncSession,
+        name: str | None = None,
+        email: str | None = None,
+        page: int = 1,
+        size: int = 10,
+    ) -> list[dict]:
+        """List all active students with optional filters and pagination."""
+        from sqlalchemy import select
+
+        query = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(UserProfile.is_active.is_(True))
+        )
+
+        if name:
+            query = query.where(
+                UserProfile.first_name.ilike(f"%{name}%")
+                | UserProfile.last_name.ilike(f"%{name}%")
+            )
+
+        if email:
+            query = query.where(UserProfile.email.ilike(f"%{email}%"))
+
+        query = query.offset((page - 1) * size).limit(size)
+
+        result = await session.execute(query)
+        rows = result.all()
+
+        return [self._to_dict(user, student) for user, student in rows]
+
+    async def get_student_by_id(
+        self, session: AsyncSession, student_id: int
+    ) -> dict | None:
+        """Get a student by student_profile id."""
+        from sqlalchemy import select
+
+        query = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(StudentProfile.id == student_id)
+        )
+
+        result = await session.execute(query)
+        row = result.one_or_none()
+
+        if row is None:
+            return None
+
+        user_profile, student_profile = row
+        return self._to_dict(user_profile, student_profile)
+
+    def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:
+        """Map user_profile and student_profile to a full response dict."""
+        return {
+            "id": student_profile.id,
+            "user_id": user_profile.id,
+            "first_name": user_profile.first_name,
+            "last_name": user_profile.last_name,
+            "email": user_profile.email,
+            "phone_number": user_profile.phone_number or "",
+            "birth_date": user_profile.birth_date.isoformat() if user_profile.birth_date else "",
+            "student_class": student_profile.student_class,
+            "school_id": str(student_profile.school_id) if student_profile.school_id else "",
+            "is_active": user_profile.is_active,
+            "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
+        }

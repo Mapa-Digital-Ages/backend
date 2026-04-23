@@ -72,6 +72,21 @@ class StudentRequest(BaseModel):
     birth_date: datetime.date
     student_class: str
 
+class StudentListResponse(BaseModel):
+    """Response model for student listing."""
+
+    id: int
+    user_id: int
+    first_name: str
+    last_name: str
+    email: str
+    phone_number: str
+    birth_date: str
+    student_class: str
+    school_id: str
+    is_active: bool
+    created_at: str | None
+
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /schools."""
 

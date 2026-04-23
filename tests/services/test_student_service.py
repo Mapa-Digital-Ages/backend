@@ -46,3 +46,33 @@ class TestStudentService(unittest.TestCase):
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()
+
+class TestStudentServiceGet(unittest.TestCase):
+    """Unit tests para get_students e get_student_by_id."""
+
+    def setUp(self):
+        self.service = StudentService()
+
+    def test_to_dict_excludes_password(self):
+        """Valida que _to_dict nunca inclui senha."""
+        user = MagicMock()
+        user.id = 1
+        user.first_name = "John"
+        user.last_name = "Doe"
+        user.email = "john@example.com"
+        user.phone_number = ""
+        user.birth_date = datetime.date(2010, 5, 20)
+        user.is_active = True
+        user.created_at = datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)
+
+        student = MagicMock()
+        student.id = 1
+        student.student_class = "5A"
+        student.school_id = None
+
+        result = self.service._to_dict(user, student)
+
+        self.assertNotIn("password", result)
+        self.assertNotIn("hashed_password", result)
+        self.assertEqual(result["email"], "john@example.com")
+        self.assertEqual(result["school_id"], "")
