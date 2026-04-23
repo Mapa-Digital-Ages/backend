@@ -58,3 +58,13 @@ class School(Base):
     )
     cnpj: Mapped[str] = mapped_column(String(18), unique=True, nullable=False)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+class Company(Base):
+    """Company table - 1:1 with User (role=empresa)."""
+
+    __tablename__ = "companies"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    cnpj: Mapped[str] = mapped_column(String(18), unique=True, nullable=False)

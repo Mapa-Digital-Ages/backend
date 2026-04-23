@@ -58,3 +58,12 @@ class CreateSchoolRequest(BaseModel):
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     is_private: bool = Field(description="Indica se a escola é pública ou privada")
     cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola")
+
+class CreateCompanyRequest(BaseModel):
+    """Request body for POST /companies."""
+    
+    first_name: str = Field(min_length=1, description="Primeiro nome")
+    last_name: str = Field(min_length=1, description="Sobrenome")
+    email: EmailStr = Field(description="E-mail corporativo")
+    password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
+    cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da empresa")
