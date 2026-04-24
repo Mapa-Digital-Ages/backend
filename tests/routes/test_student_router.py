@@ -297,11 +297,7 @@ class TestStudentRouterDelete(unittest.TestCase):
             headers=self.admin_headers,
         )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(
-            response.json(),
-            {"detail": "Student deleted successfully"},
-        )
+        self.assertEqual(response.status_code, 204)
 
     def test_delete_student_not_found(self):
         response = self.test_client.delete(
