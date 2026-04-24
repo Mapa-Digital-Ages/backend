@@ -263,4 +263,59 @@ class TestStudentRouterPut(unittest.TestCase):
         )
         self.assertNotIn("password", response.json())
         self.assertNotIn("hashed_password", response.json())
+
+class TestStudentRouterDelete(unittest.TestCase):
+    """Integration tests for DELETE /student/{id}."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.test_client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.test_client)
+
+        self.payload = {
+            "first_name": "Delete",
+            "last_name": "Test",
+            "email": f"delete.student.{uuid.uuid4()}@example.com",
+            "password": "securepass123",
+            "birth_date": "2010-05-20",
+            "student_class": "5A",
+        }
+
+        response = self.test_client.post(
+            "/student", json=self.payload, headers=self.admin_headers
+        )
+        self.student = response.json()
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_delete_student_success(self):
+        student_id = self.student["id"]
+
+        response = self.test_client.delete(
+            f"/student/{student_id}",
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json(),
+            {"detail": "Student deleted successfully"},
+        )
+
+    def test_delete_student_not_found(self):
+        response = self.test_client.delete(
+            "/student/99999",
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json(), {"detail": "Student not found"})
+
+    def test_delete_student_unauthenticated_returns_401(self):
+        response = self.test_client.delete(
+            f"/student/{self.student['id']}",
+        )
+
+        self.assertEqual(response.status_code, 401)
     

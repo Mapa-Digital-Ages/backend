@@ -18,9 +18,16 @@ student_router = APIRouter(prefix="/student")
 async def create_student(
     request: StudentRequest,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
+    current_user: dict = Depends(get_current_approved_user),
 ):
     """Create a new student with atomic transaction across user_profile and student_profile."""
+    allowed_roles = {"admin", "responsavel", "escola"}
+    if current_user.get("role") not in allowed_roles and not current_user.get("is_superadmin"):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     result = await student_service.create_student(
         first_name=request.first_name,
         last_name=request.last_name,
@@ -93,3 +100,25 @@ async def update_student(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+@student_router.delete("/{student_id}")
+async def delete_student(
+    student_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    _: dict = Depends(get_current_approved_user),
+):
+    """Soft delete a student by ID."""
+    result = await student_service.deactivate_student(
+        session=session, student_id=student_id
+    )
+
+    if not result:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(
+        content={"detail": "Student deleted successfully"},
+        status_code=status.HTTP_200_OK,
+    )

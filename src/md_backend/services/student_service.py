@@ -74,7 +74,6 @@ class StudentService:
         size: int = 10,
     ) -> list[dict]:
         """List all active students with optional filters and pagination."""
-        from sqlalchemy import select
 
         query = (
             select(UserProfile, StudentProfile)
@@ -159,6 +158,29 @@ class StudentService:
             raise
 
         return self._to_dict(user_profile, student_profile)
+
+    async def deactivate_student(
+        self, session: AsyncSession, student_id: int
+    ) -> bool:
+        """Soft delete a student by setting is_active to False."""
+        query = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(StudentProfile.id == student_id)
+        )
+        result = await session.execute(query)
+        row = result.one_or_none()
+
+        if row is None:
+            return False
+
+        user_profile, _ = row
+        user_profile.is_active = False
+        user_profile.deactivated_at = datetime.datetime.now(datetime.UTC)
+
+        await session.commit()
+        return True
+
 
     def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:
         """Map user_profile and student_profile to a full response dict."""

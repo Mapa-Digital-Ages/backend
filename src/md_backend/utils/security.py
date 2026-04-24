@@ -95,10 +95,11 @@ async def get_current_approved_user(
         )
 
     return {
-        "user_id": user.id,
-        "email": user.email,
-        "status": user.status.value,
-        "is_superadmin": user.is_superadmin,
+    "user_id": user.id,
+    "email": user.email,
+    "status": user.status.value,
+    "is_superadmin": user.is_superadmin,
+    "role": user.role,
     }
 
 
