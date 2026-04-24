@@ -319,3 +319,53 @@ class TestStudentRouterDelete(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
     
+class TestStudentRouterInactive(unittest.TestCase):
+    """Testa que alunos inativos não aparecem na listagem."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.test_client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.test_client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_inactive_student_not_in_list(self):
+        import asyncio
+        from md_backend.utils.database import AsyncSessionLocal
+        from md_backend.models.db_models import StudentProfile, UserProfile
+        from sqlalchemy import select
+
+        # Cria um aluno
+        payload = {
+            "first_name": "Inactive",
+            "last_name": "Student",
+            "email": f"inactive.{uuid.uuid4()}@example.com",
+            "password": "securepass123",
+            "birth_date": "2010-05-20",
+            "student_class": "5A",
+        }
+        response = self.test_client.post("/student", json=payload, headers=self.admin_headers)
+        student_id = response.json()["id"]
+
+        # Desativa o aluno diretamente via banco
+        async def deactivate():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile, StudentProfile)
+                    .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+                    .where(StudentProfile.id == student_id)
+                )
+                row = result.one_or_none()
+                if row:
+                    user_profile, _ = row
+                    user_profile.is_active = False
+                    await session.commit()
+
+        asyncio.run(deactivate())
+
+        # Verifica que não aparece na listagem
+        list_response = self.test_client.get("/student", headers=self.admin_headers)
+        ids = [s["id"] for s in list_response.json()]
+        self.assertNotIn(student_id, ids)
+    
