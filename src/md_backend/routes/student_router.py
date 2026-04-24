@@ -120,5 +120,5 @@ async def delete_student(
 
     return JSONResponse(
         content={"detail": "Student deleted successfully"},
-        status_code=status.HTTP_200_OK,
+        status_code=status.HTTP_204_NO_CONTENT
     )
