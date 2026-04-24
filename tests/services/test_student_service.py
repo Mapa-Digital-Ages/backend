@@ -93,3 +93,28 @@ class TestStudentServiceGet(unittest.TestCase):
             )
         )
         self.assertIsNone(result)
+
+    def test_deactivate_student_sets_is_active_false(self):
+        """Valida que deactivate_student altera is_active e seta deactivated_at."""
+        import asyncio
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+
+        user = MagicMock()
+        user.is_active = True
+        user.deactivated_at = None
+
+        student = MagicMock()
+
+        mock_result.one_or_none.return_value = (user, student)
+        mock_session.execute.return_value = mock_result
+
+        result = asyncio.run(
+            self.service.deactivate_student(session=mock_session, student_id=1)
+        )
+
+        self.assertTrue(result)
+        self.assertFalse(user.is_active)
+        self.assertIsNotNone(user.deactivated_at)
+        mock_session.commit.assert_called_once()

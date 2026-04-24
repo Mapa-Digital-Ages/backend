@@ -318,6 +318,35 @@ class TestStudentRouterDelete(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 401)
+
+    def test_delete_sets_is_active_false_and_deactivated_at(self):
+        """Verifica is_active e deactivated_at após o delete."""
+        import asyncio
+        from md_backend.utils.database import AsyncSessionLocal
+        from md_backend.models.db_models import StudentProfile, UserProfile
+        from sqlalchemy import select
+
+        student_id = self.student["id"]
+
+        self.test_client.delete(f"/student/{student_id}", headers=self.admin_headers)
+
+        async def check():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile, StudentProfile)
+                    .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+                    .where(StudentProfile.id == student_id)
+                )
+                row = result.one_or_none()
+                return row
+
+        row = asyncio.run(check())
+        user_profile, student_profile = row
+
+        self.assertFalse(user_profile.is_active)
+        self.assertIsNotNone(user_profile.deactivated_at)
+        self.assertIsNotNone(student_profile.user_id)
+        self.assertIsNotNone(student_profile.student_class)
     
 class TestStudentRouterInactive(unittest.TestCase):
     """Testa que alunos inativos não aparecem na listagem."""
