@@ -68,3 +68,23 @@ class SchoolResponse(BaseModel):
     is_private: bool
     status: str
     created_at: str
+    is_active: bool = True
+    quantidade_alunos: int = 0
+
+class SchoolListResponse(BaseModel):
+    """Paginated list of schools."""
+
+    items: list[SchoolResponse]
+    total: int
+    page: int
+    size: int
+
+
+class UpdateSchoolRequest(BaseModel):
+    """Request body for PATCH /schools/{id} — all fields are optional."""
+
+    first_name: str | None = Field(default=None, min_length=1, description="Primeiro nome")
+    last_name: str | None = Field(default=None, min_length=1, description="Sobrenome")
+    email: EmailStr | None = Field(default=None, description="Novo e-mail (deve ser único)")
+    is_private: bool | None = Field(default=None, description="Escola pública ou privada")
+    cnpj: str | None = Field(default=None, min_length=14, max_length=18, description="CNPJ da escola")
