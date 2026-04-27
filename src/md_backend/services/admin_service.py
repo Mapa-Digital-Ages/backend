@@ -1,5 +1,7 @@
 """Admin service for user management."""
 
+import uuid
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -89,7 +91,7 @@ class AdminService:
         return [_serialize_user(u) for u in users]
 
     async def update_user_status(
-        self, session: AsyncSession, email: str, new_status: str
+        self, session: AsyncSession, user_id: uuid.UUID, new_status: str
     ) -> dict | None:
         """Update a guardian's approval status. Returns None if user not found."""
         result = await session.execute(
@@ -97,8 +99,9 @@ class AdminService:
             .options(
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
+                selectinload(UserProfile.student_profile),
             )
-            .where(UserProfile.email == email)
+            .where(UserProfile.id == user_id)
         )
         user = result.scalar_one_or_none()
 

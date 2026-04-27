@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr, Field
 from md_backend.models.db_models import ClassEnum
 
 
-class UserStatusInput(str, enum.Enum):
+class UserStatusInput(enum.Enum):
     """User approval status values used in API layer."""
 
     AGUARDANDO = "aguardando"
@@ -16,7 +16,7 @@ class UserStatusInput(str, enum.Enum):
     NEGADO = "negado"
 
 
-class RoleInput(str, enum.Enum):
+class RoleInput(enum.Enum):
     """User role values used in API layer."""
 
     ADMIN = "admin"

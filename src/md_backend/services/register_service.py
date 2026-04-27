@@ -50,7 +50,7 @@ class RegisterService:
             await session.rollback()
             return None
 
-        return {"detail": "Cadastro realizado. Aguardando aprovacao."}
+        return {"id": str(user.id), "detail": "Cadastro realizado. Aguardando aprovacao."}
 
     async def register_aluno(
         self,
@@ -84,4 +84,4 @@ class RegisterService:
             await session.rollback()
             return None
 
-        return {"detail": "Cadastro realizado."}
+        return {"id": str(user.id), "detail": "Cadastro realizado."}
