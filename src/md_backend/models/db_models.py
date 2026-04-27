@@ -391,6 +391,38 @@ class PathTransition(Base):
     rule_value: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
+class UserProfile(Base):
+    """Base user profile table."""
+
+    __tablename__ = "user_profile"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    first_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    email: Mapped[str] = mapped_column(String(320), unique=True, nullable=False, index=True)
+    hashed_password: Mapped[str] = mapped_column(String(128), nullable=False)
+    role: Mapped[RoleEnum] = mapped_column(Enum(RoleEnum), nullable=False)
+    status: Mapped[UserStatus] = mapped_column(
+        Enum(UserStatus), nullable=False, default=UserStatus.AGUARDANDO
+    )
+    phone_number: Mapped[str] = mapped_column(String(20), nullable=True, default="")
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+
+
+class StudentProfile(Base):
+    """Student-specific profile table (inherits from user_profile)."""
+
+    __tablename__ = "student_profile"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"), nullable=False, unique=True)
+    school_id: Mapped[int] = mapped_column(ForeignKey("user_profile.id"), nullable=True)
+    student_class: Mapped[str] = mapped_column(String(100), nullable=False)
 class StudentPathProgress(Base):
     """Student progress tracking for a path."""
 

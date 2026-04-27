@@ -1,5 +1,13 @@
 """Student router for student registration endpoints."""
 
+from fastapi import APIRouter, Depends, status
+from fastapi.responses import JSONResponse
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from md_backend.models.api_models import StudentRequest, StudentResponse
+from md_backend.services.student_service import StudentService
+from md_backend.utils.database import get_db_session
+from md_backend.utils.security import get_current_approved_user
 from fastapi import APIRouter, Depends, status, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,6 +22,23 @@ student_service = StudentService()
 student_router = APIRouter(prefix="/student")
 
 
+@student_router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=StudentResponse,
+    responses={
+        201: {""},
+        400: {""},
+        409: {""},
+        422: {""},
+    },
+)
+async def create_student(
+    request: StudentRequest,
+    session: AsyncSession = Depends(get_db_session),
+    _: dict = Depends(get_current_approved_user),
+):
+    """Create a new student with atomic transaction across user_profile and student_profile."""
 @student_router.post("")
 async def create_student(
     request: StudentRequest,
@@ -44,6 +69,7 @@ async def create_student(
             status_code=status.HTTP_409_CONFLICT,
         )
 
+    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 @student_router.get("")
