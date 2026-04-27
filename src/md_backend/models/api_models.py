@@ -2,6 +2,7 @@
 
 import datetime
 import enum
+import uuid
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -79,17 +80,19 @@ class UpdateStatusRequest(BaseModel):
 
     status: str = Field(pattern=r"^(aprovado|negado)$")
 
+
 class StudentResponse(BaseModel):
     """Response model for student creation."""
 
-    id: int
-    user_id: int
+    id: uuid.UUID
+    user_id: uuid.UUID
     first_name: str
     last_name: str
     email: str
     birth_date: str
     student_class: str
-    created_at: str
+    created_at: str | None
+
 
 class StudentRequest(BaseModel):
     """Request model for creating a new student."""
@@ -99,13 +102,14 @@ class StudentRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=8)
     birth_date: datetime.date
-    student_class: str
+    student_class: ClassEnum
+
 
 class StudentListResponse(BaseModel):
     """Response model for student listing."""
 
-    id: int
-    user_id: int
+    id: uuid.UUID
+    user_id: uuid.UUID
     first_name: str
     last_name: str
     email: str
@@ -116,6 +120,7 @@ class StudentListResponse(BaseModel):
     is_active: bool
     created_at: str | None
 
+
 class StudentUpdateRequest(BaseModel):
     """Request model for updating a student."""
 
@@ -123,15 +128,51 @@ class StudentUpdateRequest(BaseModel):
     last_name: str | None = None
     phone_number: str | None = None
     birth_date: datetime.date | None = None
-    student_class: str | None = None
-    school_id: int | None = None
+    student_class: ClassEnum | None = None
+    school_id: uuid.UUID | None = None
+
 
 class CreateSchoolRequest(BaseModel):
-    """Request body for POST /schools."""
+    """Request body for POST /school."""
 
     first_name: str = Field(min_length=1, description="Primeiro nome")
     last_name: str = Field(min_length=1, description="Sobrenome")
     email: EmailStr = Field(description="E-mail")
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     is_private: bool = Field(description="Indica se a escola é pública ou privada")
-    cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola")
+    requested_spots: int | None = Field(
+        default=None, description="Vagas solicitadas (apenas escolas públicas)"
+    )
+
+
+class UpdateSchoolRequest(BaseModel):
+    """Partial update body for PATCH /school/{id}."""
+
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    is_private: bool | None = None
+    requested_spots: int | None = None
+
+
+class SchoolResponse(BaseModel):
+    """Response model for a single school."""
+
+    user_id: uuid.UUID
+    email: str
+    name: str
+    is_private: bool
+    requested_spots: int | None
+    is_active: bool
+    deactivated_at: str | None
+    created_at: str
+    quantidade_alunos: int
+
+
+class SchoolListResponse(BaseModel):
+    """Paginated list of schools."""
+
+    items: list[SchoolResponse]
+    total: int
+    page: int
+    size: int

@@ -1,11 +1,19 @@
 """School Services - handles atomic creation of school accounts."""
 
-from sqlalchemy import func, select, update
-from sqlalchemy.exc import IntegrityError
+import datetime
+import uuid
+
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import RoleEnum, School, User, UserStatus, Student
+from md_backend.models.db_models import SchoolProfile, StudentProfile, UserProfile
 from md_backend.utils.security import hash_password
+
+
+def _split_name(name: str) -> tuple[str, str]:
+    parts = name.split(" ", 1)
+    return parts[0], parts[1] if len(parts) > 1 else ""
+
 
 class SchoolService:
     """Service for school-related operations."""
@@ -17,72 +25,61 @@ class SchoolService:
         email: str,
         password: str,
         is_private: bool,
-        cnpj: str,
         session: AsyncSession,
+        requested_spots: int | None = None,
     ) -> dict | None:
         """Create a school atomically (user_profile + school_profile).
-        
+
         Returns the created school dict, or None if the e-mail already exists.
-        Raises IntegrityError propagated to the caller when school insert fails
-        after user insert (triggering rollback at the caller level)."""
-    
-        existing = await session.execute(select(User).where(User.email == email))
+        """
+        existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
         if existing.scalar_one_or_none() is not None:
             return None
-    
-        hashed = hash_password(password)
-        full_name = f"{first_name} {last_name}"
 
-        user = User(
+        hashed = hash_password(password)
+        user = UserProfile(
             email=email,
-            hashed_password=hashed,
-            name=full_name,
-            role=RoleEnum.ESCOLA,
-            status=UserStatus.APROVADO,
+            password=hashed,
+            first_name=first_name,
+            last_name=last_name,
+        )
+        school = SchoolProfile(
+            user=user,
+            is_private=is_private,
+            requested_spots=requested_spots,
         )
         session.add(user)
-
-        await session.flush()
-
-        school = School(
-            user_id=user.id,
-            cnpj=cnpj,
-            is_private=is_private,
-        )
         session.add(school)
 
         await session.commit()
+        await session.refresh(user)
+        await session.refresh(school)
 
+        return self._build_school_dict(user, school, quantidade_alunos=0)
+
+    def _build_school_dict(
+        self, user: UserProfile, school: SchoolProfile, quantidade_alunos: int
+    ) -> dict:
+        """Build the response dict without exposing the password."""
+        full_name = f"{user.first_name} {user.last_name}".strip()
         return {
-            "user_id": user.id,
+            "user_id": str(user.id),
             "email": user.email,
-            "name": user.name,
-            "cnpj": school.cnpj,
+            "name": full_name,
             "is_private": school.is_private,
-            "status": user.status.value,
+            "requested_spots": school.requested_spots,
+            "is_active": user.is_active,
+            "deactivated_at": school.deactivated_at.isoformat() if school.deactivated_at else None,
             "created_at": user.created_at.isoformat(),
-        }
-    
-    def _build_school_dict(self, user, school, quantidade_alunos: int) -> dict:
-        """Monta o dict de resposta sem expor senha."""
-        return {
-            "user_id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "cnpj": school.cnpj,
-            "is_private": school.is_private,
-            "status": user.status.value,
-            "created_at": user.created_at.isoformat(),
-            "is_active": school.is_active,
             "quantidade_alunos": quantidade_alunos,
         }
 
     def _student_count_subq(self):
-        """Subquery correlacionada que conta alunos por escola."""
+        """Correlated subquery counting students per school."""
         return (
-            select(func.count(Student.id))
-            .where(Student.school_id == School.user_id)
-            .correlate(School)
+            select(func.count(StudentProfile.user_id))
+            .where(StudentProfile.school_id == SchoolProfile.user_id)
+            .correlate(SchoolProfile)
             .scalar_subquery()
         )
 
@@ -92,21 +89,21 @@ class SchoolService:
         page: int = 1,
         size: int = 20,
         name: str | None = None,
-        cnpj: str | None = None,
     ) -> dict:
         """Return a paginated list of active schools with student count."""
         count_subq = self._student_count_subq()
 
         query = (
-            select(User, School, count_subq.label("quantidade_alunos"))
-            .join(School, School.user_id == User.id)
-            .where(School.is_active == True)  # noqa: E712
+            select(UserProfile, SchoolProfile, count_subq.label("quantidade_alunos"))
+            .join(SchoolProfile, SchoolProfile.user_id == UserProfile.id)
+            .where(UserProfile.is_active.is_(True))
         )
 
         if name:
-            query = query.where(User.name.ilike(f"%{name}%"))
-        if cnpj:
-            query = query.where(School.cnpj == cnpj)
+            query = query.where(
+                UserProfile.first_name.ilike(f"%{name}%")
+                | UserProfile.last_name.ilike(f"%{name}%")
+            )
 
         count_query = select(func.count()).select_from(query.subquery())
         total_result = await session.execute(count_query)
@@ -125,16 +122,16 @@ class SchoolService:
 
     async def get_school_by_id(
         self,
-        school_id: int,
+        school_id: uuid.UUID,
         session: AsyncSession,
     ) -> dict | None:
         """Return a single school by its user_id, or None if not found."""
         count_subq = self._student_count_subq()
 
         query = (
-            select(User, School, count_subq.label("quantidade_alunos"))
-            .join(School, School.user_id == User.id)
-            .where(School.user_id == school_id)
+            select(UserProfile, SchoolProfile, count_subq.label("quantidade_alunos"))
+            .join(SchoolProfile, SchoolProfile.user_id == UserProfile.id)
+            .where(SchoolProfile.user_id == school_id)
         )
 
         result = await session.execute(query)
@@ -148,19 +145,19 @@ class SchoolService:
 
     async def update_school(
         self,
-        school_id: int,
+        school_id: uuid.UUID,
         first_name: str | None,
         last_name: str | None,
         email: str | None,
         is_private: bool | None,
-        cnpj: str | None,
+        requested_spots: int | None,
         session: AsyncSession,
     ) -> dict | None | str:
         """Update school fields partially. Returns dict, None (not found), or 'email_conflict'."""
         result = await session.execute(
-            select(User, School)
-            .join(School, School.user_id == User.id)
-            .where(School.user_id == school_id)
+            select(UserProfile, SchoolProfile)
+            .join(SchoolProfile, SchoolProfile.user_id == UserProfile.id)
+            .where(SchoolProfile.user_id == school_id)
         )
         row = result.one_or_none()
 
@@ -170,30 +167,32 @@ class SchoolService:
         user, school = row
 
         if email is not None and email != user.email:
-            conflict = await session.execute(select(User).where(User.email == email))
+            conflict = await session.execute(
+                select(UserProfile).where(UserProfile.email == email)
+            )
             if conflict.scalar_one_or_none() is not None:
                 return "email_conflict"
             user.email = email
 
-        if first_name is not None or last_name is not None:
-            parts = user.name.split(" ", 1)
-            current_first = parts[0]
-            current_last = parts[1] if len(parts) > 1 else ""
-            user.name = f"{first_name or current_first} {last_name or current_last}".strip()
+        if first_name is not None:
+            user.first_name = first_name
+        if last_name is not None:
+            user.last_name = last_name
 
         if is_private is not None:
             school.is_private = is_private
 
-        if cnpj is not None:
-            school.cnpj = cnpj
+        if requested_spots is not None:
+            school.requested_spots = requested_spots
 
         await session.commit()
         await session.refresh(user)
         await session.refresh(school)
 
-        count_subq = self._student_count_subq()
         count_result = await session.execute(
-            select(count_subq.label("quantidade_alunos"))
+            select(func.count(StudentProfile.user_id)).where(
+                StudentProfile.school_id == school_id
+            )
         )
         quantidade_alunos = count_result.scalar_one()
 
@@ -201,23 +200,25 @@ class SchoolService:
 
     async def deactivate_school(
         self,
-        school_id: int,
+        school_id: uuid.UUID,
         session: AsyncSession,
     ) -> bool:
-        """Soft delete: set is_active=False and deactivated_at=now(). Returns False if not found."""
-        import datetime
-
+        """Soft delete: set is_active=False on user and deactivated_at on school."""
         result = await session.execute(
-            select(School).where(School.user_id == school_id)
+            select(UserProfile, SchoolProfile)
+            .join(SchoolProfile, SchoolProfile.user_id == UserProfile.id)
+            .where(SchoolProfile.user_id == school_id)
         )
-        school = result.scalar_one_or_none()
+        row = result.one_or_none()
 
-        if school is None:
+        if row is None:
             return False
 
-        school.is_active = False
-        school.deactivated_at = datetime.datetime.now(datetime.UTC)
+        user, school = row
+        now = datetime.datetime.now(datetime.UTC)
+        user.is_active = False
+        user.deactivated_at = now
+        school.deactivated_at = now
 
         await session.commit()
         return True
-        

@@ -1,24 +1,32 @@
 """School router — endpoints for managing school units."""
 
-from fastapi import APIRouter, Depends, status
+import uuid
+
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import CreateSchoolRequest
+from md_backend.models.api_models import (
+    CreateSchoolRequest,
+    SchoolListResponse,
+    SchoolResponse,
+    UpdateSchoolRequest,
+)
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
+from md_backend.utils.security import get_current_superadmin
 
 school_service = SchoolService()
 school_router = APIRouter(prefix="/school", tags=["School"])
 
 
-@school_router.post("")
+@school_router.post("", status_code=status.HTTP_201_CREATED, response_model=SchoolResponse)
 async def create_school(
     request: CreateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """POST /schools — create a new school unit (superadmin only)."""
+    """Create a new school unit."""
     try:
         result = await school_service.create_school(
             first_name=request.first_name,
@@ -26,7 +34,7 @@ async def create_school(
             email=str(request.email),
             password=request.password,
             is_private=request.is_private,
-            cnpj=request.cnpj,
+            requested_spots=request.requested_spots,
             session=session,
         )
     except IntegrityError:
@@ -44,29 +52,22 @@ async def create_school(
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
-@school_router.get(
-    "",
-    response_model=SchoolListResponse,
-    summary="Listar escolas ativas",
-    description="Retorna lista paginada de escolas com `is_active=true`. Suporta filtros por `name` (parcial, case-insensitive) e `cnpj` (exato). Campo `is_private` é booleano. `quantidade_alunos` é calculado dinamicamente.",
-    responses={
-        200: {"description": "Lista paginada de escolas ativas", "model": SchoolListResponse},
-    },
-)
+
+@school_router.get("", response_model=SchoolListResponse, summary="Listar escolas ativas")
 async def list_schools(
     session: AsyncSession = Depends(get_db_session),
     page: int = Query(default=1, ge=1, description="Número da página (começa em 1)"),
     size: int = Query(default=20, ge=1, le=100, description="Quantidade de itens por página"),
-    name: str | None = Query(default=None, description="Filtro parcial por nome (case-insensitive)"),
-    cnpj: str | None = Query(default=None, description="Filtro por CNPJ exato"),
+    name: str | None = Query(
+        default=None, description="Filtro parcial por nome (case-insensitive)"
+    ),
 ) -> JSONResponse:
-    """GET /schools — lista escolas ativas com paginação e filtros opcionais."""
+    """List paginated active schools with optional filters."""
     result = await school_service.list_schools(
         session=session,
         page=page,
         size=size,
         name=name,
-        cnpj=cnpj,
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
@@ -75,20 +76,12 @@ async def list_schools(
     "/{school_id}",
     response_model=SchoolResponse,
     summary="Buscar escola por ID",
-    description="Retorna os dados completos da escola, incluindo `quantidade_alunos` calculada e o booleano `is_private`. Nunca expõe o campo de senha.",
-    responses={
-        200: {"description": "Dados completos da escola", "model": SchoolResponse},
-        404: {
-            "description": "Escola não encontrada.",
-            "content": {"application/json": {"example": {"detail": "Escola não encontrada."}}},
-        },
-    },
 )
 async def get_school(
-    school_id: int,
+    school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """GET /schools/{school_id} — retorna a escola pelo ID ou 404."""
+    """Return a single school by ID or 404."""
     result = await school_service.get_school_by_id(school_id=school_id, session=session)
 
     if result is None:
@@ -104,34 +97,21 @@ async def get_school(
     "/{school_id}",
     response_model=SchoolResponse,
     summary="Atualizar dados da escola",
-    description="Atualização parcial (PATCH) dos dados da escola. Todos os campos são opcionais. Alterações em `first_name`/`last_name` afetam `users.name`; `is_private` e `cnpj` afetam `schools`. Se `email` já estiver em uso, retorna 409. `id`, `user_id` e `created_at` são sempre ignorados.",
     dependencies=[Depends(get_current_superadmin)],
-    responses={
-        200: {"description": "Escola atualizada com sucesso.", "model": SchoolResponse},
-        404: {
-            "description": "Escola não encontrada.",
-            "content": {"application/json": {"example": {"detail": "Escola não encontrada."}}},
-        },
-        409: {
-            "description": "E-mail já cadastrado.",
-            "content": {"application/json": {"example": {"detail": "E-mail ja cadastrado."}}},
-        },
-        422: {"description": "Dados malformados ou e-mail em formato inválido."},
-    },
 )
 async def update_school(
-    school_id: int,
+    school_id: uuid.UUID,
     request: UpdateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """PATCH /schools/{school_id} — atualiza parcialmente os dados da escola."""
+    """Partially update school fields."""
     result = await school_service.update_school(
         school_id=school_id,
         first_name=request.first_name,
         last_name=request.last_name,
         email=str(request.email) if request.email else None,
         is_private=request.is_private,
-        cnpj=request.cnpj,
+        requested_spots=request.requested_spots,
         session=session,
     )
 
@@ -153,22 +133,14 @@ async def update_school(
 @school_router.delete(
     "/{school_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Desativar escola (Soft Delete)",
-    description="Realiza **apenas a inativação lógica** da escola: seta `is_active=false` e preenche `deactivated_at` com o timestamp atual. **Nenhum registro é excluído fisicamente** das tabelas `users`, `schools` ou dependentes (students, parcerias). Restrito a Admin Global.",
+    summary="Desativar escola (soft delete)",
     dependencies=[Depends(get_current_superadmin)],
-    responses={
-        204: {"description": "Escola desativada com sucesso."},
-        404: {
-            "description": "Escola não encontrada.",
-            "content": {"application/json": {"example": {"detail": "Escola não encontrada."}}},
-        },
-    },
 )
 async def deactivate_school(
-    school_id: int,
+    school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """DELETE /schools/{school_id} — soft delete: inativa a escola sem excluir dados."""
+    """Soft delete: deactivate school without removing data."""
     success = await school_service.deactivate_school(school_id=school_id, session=session)
 
     if not success:

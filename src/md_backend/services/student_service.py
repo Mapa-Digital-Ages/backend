@@ -1,12 +1,13 @@
 """Student service for student registration."""
 
 import datetime
+import uuid
 
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
 
-from md_backend.models.db_models import RoleEnum, StudentProfile, UserProfile, UserStatus
+from md_backend.models.db_models import ClassEnum, StudentProfile, UserProfile
 from md_backend.utils.security import hash_password
 
 
@@ -20,10 +21,14 @@ class StudentService:
         email: str,
         password: str,
         birth_date: datetime.date,
-        student_class: str,
+        student_class: ClassEnum,
         session: AsyncSession,
     ) -> dict | None:
         """Create a student atomically across user_profile and student_profile."""
+        existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
+        if existing.scalar_one_or_none() is not None:
+            return None
+
         hashed = hash_password(password)
 
         try:
@@ -31,40 +36,24 @@ class StudentService:
                 first_name=first_name,
                 last_name=last_name,
                 email=email,
-                hashed_password=hashed,
-                role=RoleEnum.ALUNO,
-                status=UserStatus.APROVADO,
-                birth_date=birth_date,
+                password=hashed,
             )
-            session.add(user_profile)
-            await session.flush()
-
             student_profile = StudentProfile(
-                user_id=user_profile.id,
+                user=user_profile,
+                birth_date=birth_date,
                 student_class=student_class,
             )
+            session.add(user_profile)
             session.add(student_profile)
-
             await session.commit()
-
+            await session.refresh(user_profile)
+            await session.refresh(student_profile)
         except IntegrityError:
             await session.rollback()
             return None
-        except Exception:
-            await session.rollback()
-            raise
 
-        return {
-            "id": student_profile.id,
-            "user_id": user_profile.id,
-            "first_name": user_profile.first_name,
-            "last_name": user_profile.last_name,
-            "email": user_profile.email,
-            "birth_date": user_profile.birth_date.isoformat(),
-            "student_class": student_profile.student_class,
-            "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
-        }
-    
+        return self._to_dict(user_profile, student_profile)
+
     async def get_students(
         self,
         session: AsyncSession,
@@ -73,8 +62,7 @@ class StudentService:
         page: int = 1,
         size: int = 10,
     ) -> list[dict]:
-        """List all active students with optional filters and pagination."""
-
+        """List active students with optional filters and pagination."""
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
@@ -98,15 +86,13 @@ class StudentService:
         return [self._to_dict(user, student) for user, student in rows]
 
     async def get_student_by_id(
-        self, session: AsyncSession, student_id: int
+        self, session: AsyncSession, student_id: uuid.UUID
     ) -> dict | None:
-        """Get a student by student_profile id."""
-        from sqlalchemy import select
-
+        """Get a student by user_id."""
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(StudentProfile.id == student_id)
+            .where(StudentProfile.user_id == student_id)
         )
 
         result = await session.execute(query)
@@ -117,18 +103,18 @@ class StudentService:
 
         user_profile, student_profile = row
         return self._to_dict(user_profile, student_profile)
-    
+
     async def update_student(
         self,
         session: AsyncSession,
-        student_id: int,
+        student_id: uuid.UUID,
         data: dict,
     ) -> dict | None:
         """Update a student's data. Returns None if not found."""
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(StudentProfile.id == student_id)
+            .where(StudentProfile.user_id == student_id)
         )
         result = await session.execute(query)
         row = result.one_or_none()
@@ -138,8 +124,8 @@ class StudentService:
 
         user_profile, student_profile = row
 
-        user_fields = {"first_name", "last_name", "phone_number", "birth_date"}
-        student_fields = {"student_class", "school_id"}
+        user_fields = {"first_name", "last_name", "phone_number"}
+        student_fields = {"birth_date", "student_class", "school_id"}
 
         for field, value in data.items():
             if value is None:
@@ -160,13 +146,13 @@ class StudentService:
         return self._to_dict(user_profile, student_profile)
 
     async def deactivate_student(
-        self, session: AsyncSession, student_id: int
+        self, session: AsyncSession, student_id: uuid.UUID
     ) -> bool:
         """Soft delete a student by setting is_active to False."""
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(StudentProfile.id == student_id)
+            .where(StudentProfile.user_id == student_id)
         )
         result = await session.execute(query)
         row = result.one_or_none()
@@ -174,25 +160,28 @@ class StudentService:
         if row is None:
             return False
 
-        user_profile, _ = row
+        user_profile, student_profile = row
+        now = datetime.datetime.now(datetime.UTC)
         user_profile.is_active = False
-        user_profile.deactivated_at = datetime.datetime.now(datetime.UTC)
+        user_profile.deactivated_at = now
+        student_profile.deactivated_at = now
 
         await session.commit()
         return True
 
-
     def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:
         """Map user_profile and student_profile to a full response dict."""
         return {
-            "id": student_profile.id,
-            "user_id": user_profile.id,
+            "id": str(student_profile.user_id),
+            "user_id": str(user_profile.id),
             "first_name": user_profile.first_name,
             "last_name": user_profile.last_name,
             "email": user_profile.email,
             "phone_number": user_profile.phone_number or "",
-            "birth_date": user_profile.birth_date.isoformat() if user_profile.birth_date else "",
-            "student_class": student_profile.student_class,
+            "birth_date": (
+                student_profile.birth_date.isoformat() if student_profile.birth_date else ""
+            ),
+            "student_class": student_profile.student_class.value,
             "school_id": str(student_profile.school_id) if student_profile.school_id else "",
             "is_active": user_profile.is_active,
             "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,

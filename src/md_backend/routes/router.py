@@ -10,9 +10,8 @@ from md_backend.routes.login_router import login_router
 from md_backend.routes.register_router import register_router
 from md_backend.routes.school_router import school_router
 from md_backend.routes.setup_router import setup_router
-from md_backend.routes.validate_router import validate_router
-from md_backend.routes.school_router import school_router
 from md_backend.routes.student_router import student_router
+from md_backend.routes.validate_router import validate_router
 
 router = APIRouter()
 
