@@ -486,3 +486,30 @@ class LoginHistory(Base):
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+class School(Base):
+    """School profile table - 1:1 with User (role=escola)."""
+
+    __tablename__ = "schools"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete = "CASCADE"), primary_key=True)
+    cnpj: Mapped[str] = mapped_column(String(18), unique=True, nullable=False)
+    is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+class Student(Base):
+    """Student profile table - linked to a school."""
+
+    __tablename__ = "students"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    school_id: Mapped[int] = mapped_column(
+        ForeignKey("schools.user_id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
