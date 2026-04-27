@@ -22,7 +22,9 @@ class TestRegisterRouter(unittest.TestCase):
             json={"email": "newuser@test.com", "password": "validpass123", "name": "New User"},
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json(), {"detail": "Cadastro realizado. Aguardando aprovacao."})
+        body = response.json()
+        self.assertEqual(body["detail"], "Cadastro realizado. Aguardando aprovacao.")
+        self.assertIn("id", body)
 
     def test_register_responsavel_duplicate_email(self):
         self.test_client.post(
@@ -53,19 +55,48 @@ class TestRegisterRouter(unittest.TestCase):
     def test_register_aluno_success(self):
         response = self.test_client.post(
             "/register/aluno",
-            json={"email": "aluno@test.com", "password": "validpass123", "name": "Aluno"},
+            json={
+                "email": "aluno@test.com",
+                "password": "validpass123",
+                "name": "Aluno",
+                "birth_date": "2010-05-01",
+                "student_class": "5th class",
+            },
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json(), {"detail": "Cadastro realizado."})
+        body = response.json()
+        self.assertEqual(body["detail"], "Cadastro realizado.")
+        self.assertIn("id", body)
 
     def test_register_aluno_duplicate_email(self):
-        self.test_client.post(
-            "/register/aluno",
-            json={"email": "dup_aluno@test.com", "password": "validpass123", "name": "Dup"},
-        )
-        response = self.test_client.post(
-            "/register/aluno",
-            json={"email": "dup_aluno@test.com", "password": "validpass123", "name": "Dup"},
-        )
+        payload = {
+            "email": "dup_aluno@test.com",
+            "password": "validpass123",
+            "name": "Dup",
+            "birth_date": "2010-05-01",
+            "student_class": "5th class",
+        }
+        self.test_client.post("/register/aluno", json=payload)
+        response = self.test_client.post("/register/aluno", json=payload)
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json(), {"detail": "Email already registered"})
+
+    def test_register_aluno_missing_required_fields(self):
+        response = self.test_client.post(
+            "/register/aluno",
+            json={"email": "incomplete@test.com", "password": "validpass123", "name": "Inc"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_register_aluno_invalid_class(self):
+        response = self.test_client.post(
+            "/register/aluno",
+            json={
+                "email": "badclass@test.com",
+                "password": "validpass123",
+                "name": "Bad",
+                "birth_date": "2010-05-01",
+                "student_class": "10th class",
+            },
+        )
+        self.assertEqual(response.status_code, 422)
