@@ -1,0 +1,40 @@
+@BaseUrl = http://localhost:8000
+
+### Criando company
+POST {{BaseUrl}}/company
+Content-Type: application/json
+
+{
+    "first_name": "Empresa",
+    "last_name": "Exemplo",
+    "email": "asd@exemplo.com.br",
+    "password": "password123",
+    "cnpj": "12345678000199",
+    "spots": 50
+}
+
+### ERRO 422: Missing spots
+POST {{BaseUrl}}/company
+Content-Type: application/json
+
+{
+    "first_name": "Outra",
+    "last_name": "Empresa",
+    "email": "contato2@exemplo.com.br",
+    "password": "password123",
+    "cnpj": "98765432000188"    
+}
+
+### ERRO 409: Email already exists
+POST {{BaseUrl}}/company
+Content-Type: application/json
+
+{
+    "first_name": "Empresa",
+    "last_name": "Exemplo",
+    "email": "contato@exemplo.com.br",
+    "password": "password123",
+    "cnpj": "12345678000199",
+    "spots": 50
+}
+

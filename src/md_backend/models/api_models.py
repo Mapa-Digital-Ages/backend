@@ -67,3 +67,16 @@ class CreateCompanyRequest(BaseModel):
     email: EmailStr = Field(description="E-mail corporativo")
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da empresa")
+    spots: int = Field(gt=0, description="Quantidade total de vagas oferecidas")
+
+class CompanyResponse(BaseModel):
+    """Response for company data."""
+
+    user_id: int
+    email: EmailStr
+    name: str
+    cnpj: str
+    spots: int
+    available_spots: int
+    status: str
+    created_at: str
