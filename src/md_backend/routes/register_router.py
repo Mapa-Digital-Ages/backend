@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import RegisterRequest
+from md_backend.models.api_models import AlunoRegisterRequest, RegisterRequest
 from md_backend.services.register_service import RegisterService
 from md_backend.utils.database import get_db_session
 
@@ -30,11 +30,16 @@ async def register_responsavel(
 
 @register_router.post("/aluno")
 async def register_aluno(
-    request: RegisterRequest, session: AsyncSession = Depends(get_db_session)
+    request: AlunoRegisterRequest, session: AsyncSession = Depends(get_db_session)
 ):
     """Register a new user."""
     result = await register_service.register_aluno(
-        email=request.email, password=request.password, name=request.name, session=session
+        email=request.email,
+        password=request.password,
+        name=request.name,
+        birth_date=request.birth_date,
+        student_class=request.student_class,
+        session=session,
     )
 
     if result is None:

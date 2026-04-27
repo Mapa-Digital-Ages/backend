@@ -1,8 +1,27 @@
 """Store API models."""
 
 import datetime
+import enum
 
 from pydantic import BaseModel, EmailStr, Field
+
+from md_backend.models.db_models import ClassEnum
+
+
+class UserStatusInput(enum.Enum):
+    """User approval status values used in API layer."""
+
+    AGUARDANDO = "aguardando"
+    APROVADO = "aprovado"
+    NEGADO = "negado"
+
+
+class RoleInput(enum.Enum):
+    """User role values used in API layer."""
+
+    ADMIN = "admin"
+    ALUNO = "aluno"
+    RESPONSAVEL = "responsavel"
 
 
 class ValidateRequest(BaseModel):
@@ -18,6 +37,16 @@ class RegisterRequest(BaseModel):
     name: str = Field()
     email: EmailStr
     password: str = Field(min_length=8)
+
+
+class AlunoRegisterRequest(BaseModel):
+    """Register request model for aluno (requires school-specific fields)."""
+
+    name: str = Field()
+    email: EmailStr
+    password: str = Field(min_length=8)
+    birth_date: datetime.date
+    student_class: ClassEnum
 
 
 class LoginRequest(BaseModel):
@@ -37,7 +66,7 @@ class SetupRequest(BaseModel):
 class UserResponse(BaseModel):
     """User data for admin listing."""
 
-    id: int
+    id: str
     email: str
     name: str
     status: str
@@ -71,6 +100,31 @@ class StudentRequest(BaseModel):
     password: str = Field(min_length=8)
     birth_date: datetime.date
     student_class: str
+
+class StudentListResponse(BaseModel):
+    """Response model for student listing."""
+
+    id: int
+    user_id: int
+    first_name: str
+    last_name: str
+    email: str
+    phone_number: str
+    birth_date: str
+    student_class: str
+    school_id: str
+    is_active: bool
+    created_at: str | None
+
+class StudentUpdateRequest(BaseModel):
+    """Request model for updating a student."""
+
+    first_name: str | None = None
+    last_name: str | None = None
+    phone_number: str | None = None
+    birth_date: datetime.date | None = None
+    student_class: str | None = None
+    school_id: int | None = None
 
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /schools."""
