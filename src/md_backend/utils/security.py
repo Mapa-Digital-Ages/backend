@@ -1,6 +1,7 @@
 """Security utilities for password hashing and JWT tokens."""
 
 import datetime
+import uuid
 
 import bcrypt
 import jwt
@@ -8,8 +9,12 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
-from md_backend.models.db_models import User, UserStatus
+from md_backend.models.db_models import (
+    GuardianStatusEnum,
+    UserProfile,
+)
 from md_backend.utils.database import get_db_session
 from md_backend.utils.settings import settings
 
@@ -75,7 +80,14 @@ async def get_current_approved_user(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """FastAPI dependency: verify user exists in DB and is approved."""
-    result = await session.execute(select(User).where(User.id == payload["user_id"]))
+    result = await session.execute(
+        select(UserProfile)
+        .options(
+            selectinload(UserProfile.guardian_profile),
+            selectinload(UserProfile.admin_profile),
+        )
+        .where(UserProfile.id == uuid.UUID(payload["user_id"]))
+    )
     user = result.scalar_one_or_none()
 
     if user is None:
@@ -85,21 +97,30 @@ async def get_current_approved_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    if user.status != UserStatus.APROVADO:
-        detail = (
-            "Conta aguardando aprovacao" if user.status == UserStatus.AGUARDANDO else "Conta negada"
-        )
+    if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail=detail,
+            detail="Conta desativada",
         )
 
+    if user.guardian_profile is not None:
+        if user.guardian_profile.guardian_status == GuardianStatusEnum.WAITING:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Conta aguardando aprovacao",
+            )
+        if user.guardian_profile.guardian_status == GuardianStatusEnum.REJECTED:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Conta negada",
+            )
+
+    is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
+
     return {
-    "user_id": user.id,
-    "email": user.email,
-    "status": user.status.value,
-    "is_superadmin": user.is_superadmin,
-    "role": user.role,
+        "user_id": str(user.id),
+        "email": user.email,
+        "is_superadmin": is_superadmin,
     }
 
 
