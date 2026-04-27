@@ -1,0 +1,319 @@
+@BaseUrl = http://localhost:8000
+
+### 0. Healthcheck -> 200 {"detail":"Alive!"}
+GET {{BaseUrl}}/
+
+###############################################################################
+# 1. SETUP DO SUPERADMIN
+###############################################################################
+
+### 1.1 Cria o primeiro superadmin -> 201
+# @name setupOk
+POST {{BaseUrl}}/setup
+Content-Type: application/json
+
+{
+    "email": "superadmin@test.com",
+    "password": "superpass123"
+}
+
+### 1.2 Segunda chamada -> 409 "Setup ja realizado"
+POST {{BaseUrl}}/setup
+Content-Type: application/json
+
+{
+    "email": "outro@test.com",
+    "password": "outrapass123"
+}
+
+###############################################################################
+# 2. LOGIN DO SUPERADMIN
+###############################################################################
+
+### 2.1 Senha errada -> 401
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "superadmin@test.com",
+    "password": "errada"
+}
+
+### 2.2 Login OK -> 200, captura token em ADMIN_TOKEN
+# @name adminLogin
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "superadmin@test.com",
+    "password": "superpass123"
+}
+
+###
+
+@ADMIN_TOKEN = {{adminLogin.response.body.token}}
+
+###############################################################################
+# 3. REGISTER RESPONSAVEL (GUARDIAN)
+###############################################################################
+
+### 3.1 Cadastro OK -> 201
+# @name registerMaria
+POST {{BaseUrl}}/register/responsavel
+Content-Type: application/json
+
+{
+    "name": "Maria Silva",
+    "email": "maria@test.com",
+    "password": "senha12345"
+}
+
+### 3.2 Email duplicado -> 409
+POST {{BaseUrl}}/register/responsavel
+Content-Type: application/json
+
+{
+    "name": "Maria Silva",
+    "email": "maria@test.com",
+    "password": "senha12345"
+}
+
+### 3.3 Senha curta -> 422 (Pydantic min_length=8)
+POST {{BaseUrl}}/register/responsavel
+Content-Type: application/json
+
+{
+    "name": "X Y",
+    "email": "x@test.com",
+    "password": "123"
+}
+
+###############################################################################
+# 4. LOGIN RESPONSAVEL EM WAITING -> 403 AGUARDANDO
+###############################################################################
+
+### 4.1 Maria ainda nao aprovada
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "maria@test.com",
+    "password": "senha12345"
+}
+
+###############################################################################
+# 5. REGISTER ALUNO (STUDENT)
+###############################################################################
+
+### 5.1 Sem birth_date/student_class -> 422
+POST {{BaseUrl}}/register/aluno
+Content-Type: application/json
+
+{
+    "name": "Joao Aluno",
+    "email": "joao@test.com",
+    "password": "alunopass1"
+}
+
+### 5.2 student_class invalido -> 422
+POST {{BaseUrl}}/register/aluno
+Content-Type: application/json
+
+{
+    "name": "Joao Aluno",
+    "email": "joao@test.com",
+    "password": "alunopass1",
+    "birth_date": "2012-05-10",
+    "student_class": "10th class"
+}
+
+### 5.3 Aluno OK -> 201
+# @name registerJoao
+POST {{BaseUrl}}/register/aluno
+Content-Type: application/json
+
+{
+    "name": "Joao Aluno",
+    "email": "joao@test.com",
+    "password": "alunopass1",
+    "birth_date": "2012-05-10",
+    "student_class": "7th class"
+}
+
+###############################################################################
+# 6. LOGIN ALUNO -> 200, role:"aluno"
+###############################################################################
+
+### 6.1 Login Joao, captura token em ALUNO_TOKEN
+# @name alunoLogin
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "joao@test.com",
+    "password": "alunopass1"
+}
+
+###
+
+@ALUNO_TOKEN = {{alunoLogin.response.body.token}}
+
+###############################################################################
+# 7. ENDPOINTS DE ADMIN
+###############################################################################
+
+### 7.1 Sem token -> 401
+GET {{BaseUrl}}/admin/users
+
+### 7.2 Token de aluno (nao-superadmin) -> 403
+GET {{BaseUrl}}/admin/users
+Authorization: Bearer {{ALUNO_TOKEN}}
+
+### 7.3 Lista todos -> 200
+GET {{BaseUrl}}/admin/users
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+### 7.4 user_status invalido -> 422
+GET {{BaseUrl}}/admin/users?user_status=foo
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+### 7.5 role invalido -> 422
+GET {{BaseUrl}}/admin/users?role=foo
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+### 7.6 Filtra status=aguardando -> deve retornar somente Maria
+GET {{BaseUrl}}/admin/users?user_status=aguardando
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+### 7.7 Filtra role=aluno -> somente Joao
+GET {{BaseUrl}}/admin/users?role=aluno
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+### 7.8 Filtra role=admin -> superadmin
+# @name listAdmins
+GET {{BaseUrl}}/admin/users?role=admin
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+###############################################################################
+# 8. APROVAR / NEGAR RESPONSAVEL
+###############################################################################
+
+### 8.1 Status invalido (regex bloqueia) -> 422
+PATCH {{BaseUrl}}/admin/users/{{registerMaria.response.body.id}}/status
+Authorization: Bearer {{ADMIN_TOKEN}}
+Content-Type: application/json
+
+{
+    "status": "foo"
+}
+
+### 8.2 ID inexistente -> 404
+PATCH {{BaseUrl}}/admin/users/00000000-0000-0000-0000-000000000000/status
+Authorization: Bearer {{ADMIN_TOKEN}}
+Content-Type: application/json
+
+{
+    "status": "aprovado"
+}
+
+### 8.3 Tentar mudar status do superadmin -> 403
+PATCH {{BaseUrl}}/admin/users/{{listAdmins.response.body.$.[0].id}}/status
+Authorization: Bearer {{ADMIN_TOKEN}}
+Content-Type: application/json
+
+{
+    "status": "negado"
+}
+
+### 8.4 Aprovar um aluno (sem guardian_profile) -> 403
+PATCH {{BaseUrl}}/admin/users/{{registerJoao.response.body.id}}/status
+Authorization: Bearer {{ADMIN_TOKEN}}
+Content-Type: application/json
+
+{
+    "status": "aprovado"
+}
+
+### 8.5 Aprovar Maria -> 200
+PATCH {{BaseUrl}}/admin/users/{{registerMaria.response.body.id}}/status
+Authorization: Bearer {{ADMIN_TOKEN}}
+Content-Type: application/json
+
+{
+    "status": "aprovado"
+}
+
+### 8.6 Login Maria agora aprovada -> 200, captura token em RESPO_TOKEN
+# @name respoLogin
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "maria@test.com",
+    "password": "senha12345"
+}
+
+###
+
+@RESPO_TOKEN = {{respoLogin.response.body.token}}
+
+###############################################################################
+# 9. /validate (rota protegida por usuario aprovado)
+###############################################################################
+
+### 9.1 Sem token -> 401
+POST {{BaseUrl}}/validate
+Content-Type: application/json
+
+{
+    "text": "oi",
+    "sender": "+55"
+}
+
+### 9.2 Com token aprovado -> 200
+POST {{BaseUrl}}/validate
+Authorization: Bearer {{RESPO_TOKEN}}
+Content-Type: application/json
+
+{
+    "text": "oi",
+    "sender": "+55"
+}
+
+###############################################################################
+# 10. CAMINHO "NEGADO"
+###############################################################################
+
+### 10.1 Cadastra Pedro
+# @name registerPedro
+POST {{BaseUrl}}/register/responsavel
+Content-Type: application/json
+
+{
+    "name": "Pedro Bloqueado",
+    "email": "pedro@test.com",
+    "password": "pedrosenha1"
+}
+
+### 10.1.1 Lista responsaveis para localizar Pedro (id estavel mesmo apos rerun)
+# @name listResponsaveis
+GET {{BaseUrl}}/admin/users?role=responsavel
+Authorization: Bearer {{ADMIN_TOKEN}}
+
+### 10.2 Admin nega Pedro -> 200
+PATCH {{BaseUrl}}/admin/users/{{listResponsaveis.response.body.$.[0].id}}/status
+Authorization: Bearer {{ADMIN_TOKEN}}
+Content-Type: application/json
+
+{
+    "status": "negado"
+}
+
+### 10.3 Pedro tenta logar -> 403 NEGADO
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "pedro@test.com",
+    "password": "pedrosenha1"
+}

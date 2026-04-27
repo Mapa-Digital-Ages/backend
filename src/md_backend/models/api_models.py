@@ -1,6 +1,27 @@
 """Store API models."""
 
+import datetime
+import enum
+
 from pydantic import BaseModel, EmailStr, Field
+
+from md_backend.models.db_models import ClassEnum
+
+
+class UserStatusInput(enum.Enum):
+    """User approval status values used in API layer."""
+
+    AGUARDANDO = "aguardando"
+    APROVADO = "aprovado"
+    NEGADO = "negado"
+
+
+class RoleInput(enum.Enum):
+    """User role values used in API layer."""
+
+    ADMIN = "admin"
+    ALUNO = "aluno"
+    RESPONSAVEL = "responsavel"
 
 
 class ValidateRequest(BaseModel):
@@ -16,6 +37,16 @@ class RegisterRequest(BaseModel):
     name: str = Field()
     email: EmailStr
     password: str = Field(min_length=8)
+
+
+class AlunoRegisterRequest(BaseModel):
+    """Register request model for aluno (requires school-specific fields)."""
+
+    name: str = Field()
+    email: EmailStr
+    password: str = Field(min_length=8)
+    birth_date: datetime.date
+    student_class: ClassEnum
 
 
 class LoginRequest(BaseModel):
@@ -35,7 +66,7 @@ class SetupRequest(BaseModel):
 class UserResponse(BaseModel):
     """User data for admin listing."""
 
-    id: int
+    id: str
     email: str
     name: str
     status: str
@@ -66,17 +97,27 @@ class CreateCompanyRequest(BaseModel):
     last_name: str = Field(min_length=1, description="Sobrenome")
     email: EmailStr = Field(description="E-mail corporativo")
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
-    cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da empresa")
     spots: int = Field(gt=0, description="Quantidade total de vagas oferecidas")
 
 class CompanyResponse(BaseModel):
     """Response for company data."""
 
-    user_id: int
+    user_id: str
     email: EmailStr
+    phone_number: str | None
     name: str
-    cnpj: str
     spots: int
     available_spots: int
     status: str
-    created_at: str
+    created_at: str
+
+
+class UpdateCompanyRequest(BaseModel):
+    """Request body for PATCH /company/{user_id}."""
+
+    first_name: str | None = Field(None, min_length=1)
+    last_name: str | None = Field(None, min_length=1)
+    email: EmailStr | None = Field(None)
+    phone_number: str | None = Field(None)
+    spots: int | None = Field(None, gt=0)
+    is_active: bool | None = Field(None)

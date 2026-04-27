@@ -42,12 +42,13 @@ class TestLoginRouter(unittest.TestCase):
         self.assertEqual(response.json(), {"detail": "AGUARDANDO"})
 
     def test_login_negado_user(self):
-        self.test_client.post(
+        reg = self.test_client.post(
             "/register/responsavel",
             json={"email": "denied_lg@test.com", "password": "validpass123", "name": "Denied"},
         )
+        user_id = reg.json()["id"]
         self.test_client.patch(
-            "/admin/users/denied_lg@test.com/status",
+            f"/admin/users/{user_id}/status",
             json={"status": "negado"},
             headers=self.admin_headers,
         )

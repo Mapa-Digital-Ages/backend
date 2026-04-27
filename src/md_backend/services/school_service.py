@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import RoleEnum, School, User, UserStatus
+from md_backend.models.db_models import SchoolProfile, UserProfile
 from md_backend.utils.security import hash_password
 
 
@@ -26,39 +26,40 @@ class SchoolService:
         Raises IntegrityError propagated to the caller when school insert fails
         after user insert (triggering rollback at the caller level).
         """
-        existing = await session.execute(select(User).where(User.email == email))
+        existing = await session.execute(
+            select(UserProfile).where(UserProfile.email == email)
+        )
         if existing.scalar_one_or_none() is not None:
             return None
 
         hashed = hash_password(password)
-        full_name = f"{first_name} {last_name}"
 
-        user = User(
+        user = UserProfile(
             email=email,
-            hashed_password=hashed,
-            name=full_name,
-            role=RoleEnum.ESCOLA,
-            status=UserStatus.APROVADO,
+            password=hashed,
+            first_name=first_name,
+            last_name=last_name,
         )
         session.add(user)
 
         await session.flush()
 
-        school = School(
+        school = SchoolProfile(
             user_id=user.id,
             cnpj=cnpj,
-            is_private=is_private,
+            is_private=is_private
         )
         session.add(school)
 
         await session.commit()
 
+        full_name = f"{first_name} {last_name}".strip()
         return {
-            "user_id": user.id,
+            "user_id": str(user.id),
             "email": user.email,
-            "name": user.name,
-            "cnpj": school.cnpj,
+            "name": full_name,
+            "cnpj": cnpj,
             "is_private": school.is_private,
-            "status": user.status.value,
+            "status": "aprovado",
             "created_at": user.created_at.isoformat(),
         }
