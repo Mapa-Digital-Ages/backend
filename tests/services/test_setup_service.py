@@ -2,7 +2,7 @@
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import tests.keys_test  # noqa: F401
 from md_backend.services.setup_service import SetupService
@@ -20,13 +20,34 @@ class TestSetupService(unittest.TestCase):
         mock_session.add = MagicMock()
 
         result = asyncio.run(
+            service.create_superadmin(
+                "admin@test.com", "adminpass123", "Super Admin", mock_session
+            )
+        )
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["detail"], "Superadmin criado com sucesso")
+        self.assertIn("id", result)
+        # One call adds UserProfile, another adds AdminProfile
+        self.assertEqual(mock_session.add.call_count, 2)
+        mock_session.commit.assert_called_once()
+
+    def test_create_superadmin_success_single_name(self):
+        service = SetupService()
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+        mock_session.add = MagicMock()
+
+        result = asyncio.run(
             service.create_superadmin("admin@test.com", "adminpass123", "Admin", mock_session)
         )
 
         self.assertIsNotNone(result)
         self.assertEqual(result["detail"], "Superadmin criado com sucesso")
-        mock_session.add.assert_called_once()
-        mock_session.commit.assert_called_once()
 
     def test_create_superadmin_already_exists(self):
         service = SetupService()
@@ -37,6 +58,7 @@ class TestSetupService(unittest.TestCase):
 
         mock_session = AsyncMock()
         mock_session.execute.return_value = mock_result
+        mock_session.add = MagicMock()
 
         result = asyncio.run(
             service.create_superadmin("admin2@test.com", "adminpass123", "Admin", mock_session)

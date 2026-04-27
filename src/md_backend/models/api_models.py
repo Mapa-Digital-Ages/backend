@@ -1,6 +1,27 @@
 """Store API models."""
 
+import datetime
+import enum
+
 from pydantic import BaseModel, EmailStr, Field
+
+from md_backend.models.db_models import ClassEnum
+
+
+class UserStatusInput(enum.Enum):
+    """User approval status values used in API layer."""
+
+    AGUARDANDO = "aguardando"
+    APROVADO = "aprovado"
+    NEGADO = "negado"
+
+
+class RoleInput(enum.Enum):
+    """User role values used in API layer."""
+
+    ADMIN = "admin"
+    ALUNO = "aluno"
+    RESPONSAVEL = "responsavel"
 
 
 class ValidateRequest(BaseModel):
@@ -16,6 +37,16 @@ class RegisterRequest(BaseModel):
     name: str = Field()
     email: EmailStr
     password: str = Field(min_length=8)
+
+
+class AlunoRegisterRequest(BaseModel):
+    """Register request model for aluno (requires school-specific fields)."""
+
+    name: str = Field()
+    email: EmailStr
+    password: str = Field(min_length=8)
+    birth_date: datetime.date
+    student_class: ClassEnum
 
 
 class LoginRequest(BaseModel):
@@ -35,7 +66,7 @@ class SetupRequest(BaseModel):
 class UserResponse(BaseModel):
     """User data for admin listing."""
 
-    id: int
+    id: str
     email: str
     name: str
     status: str
@@ -48,43 +79,13 @@ class UpdateStatusRequest(BaseModel):
 
     status: str = Field(pattern=r"^(aprovado|negado)$")
 
+
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /schools."""
 
     first_name: str = Field(min_length=1, description="Primeiro nome")
-    last_name:str = Field(min_length=1, description="Sobrenome")
+    last_name: str = Field(min_length=1, description="Sobrenome")
     email: EmailStr = Field(description="E-mail")
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     is_private: bool = Field(description="Indica se a escola é pública ou privada")
-    cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola") 
-
-class SchoolResponse(BaseModel):
-    """Response body returned after school creation."""
-
-    user_id: int
-    email: str
-    name: str
-    cnpj: str
-    is_private: bool
-    status: str
-    created_at: str
-    is_active: bool = True
-    quantidade_alunos: int = 0
-
-class SchoolListResponse(BaseModel):
-    """Paginated list of schools."""
-
-    items: list[SchoolResponse]
-    total: int
-    page: int
-    size: int
-
-
-class UpdateSchoolRequest(BaseModel):
-    """Request body for PATCH /schools/{id} — all fields are optional."""
-
-    first_name: str | None = Field(default=None, min_length=1, description="Primeiro nome")
-    last_name: str | None = Field(default=None, min_length=1, description="Sobrenome")
-    email: EmailStr | None = Field(default=None, description="Novo e-mail (deve ser único)")
-    is_private: bool | None = Field(default=None, description="Escola pública ou privada")
-    cnpj: str | None = Field(default=None, min_length=14, max_length=18, description="CNPJ da escola")
+    cnpj: str = Field(min_length=14, max_length=18, description="CNPJ da escola")

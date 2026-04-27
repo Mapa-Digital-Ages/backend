@@ -2,6 +2,7 @@
 
 import datetime
 import unittest
+import uuid
 
 import jwt
 from fastapi.testclient import TestClient
@@ -35,12 +36,13 @@ class TestValidateRouter(unittest.TestCase):
         self.assertEqual(check_message, response.json())
 
     def test_validate_aguardando_user_returns_403(self):
-        self.test_client.post(
-            "/register",
+        reg = self.test_client.post(
+            "/register/responsavel",
             json={"email": "val_wait@test.com", "password": "validpass123", "name": "Wait"},
         )
+        user_id = reg.json()["id"]
         self.test_client.patch(
-            "/admin/users/val_wait@test.com/status",
+            f"/admin/users/{user_id}/status",
             json={"status": "aprovado"},
             headers=self.admin_headers,
         )
@@ -49,7 +51,7 @@ class TestValidateRouter(unittest.TestCase):
         )
         user_token = login_resp.json()["token"]
         self.test_client.patch(
-            "/admin/users/val_wait@test.com/status",
+            f"/admin/users/{user_id}/status",
             json={"status": "negado"},
             headers=self.admin_headers,
         )
@@ -82,7 +84,7 @@ class TestValidateRouter(unittest.TestCase):
         expired_token = jwt.encode(
             {
                 "sub": "test@test.com",
-                "user_id": 1,
+                "user_id": str(uuid.uuid4()),
                 "exp": datetime.datetime.now(datetime.UTC) - datetime.timedelta(minutes=1),
             },
             "test-secret-key",
@@ -120,7 +122,7 @@ class TestValidateRouter(unittest.TestCase):
         self.assertEqual(response.headers["WWW-Authenticate"], "Bearer")
 
     def test_validate_nonexistent_user_token(self):
-        token = create_access_token({"sub": "ghost@test.com", "user_id": 99999})
+        token = create_access_token({"sub": "ghost@test.com", "user_id": str(uuid.uuid4())})
         headers = {"Authorization": f"Bearer {token}"}
         send_content = {"text": "text", "sender": "dummy"}
 

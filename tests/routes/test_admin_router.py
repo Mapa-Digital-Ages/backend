@@ -1,12 +1,13 @@
 """Tests for the admin router."""
 
 import unittest
+import uuid
 
 from fastapi.testclient import TestClient
 
 import tests.keys_test  # noqa: F401
 from md_backend.main import app
-from tests.helpers import ADMIN_EMAIL, create_approved_user, get_admin_headers
+from tests.helpers import create_approved_user, get_admin_headers, get_admin_id
 
 
 class TestAdminRouter(unittest.TestCase):
@@ -26,7 +27,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_list_users_filter_by_status(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "adm_filter@test.com", "password": "validpass123", "name": "Filter"},
         )
         response = self.test_client.get(
@@ -52,7 +53,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_list_users_filter_by_role(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "adm_role@test.com", "password": "validpass123", "name": "Role"},
         )
         response = self.test_client.get(
@@ -81,12 +82,13 @@ class TestAdminRouter(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "Acesso restrito a administradores")
 
     def test_approve_user(self):
-        self.test_client.post(
-            "/register",
+        reg = self.test_client.post(
+            "/register/responsavel",
             json={"email": "adm_approve@test.com", "password": "validpass123", "name": "Approve"},
         )
+        user_id = reg.json()["id"]
         response = self.test_client.patch(
-            "/admin/users/adm_approve@test.com/status",
+            f"/admin/users/{user_id}/status",
             json={"status": "aprovado"},
             headers=self.admin_headers,
         )
@@ -94,12 +96,13 @@ class TestAdminRouter(unittest.TestCase):
         self.assertEqual(response.json()["status"], "aprovado")
 
     def test_deny_user(self):
-        self.test_client.post(
-            "/register",
+        reg = self.test_client.post(
+            "/register/responsavel",
             json={"email": "adm_deny@test.com", "password": "validpass123", "name": "Deny"},
         )
+        user_id = reg.json()["id"]
         response = self.test_client.patch(
-            "/admin/users/adm_deny@test.com/status",
+            f"/admin/users/{user_id}/status",
             json={"status": "negado"},
             headers=self.admin_headers,
         )
@@ -108,7 +111,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_update_status_user_not_found(self):
         response = self.test_client.patch(
-            "/admin/users/nonexistent@test.com/status",
+            f"/admin/users/{uuid.uuid4()}/status",
             json={"status": "aprovado"},
             headers=self.admin_headers,
         )
@@ -116,7 +119,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_update_status_invalid_status(self):
         response = self.test_client.patch(
-            "/admin/users/someone@test.com/status",
+            f"/admin/users/{uuid.uuid4()}/status",
             json={"status": "invalido"},
             headers=self.admin_headers,
         )
@@ -124,7 +127,7 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_update_status_without_auth(self):
         response = self.test_client.patch(
-            "/admin/users/someone@test.com/status", json={"status": "aprovado"}
+            f"/admin/users/{uuid.uuid4()}/status", json={"status": "aprovado"}
         )
         self.assertEqual(response.status_code, 401)
 
@@ -133,15 +136,16 @@ class TestAdminRouter(unittest.TestCase):
         user_headers = {"Authorization": f"Bearer {token}"}
 
         response = self.test_client.patch(
-            "/admin/users/nonadm_upd@test.com/status",
+            f"/admin/users/{uuid.uuid4()}/status",
             json={"status": "negado"},
             headers=user_headers,
         )
         self.assertEqual(response.status_code, 403)
 
     def test_cannot_change_superadmin_status(self):
+        admin_id = get_admin_id(self.test_client, self.admin_headers)
         response = self.test_client.patch(
-            f"/admin/users/{ADMIN_EMAIL}/status",
+            f"/admin/users/{admin_id}/status",
             json={"status": "negado"},
             headers=self.admin_headers,
         )

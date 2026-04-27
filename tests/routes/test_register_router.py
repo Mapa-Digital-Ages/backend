@@ -16,35 +16,87 @@ class TestRegisterRouter(unittest.TestCase):
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
 
-    def test_register_success(self):
+    def test_register_responsavel_success(self):
         response = self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "newuser@test.com", "password": "validpass123", "name": "New User"},
         )
         self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json(), {"detail": "Cadastro realizado. Aguardando aprovacao."})
+        body = response.json()
+        self.assertEqual(body["detail"], "Cadastro realizado. Aguardando aprovacao.")
+        self.assertIn("id", body)
 
-    def test_register_duplicate_email(self):
+    def test_register_responsavel_duplicate_email(self):
         self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "duplicate@test.com", "password": "validpass123", "name": "Dup"},
         )
         response = self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "duplicate@test.com", "password": "validpass123", "name": "Dup"},
         )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json(), {"detail": "Email already registered"})
 
-    def test_register_invalid_email(self):
+    def test_register_responsavel_invalid_email(self):
         response = self.test_client.post(
-            "/register",
+            "/register/responsavel",
             json={"email": "not-an-email", "password": "validpass123", "name": "Bad"},
         )
         self.assertEqual(response.status_code, 422)
 
-    def test_register_short_password(self):
+    def test_register_responsavel_short_password(self):
         response = self.test_client.post(
-            "/register", json={"email": "short@test.com", "password": "short", "name": "Short"}
+            "/register/responsavel",
+            json={"email": "short@test.com", "password": "short", "name": "Short"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_register_aluno_success(self):
+        response = self.test_client.post(
+            "/register/aluno",
+            json={
+                "email": "aluno@test.com",
+                "password": "validpass123",
+                "name": "Aluno",
+                "birth_date": "2010-05-01",
+                "student_class": "5th class",
+            },
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["detail"], "Cadastro realizado.")
+        self.assertIn("id", body)
+
+    def test_register_aluno_duplicate_email(self):
+        payload = {
+            "email": "dup_aluno@test.com",
+            "password": "validpass123",
+            "name": "Dup",
+            "birth_date": "2010-05-01",
+            "student_class": "5th class",
+        }
+        self.test_client.post("/register/aluno", json=payload)
+        response = self.test_client.post("/register/aluno", json=payload)
+        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.json(), {"detail": "Email already registered"})
+
+    def test_register_aluno_missing_required_fields(self):
+        response = self.test_client.post(
+            "/register/aluno",
+            json={"email": "incomplete@test.com", "password": "validpass123", "name": "Inc"},
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_register_aluno_invalid_class(self):
+        response = self.test_client.post(
+            "/register/aluno",
+            json={
+                "email": "badclass@test.com",
+                "password": "validpass123",
+                "name": "Bad",
+                "birth_date": "2010-05-01",
+                "student_class": "10th class",
+            },
         )
         self.assertEqual(response.status_code, 422)
