@@ -1,6 +1,27 @@
 """Store API models."""
 
+import datetime
+import enum
+
 from pydantic import BaseModel, EmailStr, Field
+
+from md_backend.models.db_models import ClassEnum
+
+
+class UserStatusInput(enum.Enum):
+    """User approval status values used in API layer."""
+
+    AGUARDANDO = "aguardando"
+    APROVADO = "aprovado"
+    NEGADO = "negado"
+
+
+class RoleInput(enum.Enum):
+    """User role values used in API layer."""
+
+    ADMIN = "admin"
+    ALUNO = "aluno"
+    RESPONSAVEL = "responsavel"
 
 
 class ValidateRequest(BaseModel):
@@ -16,6 +37,16 @@ class RegisterRequest(BaseModel):
     name: str = Field()
     email: EmailStr
     password: str = Field(min_length=8)
+
+
+class AlunoRegisterRequest(BaseModel):
+    """Register request model for aluno (requires school-specific fields)."""
+
+    name: str = Field()
+    email: EmailStr
+    password: str = Field(min_length=8)
+    birth_date: datetime.date
+    student_class: ClassEnum
 
 
 class LoginRequest(BaseModel):
@@ -35,7 +66,7 @@ class SetupRequest(BaseModel):
 class UserResponse(BaseModel):
     """User data for admin listing."""
 
-    id: int
+    id: str
     email: str
     name: str
     status: str
