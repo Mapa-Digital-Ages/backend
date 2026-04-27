@@ -12,6 +12,7 @@ from md_backend.routes.school_router import school_router
 from md_backend.routes.setup_router import setup_router
 from md_backend.routes.validate_router import validate_router
 from md_backend.routes.school_router import school_router
+from md_backend.routes.student_router import student_router
 
 router = APIRouter()
 
@@ -20,6 +21,7 @@ router.include_router(login_router)
 router.include_router(register_router)
 router.include_router(setup_router)
 router.include_router(admin_router)
+router.include_router(student_router)
 router.include_router(school_router)
 # router.include_router(another_router)
 # router.include_router(another_router1)
