@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, status, Query
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Any
 
 import uuid
 from md_backend.models.api_models import CreateCompanyRequest, CompanyResponse, UpdateCompanyRequest
@@ -18,7 +19,7 @@ company_router = APIRouter(prefix="/company", tags=["Company"])
 async def create_company(
     request: CreateCompanyRequest,
     session: AsyncSession = Depends(get_db_session),
-) -> dict:
+) -> Any:
     """
     POST /company
     
@@ -72,7 +73,7 @@ async def list_companies(
 async def get_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-) -> dict:
+) -> Any:
     """GET /company/{user_id} — get company by ID."""
     result = await company_service.get_company_by_id(user_id, session)
     if result is None:
@@ -87,7 +88,7 @@ async def get_company(
 async def delete_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-) -> None:
+) -> Any:
     """
     DELETE /company/{user_id}
     
@@ -109,7 +110,7 @@ async def update_company(
     user_id: uuid.UUID,
     request: UpdateCompanyRequest,
     session: AsyncSession = Depends(get_db_session),
-) -> dict:
+) -> Any:
     """PATCH /company/{user_id} — update company data with business rules."""
     try:
         result = await company_service.update_company(
