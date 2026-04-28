@@ -1,7 +1,7 @@
 """Company router — endpoints for managing companies."""
 
 from fastapi import APIRouter, Depends, status, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Any
@@ -88,7 +88,7 @@ async def get_company(
 async def delete_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-) -> Any:
+) -> Response:
     """
     DELETE /company/{user_id}
     
@@ -102,7 +102,7 @@ async def delete_company(
             content={"detail": "Empresa nao encontrada."},
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    return None
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @company_router.patch("/{user_id}", response_model=CompanyResponse)
