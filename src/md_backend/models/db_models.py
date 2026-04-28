@@ -5,7 +5,19 @@ import enum
 import uuid
 from typing import Optional  # noqa: UP035
 
-from sqlalchemy import Boolean, Date, DateTime, Enum, ForeignKey, Integer, Numeric, String, Text, Uuid, func
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    Enum,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    Uuid,
+    func,
+)
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -459,9 +471,7 @@ class StudentContentProgress(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
     )
-    content_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("contents.id"), nullable=False
-    )
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
     mastery_level: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     created_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=True
@@ -487,3 +497,5 @@ class LoginHistory(Base):
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
