@@ -68,7 +68,7 @@ async def list_guardians(
     current_user: dict = Depends(get_current_approved_user),
     name: str | None = Query(default=None, description="Filter by first or last name"),
     email: str | None = Query(default=None, description="Filter by email"),
-    status: str | None = Query(
+    guardian_status: str | None = Query(
         default=None, description="Filter by status: waiting, approved, rejected"
     ),
     page: int = Query(default=1, ge=1, description="Page number"),
@@ -77,7 +77,7 @@ async def list_guardians(
 
     _ensure_admin_or_school(current_user)
     guardians = await guardian_service.get_guardians(
-        session=session, name=name, email=email, status=status, page=page, size=size
+        session=session, name=name, email=email, status=guardian_status, page=page, size=size
     )
     return JSONResponse(content=guardians, status_code=status.HTTP_200_OK)
 
