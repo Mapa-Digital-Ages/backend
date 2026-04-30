@@ -132,6 +132,60 @@ class StudentUpdateRequest(BaseModel):
     school_id: uuid.UUID | None = None
 
 
+class GuardianStudentResponse(BaseModel):
+    """Student details returned within guardian responses."""
+
+    user_id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str
+    birth_date: str
+    student_class: str
+
+
+class GuardianCreateRequest(BaseModel):
+    """Request body for creating a guardian."""
+
+    first_name: str
+    last_name: str
+    email: EmailStr
+    password: str = Field(min_length=8)
+    phone_number: str | None = None
+
+
+class GuardianUpdateRequest(BaseModel):
+    """Request body for partially updating a guardian."""
+
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    phone_number: str | None = None
+
+
+class GuardianResponse(BaseModel):
+    """Response model for guardian details."""
+
+    user_id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str
+    phone_number: str | None = None
+    guardian_status: str
+    is_active: bool
+    created_at: str | None
+    deactivated_at: str | None
+    students: list[GuardianStudentResponse]
+
+
+class GuardianListPaginatedResponse(BaseModel):
+    """Paginated list of guardians."""
+
+    items: list[GuardianResponse]
+    total: int
+    page: int
+    size: int
+
+
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /school."""
 
