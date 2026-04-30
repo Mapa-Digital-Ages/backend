@@ -25,6 +25,14 @@ class RoleInput(enum.Enum):
     RESPONSAVEL = "responsavel"
 
 
+class GuardianStatusInput(enum.Enum):
+    """Guardian approval status values used in API layer."""
+
+    WAITING = "waiting"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class ValidateRequest(BaseModel):
     """Validate request model."""
 
@@ -119,6 +127,23 @@ class StudentListResponse(BaseModel):
     school_id: str
     is_active: bool
     created_at: str | None
+
+
+class GuardianListResponse(BaseModel):
+    """Response model for guardian list items."""
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+    email: str
+    phone_number: str
+    guardian_status: GuardianStatusInput
+
+
+class GuardianDetailResponse(GuardianListResponse):
+    """Response model for guardian detail view."""
+
+    students: list[uuid.UUID]
 
 
 class StudentUpdateRequest(BaseModel):

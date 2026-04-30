@@ -6,6 +6,7 @@
 from fastapi import APIRouter
 
 from md_backend.routes.admin_router import admin_router
+from md_backend.routes.guardian_router import guardian_router
 from md_backend.routes.login_router import login_router
 from md_backend.routes.register_router import register_router
 from md_backend.routes.school_router import school_router
@@ -20,6 +21,7 @@ router.include_router(login_router)
 router.include_router(register_router)
 router.include_router(setup_router)
 router.include_router(admin_router)
+router.include_router(guardian_router)
 router.include_router(student_router)
 router.include_router(school_router)
 # router.include_router(another_router)
