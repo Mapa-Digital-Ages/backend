@@ -1,8 +1,11 @@
-import uuid
+"""Service layer for Company operations."""
+
 import datetime
+import uuid
+
 from sqlalchemy import select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import CompanyProfile, UserProfile
 from md_backend.utils.security import hash_password
@@ -57,32 +60,28 @@ class CompanyService:
             "status": "aguardando",
             "created_at": user.created_at.isoformat(),
         }
+
     async def list_companies(
-        self, 
-        session: AsyncSession, 
-        name: str | None = None, 
-        page: int = 1, 
-        size: int = 10
+        self, session: AsyncSession, name: str | None = None, page: int = 1, size: int = 10
     ) -> list[dict]:
         """List all active companies with filtering and pagination."""
         offset = (page - 1) * size
-        
+
         query = (
             select(CompanyProfile)
             .join(UserProfile)
-            .where(UserProfile.is_active == True)
+            .where(UserProfile.is_active)
             .options(selectinload(CompanyProfile.user))
         )
 
         if name:
             search = f"%{name}%"
             query = query.where(
-                (UserProfile.first_name.ilike(search)) | 
-                (UserProfile.last_name.ilike(search))
+                (UserProfile.first_name.ilike(search)) | (UserProfile.last_name.ilike(search))
             )
 
         query = query.offset(offset).limit(size)
-        
+
         result = await session.execute(query)
         companies = result.scalars().all()
 
@@ -105,7 +104,7 @@ class CompanyService:
         query = (
             select(CompanyProfile)
             .join(UserProfile)
-            .where((CompanyProfile.user_id == user_id) & (UserProfile.is_active == True))
+            .where((CompanyProfile.user_id == user_id) & UserProfile.is_active)
             .options(selectinload(CompanyProfile.user))
         )
         result = await session.execute(query)
@@ -132,8 +131,8 @@ class CompanyService:
             return False
 
         user.is_active = False
-        user.deactivated_at = datetime.datetime.now(datetime.timezone.utc)
-        
+        user.deactivated_at = datetime.datetime.now(datetime.UTC)
+
         await session.commit()
         return True
 
@@ -168,24 +167,28 @@ class CompanyService:
             company.user.email = email
         if phone_number is not None:
             company.user.phone_number = phone_number
-            
+
         if is_active is not None:
             company.user.is_active = is_active
             if is_active:
                 company.user.deactivated_at = None
             else:
-                company.user.deactivated_at = datetime.datetime.now(datetime.timezone.utc)
+                company.user.deactivated_at = datetime.datetime.now(datetime.UTC)
 
         if spots is not None:
             occupied_spots = company.spots - company.available_spots
-            
+
             if spots < occupied_spots:
                 from fastapi import HTTPException, status
+
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Nao e possivel reduzir o total de vagas para {spots} pois {occupied_spots} vagas ja estao ocupadas."
+                    detail=(
+                        f"Nao e possivel reduzir o total de vagas para {spots} "
+                        f"pois {occupied_spots} vagas ja estao ocupadas."
+                    ),
                 )
-            
+
             company.spots = spots
             company.available_spots = spots - occupied_spots
 

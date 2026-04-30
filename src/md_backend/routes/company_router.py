@@ -1,13 +1,14 @@
 """Company router — endpoints for managing companies."""
 
-from fastapi import APIRouter, Depends, status, Query
+import uuid
+from typing import Any
+
+from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Any
 
-import uuid
-from md_backend.models.api_models import CreateCompanyRequest, CompanyResponse, UpdateCompanyRequest
+from md_backend.models.api_models import CompanyResponse, CreateCompanyRequest, UpdateCompanyRequest
 from md_backend.services.company_service import CompanyService
 from md_backend.utils.database import get_db_session
 
@@ -20,14 +21,7 @@ async def create_company(
     request: CreateCompanyRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
-    """
-    POST /company
-    
-    Cria uma nova conta de empresa e seu perfil associado.
-    - O campo 'available_spots' e inicializado automaticamente com o valor de 'spots'.
-    - A senha e hasheada e nunca e retornada na resposta.
-    - A operacao e atomica: falha em uma tabela cancela toda a criacao.
-    """
+    """POST /company — create a new company account."""
     try:
         result = await company_service.create_company(
             first_name=request.first_name,
@@ -61,12 +55,7 @@ async def list_companies(
     session: AsyncSession = Depends(get_db_session),
 ) -> list[dict]:
     """GET /company — list all active companies with filters and pagination."""
-    return await company_service.list_companies(
-        session=session, 
-        name=name, 
-        page=page, 
-        size=size
-    )
+    return await company_service.list_companies(session=session, name=name, page=page, size=size)
 
 
 @company_router.get("/{user_id}", response_model=CompanyResponse)
@@ -89,13 +78,7 @@ async def delete_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """
-    DELETE /company/{user_id}
-    
-    Realiza a inativacao (Soft Delete) da empresa. 
-    A operacao altera 'is_active' para false e preenche 'deactivated_at'.
-    Nenhum dado e removido fisicamente do banco de dados.
-    """
+    """DELETE /company/{user_id} — soft delete a company by ID."""
     success = await company_service.delete_company(user_id, session)
     if not success:
         return JSONResponse(

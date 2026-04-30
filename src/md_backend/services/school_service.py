@@ -43,12 +43,14 @@ class SchoolService:
             first_name=first_name,
             last_name=last_name,
         )
+        session.add(user)
+        await session.flush()
+
         school = SchoolProfile(
-            user=user,
+            user_id=user.id,
             is_private=is_private,
             requested_spots=requested_spots,
         )
-        session.add(user)
         session.add(school)
 
         await session.commit()
@@ -101,8 +103,7 @@ class SchoolService:
 
         if name:
             query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         count_query = select(func.count()).select_from(query.subquery())
@@ -167,9 +168,7 @@ class SchoolService:
         user, school = row
 
         if email is not None and email != user.email:
-            conflict = await session.execute(
-                select(UserProfile).where(UserProfile.email == email)
-            )
+            conflict = await session.execute(select(UserProfile).where(UserProfile.email == email))
             if conflict.scalar_one_or_none() is not None:
                 return "email_conflict"
             user.email = email
@@ -190,9 +189,7 @@ class SchoolService:
         await session.refresh(school)
 
         count_result = await session.execute(
-            select(func.count(StudentProfile.user_id)).where(
-                StudentProfile.school_id == school_id
-            )
+            select(func.count(StudentProfile.user_id)).where(StudentProfile.school_id == school_id)
         )
         quantidade_alunos = count_result.scalar_one()
 

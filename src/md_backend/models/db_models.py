@@ -153,7 +153,6 @@ class SchoolProfile(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
-    cnpj: Mapped[str] = mapped_column(String(18), unique=True, nullable=False)
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
     requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
@@ -497,5 +496,3 @@ class LoginHistory(Base):
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-
-
