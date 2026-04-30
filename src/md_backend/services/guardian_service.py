@@ -26,8 +26,8 @@ class GuardianService:
         last_name: str,
         email: str,
         password: str,
-        phone_number: str | None = None,
         session: AsyncSession,
+        phone_number: str | None = None,
     ) -> dict | None:
 
         # Check if email already exists
