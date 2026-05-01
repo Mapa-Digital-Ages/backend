@@ -59,7 +59,7 @@ def _session_with_user(user):
 
 
 class TestLoginService(unittest.TestCase):
-    def test_login_success_responsavel(self):
+    def test_login_success_guardian(self):
         service = LoginService()
         user = _make_user(guardian_status=GuardianStatusEnum.APPROVED)
         session = _session_with_user(user)
@@ -72,7 +72,7 @@ class TestLoginService(unittest.TestCase):
 
         self.assertEqual(result["token"], "tok123")
         self.assertEqual(result["email"], user.email)
-        self.assertEqual(result["role"], "responsavel")
+        self.assertEqual(result["role"], "guardian")
         self.assertEqual(result["name"], "First Last")
 
     def test_login_success_admin(self):
@@ -90,7 +90,7 @@ class TestLoginService(unittest.TestCase):
 
         self.assertEqual(result["role"], "admin")
 
-    def test_login_success_aluno(self):
+    def test_login_success_student(self):
         service = LoginService()
         user = _make_user(has_guardian=False, has_student=True)
         session = _session_with_user(user)
@@ -101,7 +101,7 @@ class TestLoginService(unittest.TestCase):
             ):
                 result = asyncio.run(service.login(user.email, "pass", session))
 
-        self.assertEqual(result["role"], "aluno")
+        self.assertEqual(result["role"], "student")
 
     def test_login_user_not_found(self):
         service = LoginService()
@@ -120,7 +120,7 @@ class TestLoginService(unittest.TestCase):
 
         self.assertEqual(result, {"error": "invalid_credentials"})
 
-    def test_login_aguardando(self):
+    def test_login_waiting(self):
         service = LoginService()
         user = _make_user(guardian_status=GuardianStatusEnum.WAITING)
         session = _session_with_user(user)
@@ -128,9 +128,9 @@ class TestLoginService(unittest.TestCase):
         with patch("md_backend.services.login_service.verify_password", return_value=True):
             result = asyncio.run(service.login(user.email, "pass", session))
 
-        self.assertEqual(result, {"error": "AGUARDANDO"})
+        self.assertEqual(result, {"error": "WAITING"})
 
-    def test_login_negado(self):
+    def test_login_rejected(self):
         service = LoginService()
         user = _make_user(guardian_status=GuardianStatusEnum.REJECTED)
         session = _session_with_user(user)
@@ -138,4 +138,4 @@ class TestLoginService(unittest.TestCase):
         with patch("md_backend.services.login_service.verify_password", return_value=True):
             result = asyncio.run(service.login(user.email, "pass", session))
 
-        self.assertEqual(result, {"error": "NEGADO"})
+        self.assertEqual(result, {"error": "REJECTED"})

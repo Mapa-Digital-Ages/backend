@@ -15,8 +15,8 @@ def _derive_role(user: UserProfile) -> str:
     if user.admin_profile is not None:
         return "admin"
     if user.student_profile is not None:
-        return "aluno"
-    return "responsavel"
+        return "student"
+    return "guardian"
 
 
 class LoginService:
@@ -43,9 +43,9 @@ class LoginService:
 
         if user.guardian_profile is not None:
             if user.guardian_profile.guardian_status == GuardianStatusEnum.WAITING:
-                return {"error": "AGUARDANDO"}
+                return {"error": "WAITING"}
             if user.guardian_profile.guardian_status == GuardianStatusEnum.REJECTED:
-                return {"error": "NEGADO"}
+                return {"error": "REJECTED"}
 
         token = create_access_token({"sub": user.email, "user_id": str(user.id)})
         name = f"{user.first_name} {user.last_name}".strip()

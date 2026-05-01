@@ -22,7 +22,7 @@ async def login(request: LoginRequest, session: AsyncSession = Depends(get_db_se
 
     if result.get("error") == "invalid_credentials":
         return JSONResponse(
-            content={"detail": "Credenciais inválidas"},
+            content={"detail": "Invalid credentials"},
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
