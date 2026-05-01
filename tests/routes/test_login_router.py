@@ -30,26 +30,36 @@ class TestLoginRouter(unittest.TestCase):
         self.assertIn("email", data)
         self.assertIn("name", data)
 
-    def test_login_aguardando_user(self):
+    def test_login_waiting_user(self):
         self.test_client.post(
-            "/register/responsavel",
-            json={"email": "waiting_lg@test.com", "password": "validpass123", "name": "Wait"},
+            "/register/guardian",
+            json={
+                "email": "waiting_lg@test.com",
+                "password": "validpass123",
+                "first_name": "Wait",
+                "last_name": "User",
+            },
         )
         response = self.test_client.post(
             "/login", json={"email": "waiting_lg@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"detail": "AGUARDANDO"})
+        self.assertEqual(response.json(), {"detail": "WAITING"})
 
-    def test_login_negado_user(self):
+    def test_login_rejected_user(self):
         reg = self.test_client.post(
-            "/register/responsavel",
-            json={"email": "denied_lg@test.com", "password": "validpass123", "name": "Denied"},
+            "/register/guardian",
+            json={
+                "email": "denied_lg@test.com",
+                "password": "validpass123",
+                "first_name": "Denied",
+                "last_name": "User",
+            },
         )
         user_id = reg.json()["id"]
         self.test_client.patch(
             f"/admin/users/{user_id}/status",
-            json={"status": "negado"},
+            json={"status": "rejected"},
             headers=self.admin_headers,
         )
 
@@ -57,25 +67,30 @@ class TestLoginRouter(unittest.TestCase):
             "/login", json={"email": "denied_lg@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json(), {"detail": "NEGADO"})
+        self.assertEqual(response.json(), {"detail": "REJECTED"})
 
     def test_login_wrong_password(self):
         self.test_client.post(
-            "/register/responsavel",
-            json={"email": "wrongpw_lg@test.com", "password": "validpass123", "name": "Wrong"},
+            "/register/guardian",
+            json={
+                "email": "wrongpw_lg@test.com",
+                "password": "validpass123",
+                "first_name": "Wrong",
+                "last_name": "User",
+            },
         )
         response = self.test_client.post(
             "/login", json={"email": "wrongpw_lg@test.com", "password": "wrongpassword"}
         )
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "Credenciais inválidas"})
+        self.assertEqual(response.json(), {"detail": "Invalid credentials"})
 
     def test_login_nonexistent_user(self):
         response = self.test_client.post(
             "/login", json={"email": "ghost_lg@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 401)
-        self.assertEqual(response.json(), {"detail": "Credenciais inválidas"})
+        self.assertEqual(response.json(), {"detail": "Invalid credentials"})
 
     def test_login_invalid_email(self):
         response = self.test_client.post(

@@ -106,6 +106,79 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertIn("user_id", data)
         uuid.UUID(data["user_id"])
 
+    def test_create_student_with_optional_fields_persists(self):
+        from md_backend.models.db_models import StudentProfile, UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        school_resp = self.client.post(
+            "/school",
+            json={
+                "first_name": "School",
+                "last_name": "Host",
+                "email": "student_create_school@test.com",
+                "password": "password1234",
+                "is_private": True,
+            },
+        )
+        school_id = school_resp.json()["user_id"]
+
+        payload = _student_payload("student_create_optional@example.com")
+        payload["phone_number"] = "+5511666665555"
+        payload["school_id"] = school_id
+
+        response = self.client.post(
+            "/student", json=payload, headers=self.admin_headers
+        )
+        self.assertEqual(response.status_code, 201)
+        body = response.json()
+        self.assertEqual(body["phone_number"], "+5511666665555")
+        self.assertEqual(body["school_id"], school_id)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                user_row = await session.execute(
+                    select(UserProfile).where(
+                        UserProfile.email == "student_create_optional@example.com"
+                    )
+                )
+                user = user_row.scalar_one()
+                student_row = await session.execute(
+                    select(StudentProfile).where(StudentProfile.user_id == user.id)
+                )
+                return user, student_row.scalar_one()
+
+        user, student = asyncio.run(fetch())
+        self.assertEqual(user.phone_number, "+5511666665555")
+        self.assertEqual(student.school_id, uuid.UUID(school_id))
+
+    def test_create_student_without_optional_fields_persists_null(self):
+        from md_backend.models.db_models import StudentProfile, UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        response = self.client.post(
+            "/student",
+            json=_student_payload("student_create_no_optional@example.com"),
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                user_row = await session.execute(
+                    select(UserProfile).where(
+                        UserProfile.email == "student_create_no_optional@example.com"
+                    )
+                )
+                user = user_row.scalar_one()
+                student_row = await session.execute(
+                    select(StudentProfile).where(StudentProfile.user_id == user.id)
+                )
+                return user, student_row.scalar_one()
+
+        user, student = asyncio.run(fetch())
+        self.assertIsNone(user.phone_number)
+        self.assertIsNone(student.school_id)
+
     def test_duplicate_email_returns_409(self):
         payload = _student_payload("student_dup@example.com")
         self.client.post("/student", json=payload, headers=self.admin_headers)
@@ -234,7 +307,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
                 "first_name": "School",
                 "last_name": "Host",
                 "email": "student_school_host@test.com",
-                "password": "senha1234",
+                "password": "password1234",
                 "is_private": True,
             },
         )

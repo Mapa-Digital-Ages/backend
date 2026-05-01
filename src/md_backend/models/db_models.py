@@ -395,10 +395,10 @@ class PathTransition(Base):
     __tablename__ = "path_transition"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sub_path_origem_id: Mapped[int | None] = mapped_column(
+    sub_path_origin_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("sub_paths.id"), nullable=True
     )
-    sub_path_destino_id: Mapped[int | None] = mapped_column(
+    sub_path_destination_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("sub_paths.id"), nullable=True
     )
     rule_type: Mapped[RuleTypeEnum | None] = mapped_column(

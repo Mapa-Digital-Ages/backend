@@ -1,4 +1,4 @@
-"""School router — endpoints for managing school units."""
+"""School router - endpoints for managing school units."""
 
 import uuid
 
@@ -33,6 +33,7 @@ async def create_school(
             last_name=request.last_name,
             email=str(request.email),
             password=request.password,
+            phone_number=request.phone_number,
             is_private=request.is_private,
             requested_spots=request.requested_spots,
             session=session,
@@ -40,26 +41,26 @@ async def create_school(
     except IntegrityError:
         await session.rollback()
         return JSONResponse(
-            content={"detail": "Erro de integridade ao salvar escola."},
+            content={"detail": "Integrity error while saving school."},
             status_code=status.HTTP_409_CONFLICT,
         )
 
     if result is None:
         return JSONResponse(
-            content={"detail": "E-mail ja cadastrado."},
+            content={"detail": "Email already registered."},
             status_code=status.HTTP_409_CONFLICT,
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 
-@school_router.get("", response_model=SchoolListResponse, summary="Listar escolas ativas")
+@school_router.get("", response_model=SchoolListResponse, summary="List active schools")
 async def list_schools(
     session: AsyncSession = Depends(get_db_session),
-    page: int = Query(default=1, ge=1, description="Número da página (começa em 1)"),
-    size: int = Query(default=20, ge=1, le=100, description="Quantidade de itens por página"),
+    page: int = Query(default=1, ge=1, description="Page number (starts at 1)"),
+    size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     name: str | None = Query(
-        default=None, description="Filtro parcial por nome (case-insensitive)"
+        default=None, description="Partial filter by name (case-insensitive)"
     ),
 ) -> JSONResponse:
     """List paginated active schools with optional filters."""
@@ -75,7 +76,7 @@ async def list_schools(
 @school_router.get(
     "/{school_id}",
     response_model=SchoolResponse,
-    summary="Buscar escola por ID",
+    summary="Get school by ID",
 )
 async def get_school(
     school_id: uuid.UUID,
@@ -86,7 +87,7 @@ async def get_school(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Escola não encontrada."},
+            content={"detail": "School not found."},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
@@ -96,7 +97,7 @@ async def get_school(
 @school_router.patch(
     "/{school_id}",
     response_model=SchoolResponse,
-    summary="Atualizar dados da escola",
+    summary="Update school data",
     dependencies=[Depends(get_current_superadmin)],
 )
 async def update_school(
@@ -117,13 +118,13 @@ async def update_school(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Escola não encontrada."},
+            content={"detail": "School not found."},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
     if result == "email_conflict":
         return JSONResponse(
-            content={"detail": "E-mail ja cadastrado."},
+            content={"detail": "Email already registered."},
             status_code=status.HTTP_409_CONFLICT,
         )
 
@@ -133,7 +134,7 @@ async def update_school(
 @school_router.delete(
     "/{school_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Desativar escola (soft delete)",
+    summary="Deactivate school (soft delete)",
     dependencies=[Depends(get_current_superadmin)],
 )
 async def deactivate_school(
@@ -145,7 +146,7 @@ async def deactivate_school(
 
     if not success:
         return JSONResponse(
-            content={"detail": "Escola não encontrada."},
+            content={"detail": "School not found."},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 

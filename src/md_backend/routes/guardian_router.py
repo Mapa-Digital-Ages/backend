@@ -24,7 +24,7 @@ def _ensure_admin_or_school(current_user: dict) -> None:
     if not current_user.get("is_superadmin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso negado. Apenas administradores podem acessar esta rota.",
+            detail="Access denied. Only administrators can access this route.",
         )
 
 
@@ -52,7 +52,7 @@ async def create_guardian(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Email já cadastrado"},
+            content={"detail": "Email already registered"},
             status_code=status.HTTP_409_CONFLICT,
         )
 
@@ -94,7 +94,7 @@ async def get_guardian(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Responsável não encontrado"},
+            content={"detail": "Guardian not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
@@ -118,7 +118,7 @@ async def update_guardian(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Responsável não encontrado ou email já em uso"},
+            content={"detail": "Guardian not found or email already in use"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
@@ -139,7 +139,7 @@ async def delete_guardian(
 
     if not success:
         return JSONResponse(
-            content={"detail": "Responsável não encontrado"},
+            content={"detail": "Guardian not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
@@ -161,12 +161,12 @@ async def link_student_to_guardian(
 
     if not success:
         return JSONResponse(
-            content={"detail": "Responsável ou estudante não encontrado, ou já vinculado"},
+            content={"detail": "Guardian or student not found, or already linked"},
             status_code=status.HTTP_409_CONFLICT,
         )
 
     return JSONResponse(
-        content={"detail": "Estudante vinculado ao responsável com sucesso"},
+        content={"detail": "Student linked to guardian successfully"},
         status_code=status.HTTP_201_CREATED,
     )
 
@@ -188,7 +188,7 @@ async def unlink_student_from_guardian(
 
     if not success:
         return JSONResponse(
-            content={"detail": "Relação entre responsável e estudante não encontrada"},
+            content={"detail": "Link between guardian and student not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 

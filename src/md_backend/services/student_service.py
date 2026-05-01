@@ -23,6 +23,8 @@ class StudentService:
         birth_date: datetime.date,
         student_class: ClassEnum,
         session: AsyncSession,
+        phone_number: str | None = None,
+        school_id: uuid.UUID | None = None,
     ) -> dict | None:
         """Create a student atomically across user_profile and student_profile."""
         existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
@@ -37,11 +39,13 @@ class StudentService:
                 last_name=last_name,
                 email=email,
                 password=hashed,
+                phone_number=phone_number,
             )
             student_profile = StudentProfile(
                 user=user_profile,
                 birth_date=birth_date,
                 student_class=student_class,
+                school_id=school_id,
             )
             session.add(user_profile)
             session.add(student_profile)
