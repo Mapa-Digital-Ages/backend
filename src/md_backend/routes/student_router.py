@@ -25,7 +25,7 @@ async def create_student(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Restricted to superadmin or approved guardian/escola users."""
+    """Create a new student. Restricted to superadmin or approved guardian/school users."""
     if not current_user.get("is_superadmin"):
         return JSONResponse(
             content={"detail": "Access denied"},
@@ -37,8 +37,10 @@ async def create_student(
         last_name=request.last_name,
         email=str(request.email),
         password=request.password,
+        phone_number=request.phone_number,
         birth_date=request.birth_date,
         student_class=request.student_class,
+        school_id=request.school_id,
         session=session,
     )
 
