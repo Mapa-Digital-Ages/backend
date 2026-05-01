@@ -49,6 +49,17 @@ dev = [
     "ruff>=0.14.13",
 ]
 
+[tool.pyright]
+include = ["src", "tests"]
+exclude = [
+    "**/__pycache__",
+    "**/.venv",
+    "**/htmlcov",
+    "script_integration_tests.py",
+]
+extraPaths = ["src"]
+pythonVersion = "3.12"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
