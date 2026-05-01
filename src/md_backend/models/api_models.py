@@ -12,17 +12,17 @@ from md_backend.models.db_models import ClassEnum
 class UserStatusInput(enum.Enum):
     """User approval status values used in API layer."""
 
-    AGUARDANDO = "aguardando"
-    APROVADO = "aprovado"
-    NEGADO = "negado"
+    WAITING = "waiting"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class RoleInput(enum.Enum):
     """User role values used in API layer."""
 
     ADMIN = "admin"
-    ALUNO = "aluno"
-    RESPONSAVEL = "responsavel"
+    STUDENT = "student"
+    GUARDIAN = "guardian"
 
 
 class ValidateRequest(BaseModel):
@@ -35,19 +35,24 @@ class ValidateRequest(BaseModel):
 class RegisterRequest(BaseModel):
     """Register request model."""
 
-    name: str = Field()
+    first_name: str = Field(min_length=1)
+    last_name: str = Field(min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
+    phone_number: str | None = None
 
 
-class AlunoRegisterRequest(BaseModel):
-    """Register request model for aluno (requires school-specific fields)."""
+class StudentRegisterRequest(BaseModel):
+    """Register request model for student (requires school-specific fields)."""
 
-    name: str = Field()
+    first_name: str = Field(min_length=1)
+    last_name: str = Field(min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
+    phone_number: str | None = None
     birth_date: datetime.date
     student_class: ClassEnum
+    school_id: uuid.UUID | None = None
 
 
 class LoginRequest(BaseModel):
@@ -60,8 +65,11 @@ class LoginRequest(BaseModel):
 class SetupRequest(BaseModel):
     """Setup request model for creating the first superadmin."""
 
+    first_name: str = Field(min_length=1)
+    last_name: str = Field(min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
+    phone_number: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -78,7 +86,7 @@ class UserResponse(BaseModel):
 class UpdateStatusRequest(BaseModel):
     """Request to update user approval status."""
 
-    status: str = Field(pattern=r"^(aprovado|negado)$")
+    status: str = Field(pattern=r"^(approved|rejected)$")
 
 
 class StudentResponse(BaseModel):
@@ -101,8 +109,10 @@ class StudentRequest(BaseModel):
     last_name: str
     email: EmailStr
     password: str = Field(min_length=8)
+    phone_number: str | None = None
     birth_date: datetime.date
     student_class: ClassEnum
+    school_id: uuid.UUID | None = None
 
 
 class StudentListResponse(BaseModel):
@@ -189,13 +199,14 @@ class GuardianListPaginatedResponse(BaseModel):
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /school."""
 
-    first_name: str = Field(min_length=1, description="Primeiro nome")
-    last_name: str = Field(min_length=1, description="Sobrenome")
-    email: EmailStr = Field(description="E-mail")
-    password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
-    is_private: bool = Field(description="Indica se a escola é pública ou privada")
+    first_name: str = Field(min_length=1, description="First name")
+    last_name: str = Field(min_length=1, description="Last name")
+    email: EmailStr = Field(description="Email")
+    password: str = Field(min_length=8, description="Access password with at least 8 characters")
+    phone_number: str | None = Field(default=None, description="Optional phone number")
+    is_private: bool = Field(description="Whether the school is public or private")
     requested_spots: int | None = Field(
-        default=None, description="Vagas solicitadas (apenas escolas públicas)"
+        default=None, description="Requested spots (public schools only)"
     )
 
 
@@ -220,7 +231,7 @@ class SchoolResponse(BaseModel):
     is_active: bool
     deactivated_at: str | None
     created_at: str
-    quantidade_alunos: int
+    student_count: int
 
 
 class SchoolListResponse(BaseModel):
