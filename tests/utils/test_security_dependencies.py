@@ -74,7 +74,7 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
                 )
             )
         self.assertEqual(ctx.exception.status_code, 401)
-        self.assertEqual(ctx.exception.detail, "Usuario nao encontrado")
+        self.assertEqual(ctx.exception.detail, "User not found")
 
     def test_inactive_user_raises_403(self):
         user = _build_user(is_active=False)
@@ -84,7 +84,7 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
                 get_current_approved_user(payload=self._payload(user.id), session=session)
             )
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertEqual(ctx.exception.detail, "Conta desativada")
+        self.assertEqual(ctx.exception.detail, "Account deactivated")
 
     def test_guardian_waiting_raises_403(self):
         user = _build_user(
@@ -96,7 +96,7 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
                 get_current_approved_user(payload=self._payload(user.id), session=session)
             )
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertEqual(ctx.exception.detail, "Conta aguardando aprovacao")
+        self.assertEqual(ctx.exception.detail, "Account awaiting approval")
 
     def test_guardian_rejected_raises_403(self):
         user = _build_user(
@@ -108,7 +108,7 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
                 get_current_approved_user(payload=self._payload(user.id), session=session)
             )
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertEqual(ctx.exception.detail, "Conta negada")
+        self.assertEqual(ctx.exception.detail, "Account rejected")
 
     def test_approved_guardian_returns_user_dict(self):
         user = _build_user(
@@ -137,7 +137,7 @@ class TestGetCurrentSuperadmin(unittest.TestCase):
         with self.assertRaises(HTTPException) as ctx:
             asyncio.run(get_current_superadmin(user=user))
         self.assertEqual(ctx.exception.status_code, 403)
-        self.assertEqual(ctx.exception.detail, "Acesso restrito a administradores")
+        self.assertEqual(ctx.exception.detail, "Access restricted to administrators")
 
     def test_superadmin_passes(self):
         user = {"user_id": "x", "email": "u@test.com", "is_superadmin": True}
