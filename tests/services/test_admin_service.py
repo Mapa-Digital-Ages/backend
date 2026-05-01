@@ -71,7 +71,7 @@ def _session_with_user(user):
 
 
 class TestAdminServiceListUsers(unittest.TestCase):
-    def test_list_users_returns_serialized_responsavel(self):
+    def test_list_users_returns_serialized_guardian(self):
         service = AdminService()
         user = _make_user(email="a@test.com", guardian_status=GuardianStatusEnum.WAITING)
         session = _session_with_users([user])
@@ -80,8 +80,8 @@ class TestAdminServiceListUsers(unittest.TestCase):
 
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0]["email"], "a@test.com")
-        self.assertEqual(result[0]["status"], "aguardando")
-        self.assertEqual(result[0]["role"], "responsavel")
+        self.assertEqual(result[0]["status"], "waiting")
+        self.assertEqual(result[0]["role"], "guardian")
         self.assertFalse(result[0]["is_superadmin"])
 
     def test_list_users_serializes_admin_role(self):
@@ -97,13 +97,13 @@ class TestAdminServiceListUsers(unittest.TestCase):
         result = asyncio.run(service.list_users(session))
 
         self.assertEqual(result[0]["role"], "admin")
-        self.assertEqual(result[0]["status"], "aprovado")
+        self.assertEqual(result[0]["status"], "approved")
         self.assertTrue(result[0]["is_superadmin"])
 
-    def test_list_users_serializes_aluno_role(self):
+    def test_list_users_serializes_student_role(self):
         service = AdminService()
         user = _make_user(
-            email="aluno@test.com",
+            email="student@test.com",
             has_guardian=False,
             has_student=True,
         )
@@ -111,8 +111,8 @@ class TestAdminServiceListUsers(unittest.TestCase):
 
         result = asyncio.run(service.list_users(session))
 
-        self.assertEqual(result[0]["role"], "aluno")
-        self.assertEqual(result[0]["status"], "aprovado")
+        self.assertEqual(result[0]["role"], "student")
+        self.assertEqual(result[0]["status"], "approved")
 
     def test_list_users_status_approved_mapping(self):
         service = AdminService()
@@ -120,7 +120,7 @@ class TestAdminServiceListUsers(unittest.TestCase):
         session = _session_with_users([user])
 
         result = asyncio.run(service.list_users(session))
-        self.assertEqual(result[0]["status"], "aprovado")
+        self.assertEqual(result[0]["status"], "approved")
 
     def test_list_users_status_rejected_mapping(self):
         service = AdminService()
@@ -128,33 +128,33 @@ class TestAdminServiceListUsers(unittest.TestCase):
         session = _session_with_users([user])
 
         result = asyncio.run(service.list_users(session))
-        self.assertEqual(result[0]["status"], "negado")
+        self.assertEqual(result[0]["status"], "rejected")
 
-    def test_list_users_filter_status_aguardando(self):
+    def test_list_users_filter_status_waiting(self):
         service = AdminService()
         user = _make_user(guardian_status=GuardianStatusEnum.WAITING)
         session = _session_with_users([user])
 
-        result = asyncio.run(service.list_users(session, status_filter="aguardando"))
+        result = asyncio.run(service.list_users(session, status_filter="waiting"))
 
         self.assertEqual(len(result), 1)
         session.execute.assert_called_once()
 
-    def test_list_users_filter_role_responsavel(self):
+    def test_list_users_filter_role_guardian(self):
         service = AdminService()
         user = _make_user()
         session = _session_with_users([user])
 
-        result = asyncio.run(service.list_users(session, role="responsavel"))
+        result = asyncio.run(service.list_users(session, role="guardian"))
 
         self.assertEqual(len(result), 1)
 
-    def test_list_users_filter_role_aluno(self):
+    def test_list_users_filter_role_student(self):
         service = AdminService()
         user = _make_user(has_guardian=False, has_student=True)
         session = _session_with_users([user])
 
-        result = asyncio.run(service.list_users(session, role="aluno"))
+        result = asyncio.run(service.list_users(session, role="student"))
 
         self.assertEqual(len(result), 1)
 
@@ -174,9 +174,9 @@ class TestAdminServiceUpdateStatus(unittest.TestCase):
         user = _make_user(guardian_status=GuardianStatusEnum.WAITING)
         session = _session_with_user(user)
 
-        result = asyncio.run(service.update_user_status(session, user.id, "aprovado"))
+        result = asyncio.run(service.update_user_status(session, user.id, "approved"))
 
-        self.assertIsNotNone(result)
+        assert result is not None
         self.assertNotIn("error", result)
         self.assertEqual(user.guardian_profile.guardian_status, GuardianStatusEnum.APPROVED)
         session.commit.assert_called_once()
@@ -185,7 +185,7 @@ class TestAdminServiceUpdateStatus(unittest.TestCase):
         service = AdminService()
         session = _session_with_user(None)
 
-        result = asyncio.run(service.update_user_status(session, uuid.uuid4(), "aprovado"))
+        result = asyncio.run(service.update_user_status(session, uuid.uuid4(), "approved"))
 
         self.assertIsNone(result)
         session.commit.assert_not_called()
@@ -199,8 +199,9 @@ class TestAdminServiceUpdateStatus(unittest.TestCase):
         )
         session = _session_with_user(user)
 
-        result = asyncio.run(service.update_user_status(session, user.id, "negado"))
+        result = asyncio.run(service.update_user_status(session, user.id, "rejected"))
 
+        assert result is not None
         self.assertIn("error", result)
         session.commit.assert_not_called()
 
@@ -209,7 +210,8 @@ class TestAdminServiceUpdateStatus(unittest.TestCase):
         user = _make_user(has_guardian=False, has_student=True)
         session = _session_with_user(user)
 
-        result = asyncio.run(service.update_user_status(session, user.id, "aprovado"))
+        result = asyncio.run(service.update_user_status(session, user.id, "approved"))
 
+        assert result is not None
         self.assertIn("error", result)
         session.commit.assert_not_called()

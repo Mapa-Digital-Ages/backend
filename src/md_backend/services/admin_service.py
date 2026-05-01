@@ -15,15 +15,15 @@ from md_backend.models.db_models import (
 )
 
 _STATUS_INPUT_MAP = {
-    "aguardando": GuardianStatusEnum.WAITING,
-    "aprovado": GuardianStatusEnum.APPROVED,
-    "negado": GuardianStatusEnum.REJECTED,
+    "waiting": GuardianStatusEnum.WAITING,
+    "approved": GuardianStatusEnum.APPROVED,
+    "rejected": GuardianStatusEnum.REJECTED,
 }
 
 _STATUS_OUTPUT_MAP = {
-    GuardianStatusEnum.WAITING: "aguardando",
-    GuardianStatusEnum.APPROVED: "aprovado",
-    GuardianStatusEnum.REJECTED: "negado",
+    GuardianStatusEnum.WAITING: "waiting",
+    GuardianStatusEnum.APPROVED: "approved",
+    GuardianStatusEnum.REJECTED: "rejected",
 }
 
 
@@ -31,15 +31,15 @@ def _derive_role(user: UserProfile) -> str:
     if user.admin_profile is not None:
         return "admin"
     if user.student_profile is not None:
-        return "aluno"
-    return "responsavel"
+        return "student"
+    return "guardian"
 
 
 def _serialize_user(user: UserProfile) -> dict:
     if user.guardian_profile is not None:
         status_str = _STATUS_OUTPUT_MAP[user.guardian_profile.guardian_status]
     else:
-        status_str = "aprovado"
+        status_str = "approved"
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
     name = f"{user.first_name} {user.last_name}".strip()
     return {
@@ -73,9 +73,9 @@ class AdminService:
             .order_by(UserProfile.created_at.desc())
         )
 
-        if role == "responsavel":
+        if role == "guardian":
             query = query.join(GuardianProfile, UserProfile.guardian_profile)
-        elif role == "aluno":
+        elif role == "student":
             query = query.join(StudentProfile, UserProfile.student_profile)
         elif role == "admin":
             query = query.join(AdminProfile, UserProfile.admin_profile)
@@ -109,10 +109,10 @@ class AdminService:
             return None
 
         if user.admin_profile and user.admin_profile.is_superadmin:
-            return {"error": "Nao e possivel alterar status de um superadmin"}
+            return {"error": "Cannot change a superadmin's status"}
 
         if user.guardian_profile is None:
-            return {"error": "Usuario nao possui perfil de responsavel"}
+            return {"error": "User does not have a guardian profile"}
 
         user.guardian_profile.guardian_status = _STATUS_INPUT_MAP[new_status]
         await session.commit()

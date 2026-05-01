@@ -27,45 +27,55 @@ class TestAdminRouter(unittest.TestCase):
 
     def test_list_users_filter_by_status(self):
         self.test_client.post(
-            "/register/responsavel",
-            json={"email": "adm_filter@test.com", "password": "validpass123", "name": "Filter"},
+            "/register/guardian",
+            json={
+                "email": "adm_filter@test.com",
+                "password": "validpass123",
+                "first_name": "Filter",
+                "last_name": "User",
+            },
         )
         response = self.test_client.get(
-            "/admin/users", params={"user_status": "aguardando"}, headers=self.admin_headers
+            "/admin/users", params={"user_status": "waiting"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
         for user in response.json():
-            self.assertEqual(user["status"], "aguardando")
+            self.assertEqual(user["status"], "waiting")
 
-    def test_list_users_filter_aprovado(self):
+    def test_list_users_filter_approved(self):
         response = self.test_client.get(
-            "/admin/users", params={"user_status": "aprovado"}, headers=self.admin_headers
+            "/admin/users", params={"user_status": "approved"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
         for user in response.json():
-            self.assertEqual(user["status"], "aprovado")
+            self.assertEqual(user["status"], "approved")
 
     def test_list_users_invalid_status_filter(self):
         response = self.test_client.get(
-            "/admin/users", params={"user_status": "invalido"}, headers=self.admin_headers
+            "/admin/users", params={"user_status": "invalid"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 422)
 
     def test_list_users_filter_by_role(self):
         self.test_client.post(
-            "/register/responsavel",
-            json={"email": "adm_role@test.com", "password": "validpass123", "name": "Role"},
+            "/register/guardian",
+            json={
+                "email": "adm_role@test.com",
+                "password": "validpass123",
+                "first_name": "Role",
+                "last_name": "User",
+            },
         )
         response = self.test_client.get(
-            "/admin/users", params={"role": "responsavel"}, headers=self.admin_headers
+            "/admin/users", params={"role": "guardian"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
         for user in response.json():
-            self.assertEqual(user["role"], "responsavel")
+            self.assertEqual(user["role"], "guardian")
 
     def test_list_users_invalid_role_filter(self):
         response = self.test_client.get(
-            "/admin/users", params={"role": "invalido"}, headers=self.admin_headers
+            "/admin/users", params={"role": "invalid"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 422)
 
@@ -79,40 +89,50 @@ class TestAdminRouter(unittest.TestCase):
 
         response = self.test_client.get("/admin/users", headers=user_headers)
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["detail"], "Acesso restrito a administradores")
+        self.assertEqual(response.json()["detail"], "Access restricted to administrators")
 
     def test_approve_user(self):
         reg = self.test_client.post(
-            "/register/responsavel",
-            json={"email": "adm_approve@test.com", "password": "validpass123", "name": "Approve"},
+            "/register/guardian",
+            json={
+                "email": "adm_approve@test.com",
+                "password": "validpass123",
+                "first_name": "Approve",
+                "last_name": "User",
+            },
         )
         user_id = reg.json()["id"]
         response = self.test_client.patch(
             f"/admin/users/{user_id}/status",
-            json={"status": "aprovado"},
+            json={"status": "approved"},
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "aprovado")
+        self.assertEqual(response.json()["status"], "approved")
 
     def test_deny_user(self):
         reg = self.test_client.post(
-            "/register/responsavel",
-            json={"email": "adm_deny@test.com", "password": "validpass123", "name": "Deny"},
+            "/register/guardian",
+            json={
+                "email": "adm_deny@test.com",
+                "password": "validpass123",
+                "first_name": "Deny",
+                "last_name": "User",
+            },
         )
         user_id = reg.json()["id"]
         response = self.test_client.patch(
             f"/admin/users/{user_id}/status",
-            json={"status": "negado"},
+            json={"status": "rejected"},
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["status"], "negado")
+        self.assertEqual(response.json()["status"], "rejected")
 
     def test_update_status_user_not_found(self):
         response = self.test_client.patch(
             f"/admin/users/{uuid.uuid4()}/status",
-            json={"status": "aprovado"},
+            json={"status": "approved"},
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 404)
@@ -120,14 +140,14 @@ class TestAdminRouter(unittest.TestCase):
     def test_update_status_invalid_status(self):
         response = self.test_client.patch(
             f"/admin/users/{uuid.uuid4()}/status",
-            json={"status": "invalido"},
+            json={"status": "invalid"},
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 422)
 
     def test_update_status_without_auth(self):
         response = self.test_client.patch(
-            f"/admin/users/{uuid.uuid4()}/status", json={"status": "aprovado"}
+            f"/admin/users/{uuid.uuid4()}/status", json={"status": "approved"}
         )
         self.assertEqual(response.status_code, 401)
 
@@ -137,7 +157,7 @@ class TestAdminRouter(unittest.TestCase):
 
         response = self.test_client.patch(
             f"/admin/users/{uuid.uuid4()}/status",
-            json={"status": "negado"},
+            json={"status": "rejected"},
             headers=user_headers,
         )
         self.assertEqual(response.status_code, 403)
@@ -146,7 +166,7 @@ class TestAdminRouter(unittest.TestCase):
         admin_id = get_admin_id(self.test_client, self.admin_headers)
         response = self.test_client.patch(
             f"/admin/users/{admin_id}/status",
-            json={"status": "negado"},
+            json={"status": "rejected"},
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 403)
