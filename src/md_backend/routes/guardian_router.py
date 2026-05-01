@@ -38,7 +38,7 @@ async def create_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-
+    """Create a new guardian (admin only)."""
     _ensure_admin_or_school(current_user)
 
     result = await guardian_service.create_guardian(
@@ -74,7 +74,7 @@ async def list_guardians(
     page: int = Query(default=1, ge=1, description="Page number"),
     size: int = Query(default=10, ge=1, le=100, description="Page size"),
 ):
-
+    """List guardians with optional filters and pagination (admin only)."""
     _ensure_admin_or_school(current_user)
     guardians = await guardian_service.get_guardians(
         session=session, name=name, email=email, status=guardian_status, page=page, size=size
@@ -88,7 +88,7 @@ async def get_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-
+    """Get a single guardian by ID (admin only)."""
     _ensure_admin_or_school(current_user)
     result = await guardian_service.get_guardian_by_id(session=session, guardian_id=guardian_id)
 
@@ -108,7 +108,7 @@ async def update_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-
+    """Update a guardian's profile (admin only)."""
     _ensure_admin_or_school(current_user)
     result = await guardian_service.update_guardian(
         session=session,
@@ -131,11 +131,9 @@ async def delete_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-
+    """Deactivate a guardian (admin only)."""
     _ensure_admin_or_school(current_user)
-    success = await guardian_service.deactivate_guardian(
-        session=session, guardian_id=guardian_id
-    )
+    success = await guardian_service.deactivate_guardian(session=session, guardian_id=guardian_id)
 
     if not success:
         return JSONResponse(
@@ -153,7 +151,7 @@ async def link_student_to_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-
+    """Link a student to a guardian (admin only)."""
     _ensure_admin_or_school(current_user)
     success = await guardian_service.link_student_to_guardian(
         session=session, guardian_id=guardian_id, student_id=student_id
@@ -180,7 +178,7 @@ async def unlink_student_from_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-
+    """Unlink a student from a guardian (admin only)."""
     _ensure_admin_or_school(current_user)
     success = await guardian_service.unlink_student_from_guardian(
         session=session, guardian_id=guardian_id, student_id=student_id
