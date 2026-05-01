@@ -1,3 +1,5 @@
+"""Guardian service for guardian management business logic."""
+
 import datetime
 import uuid
 
@@ -28,8 +30,20 @@ class GuardianService:
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
+        """Create a new guardian user with ``WAITING`` status.
 
-        # Check if email already exists
+        Args:
+            first_name: Guardian's first name.
+            last_name: Guardian's last name.
+            email: Guardian's email; must be unique.
+            password: Plain-text password to be hashed before storage.
+            session: Database session.
+            phone_number: Optional phone number.
+
+        Returns:
+            Guardian response dict on success, or ``None`` if the email is already
+            registered or the insert violates a database constraint.
+        """
         existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
         if existing.scalar_one_or_none() is not None:
             return None
@@ -68,8 +82,20 @@ class GuardianService:
         page: int = 1,
         size: int = 10,
     ) -> dict:
+        """List active guardians with optional filters and pagination.
 
-        # Main query to get guardians
+        Args:
+            session: Database session.
+            name: Case-insensitive partial match against first or last name.
+            email: Case-insensitive partial match against email.
+            status: Filter by guardian status (``waiting``, ``approved``, ``rejected``).
+            page: 1-indexed page number.
+            size: Page size.
+
+        Returns:
+            Dict with keys ``items`` (list of guardian response dicts), ``total``,
+            ``page`` and ``size``.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .options(
@@ -152,7 +178,15 @@ class GuardianService:
     async def get_guardian_by_id(
         self, session: AsyncSession, guardian_id: uuid.UUID
     ) -> dict | None:
+        """Fetch a single active guardian by user ID.
 
+        Args:
+            session: Database session.
+            guardian_id: Guardian ``user_id``.
+
+        Returns:
+            Guardian response dict, or ``None`` if no active guardian matches.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .options(
@@ -174,7 +208,6 @@ class GuardianService:
 
         user_profile, guardian_profile = row
 
-        # Get active students linked to this guardian
         students = []
         for student in guardian_profile.students:
             if student.deactivated_at is None:
@@ -197,7 +230,20 @@ class GuardianService:
         guardian_id: uuid.UUID,
         data: dict,
     ) -> dict | None:
+        """Update mutable fields on a guardian's user profile.
 
+        Only the fields ``first_name``, ``last_name``, ``phone_number`` and ``email``
+        are accepted; unknown keys and ``None`` values are ignored.
+
+        Args:
+            session: Database session.
+            guardian_id: Guardian ``user_id``.
+            data: Mapping of fields to update.
+
+        Returns:
+            Updated guardian response dict, or ``None`` if the guardian does not
+            exist or the new email is already in use by another user.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .options(
@@ -261,7 +307,15 @@ class GuardianService:
         return self._to_response_dict(user_profile, guardian_profile, students)
 
     async def deactivate_guardian(self, session: AsyncSession, guardian_id: uuid.UUID) -> bool:
+        """Soft-delete a guardian by marking them and their user profile inactive.
 
+        Args:
+            session: Database session.
+            guardian_id: Guardian ``user_id``.
+
+        Returns:
+            ``True`` on success, ``False`` if no active guardian matches.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
