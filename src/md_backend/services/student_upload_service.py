@@ -53,6 +53,12 @@ class StudentUploadService:
         if error:
             return error
 
+        # Handle potentially None filename and content_type
+        if not file.filename:
+            return "File name is required."
+        if not file.content_type:
+            return "File content type could not be determined."
+
         extension = file.filename.rsplit(".", 1)[-1] if "." in file.filename else ""
         storage_key = f"students/{student_id}/{uuid.uuid4()}.{extension}"
 
