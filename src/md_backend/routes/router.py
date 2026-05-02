@@ -12,6 +12,8 @@ from md_backend.routes.register_router import register_router
 from md_backend.routes.school_router import school_router
 from md_backend.routes.setup_router import setup_router
 from md_backend.routes.student_router import student_router
+from md_backend.routes.student_upload_router import student_upload_router, upload_router
+
 
 router = APIRouter()
 
@@ -22,6 +24,8 @@ router.include_router(admin_router)
 router.include_router(student_router)
 router.include_router(school_router)
 router.include_router(guardian_router)
+router.include_router(student_upload_router)
+router.include_router(upload_router)
 # router.include_router(another_router)
 # router.include_router(another_router1)
 # router.include_router(another_router2)

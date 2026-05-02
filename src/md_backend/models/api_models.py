@@ -241,3 +241,16 @@ class SchoolListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+class StudentUploadResponse(BaseModel):
+    """Response model for student upload."""
+
+    id: uuid.UUID
+    student_id: uuid.UUID
+    file_name: str
+    file_url: str
+    file_type: str
+    file_size_bytes: int
+    created_at: str
+
+    
