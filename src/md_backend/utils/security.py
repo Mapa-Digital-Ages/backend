@@ -93,26 +93,26 @@ async def get_current_approved_user(
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario nao encontrado",
+            detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conta desativada",
+            detail="Account deactivated",
         )
 
     if user.guardian_profile is not None:
         if user.guardian_profile.guardian_status == GuardianStatusEnum.WAITING:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Conta aguardando aprovacao",
+                detail="Account awaiting approval",
             )
         if user.guardian_profile.guardian_status == GuardianStatusEnum.REJECTED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Conta negada",
+                detail="Account rejected",
             )
 
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
@@ -131,6 +131,6 @@ async def get_current_superadmin(
     if not user["is_superadmin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso restrito a administradores",
+            detail="Access restricted to administrators",
         )
     return user

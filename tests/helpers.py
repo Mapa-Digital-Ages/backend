@@ -6,7 +6,15 @@ ADMIN_PASSWORD = "adminpass123"
 
 def get_admin_headers(test_client):
     """Ensure a superadmin exists and return auth headers for it."""
-    test_client.post("/setup", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
+    test_client.post(
+        "/setup",
+        json={
+            "email": ADMIN_EMAIL,
+            "password": ADMIN_PASSWORD,
+            "first_name": "Shared",
+            "last_name": "Admin",
+        },
+    )
     resp = test_client.post("/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     token = resp.json()["token"]
     return {"Authorization": f"Bearer {token}"}
@@ -23,15 +31,28 @@ def get_admin_id(test_client, admin_headers):
     raise RuntimeError("Superadmin not found via /admin/users")
 
 
-def create_approved_user(test_client, admin_headers, email, password="validpass123", name="Test"):
+def create_approved_user(
+    test_client,
+    admin_headers,
+    email,
+    password="validpass123",
+    first_name="Test",
+    last_name="User",
+):
     """Register a user and approve them via admin. Returns JWT token."""
     reg = test_client.post(
-        "/register/responsavel", json={"email": email, "password": password, "name": name}
+        "/register/guardian",
+        json={
+            "email": email,
+            "password": password,
+            "first_name": first_name,
+            "last_name": last_name,
+        },
     )
     user_id = reg.json()["id"]
     test_client.patch(
         f"/admin/users/{user_id}/status",
-        json={"status": "aprovado"},
+        json={"status": "approved"},
         headers=admin_headers,
     )
     login_resp = test_client.post("/login", json={"email": email, "password": password})

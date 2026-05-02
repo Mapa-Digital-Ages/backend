@@ -6,6 +6,7 @@ import uuid
 from typing import Optional  # noqa: UP035
 
 from sqlalchemy import (
+    BigInteger,
     Boolean,
     Date,
     DateTime,
@@ -122,6 +123,9 @@ class StudentProfile(Base):
     )
     guardians: Mapped[list["GuardianProfile"]] = relationship(
         "GuardianProfile", secondary="student_guardian", back_populates="students"
+    )
+    uploads: Mapped[list["StudentUpload"]] = relationship(
+        "StudentUpload", back_populates="student", cascade="all, delete-orphan"
     )
 
 
@@ -391,10 +395,10 @@ class PathTransition(Base):
     __tablename__ = "path_transition"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    sub_path_origem_id: Mapped[int | None] = mapped_column(
+    sub_path_origin_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("sub_paths.id"), nullable=True
     )
-    sub_path_destino_id: Mapped[int | None] = mapped_column(
+    sub_path_destination_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("sub_paths.id"), nullable=True
     )
     rule_type: Mapped[RuleTypeEnum | None] = mapped_column(
@@ -496,3 +500,24 @@ class LoginHistory(Base):
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+
+class StudentUpload(Base):
+    """File uploads by students."""
+
+    __tablename__ = "student_uploads"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
+    )
+    file_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_url: Mapped[str] = mapped_column(Text, nullable=False)
+    file_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    student: Mapped["StudentProfile"] = relationship("StudentProfile", back_populates="uploads")

@@ -1,3 +1,4 @@
+"""Guardian service for guardian management business logic."""
 
 import datetime
 import uuid
@@ -29,8 +30,20 @@ class GuardianService:
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
+        """Create a new guardian user with ``WAITING`` status.
 
-        # Check if email already exists
+        Args:
+            first_name: Guardian's first name.
+            last_name: Guardian's last name.
+            email: Guardian's email; must be unique.
+            password: Plain-text password to be hashed before storage.
+            session: Database session.
+            phone_number: Optional phone number.
+
+        Returns:
+            Guardian response dict on success, or ``None`` if the email is already
+            registered or the insert violates a database constraint.
+        """
         existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
         if existing.scalar_one_or_none() is not None:
             return None
@@ -69,8 +82,20 @@ class GuardianService:
         page: int = 1,
         size: int = 10,
     ) -> dict:
+        """List active guardians with optional filters and pagination.
 
-        # Main query to get guardians
+        Args:
+            session: Database session.
+            name: Case-insensitive partial match against first or last name.
+            email: Case-insensitive partial match against email.
+            status: Filter by guardian status (``waiting``, ``approved``, ``rejected``).
+            page: 1-indexed page number.
+            size: Page size.
+
+        Returns:
+            Dict with keys ``items`` (list of guardian response dicts), ``total``,
+            ``page`` and ``size``.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .options(
@@ -85,8 +110,7 @@ class GuardianService:
 
         if name:
             query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         if email:
@@ -96,17 +120,19 @@ class GuardianService:
             query = query.where(GuardianProfile.guardian_status == status)
 
         # Get total count
-        count_query = select(func.count()).select_from(UserProfile).join(
-            GuardianProfile, GuardianProfile.user_id == UserProfile.id
-        ).where(
-            UserProfile.is_active.is_(True),
-            GuardianProfile.deactivated_at.is_(None),
+        count_query = (
+            select(func.count())
+            .select_from(UserProfile)
+            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
+            .where(
+                UserProfile.is_active.is_(True),
+                GuardianProfile.deactivated_at.is_(None),
+            )
         )
 
         if name:
             count_query = count_query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
         if email:
             count_query = count_query.where(UserProfile.email.ilike(f"%{email}%"))
@@ -133,7 +159,9 @@ class GuardianService:
                             "first_name": student.user.first_name,
                             "last_name": student.user.last_name,
                             "email": student.user.email,
-                            "birth_date": student.birth_date.isoformat() if student.birth_date else "",
+                            "birth_date": student.birth_date.isoformat()
+                            if student.birth_date
+                            else "",
                             "student_class": student.student_class.value,
                         }
                     )
@@ -150,7 +178,15 @@ class GuardianService:
     async def get_guardian_by_id(
         self, session: AsyncSession, guardian_id: uuid.UUID
     ) -> dict | None:
+        """Fetch a single active guardian by user ID.
 
+        Args:
+            session: Database session.
+            guardian_id: Guardian ``user_id``.
+
+        Returns:
+            Guardian response dict, or ``None`` if no active guardian matches.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .options(
@@ -172,7 +208,6 @@ class GuardianService:
 
         user_profile, guardian_profile = row
 
-        # Get active students linked to this guardian
         students = []
         for student in guardian_profile.students:
             if student.deactivated_at is None:
@@ -195,7 +230,20 @@ class GuardianService:
         guardian_id: uuid.UUID,
         data: dict,
     ) -> dict | None:
+        """Update mutable fields on a guardian's user profile.
 
+        Only the fields ``first_name``, ``last_name``, ``phone_number`` and ``email``
+        are accepted; unknown keys and ``None`` values are ignored.
+
+        Args:
+            session: Database session.
+            guardian_id: Guardian ``user_id``.
+            data: Mapping of fields to update.
+
+        Returns:
+            Updated guardian response dict, or ``None`` if the guardian does not
+            exist or the new email is already in use by another user.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .options(
@@ -258,10 +306,16 @@ class GuardianService:
 
         return self._to_response_dict(user_profile, guardian_profile, students)
 
-    async def deactivate_guardian(
-        self, session: AsyncSession, guardian_id: uuid.UUID
-    ) -> bool:
+    async def deactivate_guardian(self, session: AsyncSession, guardian_id: uuid.UUID) -> bool:
+        """Soft-delete a guardian by marking them and their user profile inactive.
 
+        Args:
+            session: Database session.
+            guardian_id: Guardian ``user_id``.
+
+        Returns:
+            ``True`` on success, ``False`` if no active guardian matches.
+        """
         query = (
             select(UserProfile, GuardianProfile)
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
@@ -292,8 +346,7 @@ class GuardianService:
         guardian_id: uuid.UUID,
         student_id: uuid.UUID,
     ) -> bool:
-        """
-        Link a student to a guardian (create relationship).
+        """Link a student to a guardian (create relationship).
 
         Args:
             session: Database session
@@ -305,8 +358,7 @@ class GuardianService:
         """
         # Check if both exist
         guardian_result = await session.execute(
-            select(GuardianProfile)
-            .where(
+            select(GuardianProfile).where(
                 GuardianProfile.user_id == guardian_id,
                 GuardianProfile.deactivated_at.is_(None),
             )
@@ -315,8 +367,7 @@ class GuardianService:
             return False
 
         student_result = await session.execute(
-            select(StudentProfile)
-            .where(
+            select(StudentProfile).where(
                 StudentProfile.user_id == student_id,
                 StudentProfile.deactivated_at.is_(None),
             )
@@ -352,8 +403,7 @@ class GuardianService:
         guardian_id: uuid.UUID,
         student_id: uuid.UUID,
     ) -> bool:
-        """
-        Unlink a student from a guardian (soft delete the relationship).
+        """Unlink a student from a guardian (soft delete the relationship).
 
         Args:
             session: Database session
@@ -396,9 +446,7 @@ class GuardianService:
             "is_active": user_profile.is_active,
             "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
             "deactivated_at": (
-                user_profile.deactivated_at.isoformat()
-                if user_profile.deactivated_at
-                else None
+                user_profile.deactivated_at.isoformat() if user_profile.deactivated_at else None
             ),
             "students": students,
         }
@@ -419,5 +467,5 @@ class GuardianService:
             "guardian_status": guardian_profile.guardian_status.value,
             "is_active": user_profile.is_active,
             "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
-            "quantidade_alunos": student_count,
+            "student_count": student_count,
         }

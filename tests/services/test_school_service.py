@@ -9,20 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
-from md_backend.services.school_service import SchoolService, _split_name
-
-
-class TestSplitNameHelper(unittest.TestCase):
-    """Unit tests for the module-level _split_name helper."""
-
-    def test_split_name_with_full_name(self):
-        self.assertEqual(_split_name("First Last"), ("First", "Last"))
-
-    def test_split_name_with_single_word(self):
-        self.assertEqual(_split_name("Solo"), ("Solo", ""))
-
-    def test_split_name_keeps_remaining_tokens(self):
-        self.assertEqual(_split_name("First Middle Last"), ("First", "Middle Last"))
+from md_backend.services.school_service import SchoolService
 
 
 class TestSchoolServiceUnit(unittest.TestCase):
@@ -40,10 +27,10 @@ class TestSchoolServiceUnit(unittest.TestCase):
 
         result = asyncio.run(
             service.create_school(
-                first_name="Escola",
-                last_name="Duplicada",
+                first_name="School",
+                last_name="Duplicate",
                 email="dup_unit@test.com",
-                password="senha1234",
+                password="password1234",
                 is_private=True,
                 session=mock_session,
             )
@@ -70,15 +57,18 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
 
-    def _payload(self, email, *, is_private=True, requested_spots=None):
-        return {
-            "first_name": "Escola",
-            "last_name": "Teste",
+    def _payload(self, email, *, is_private=True, requested_spots=None, phone_number=None):
+        payload = {
+            "first_name": "School",
+            "last_name": "Test",
             "email": email,
-            "password": "senha1234",
+            "password": "password1234",
             "is_private": is_private,
             "requested_spots": requested_spots,
         }
+        if phone_number is not None:
+            payload["phone_number"] = phone_number
+        return payload
 
     # ------------------------------------------------------------------
     # POST /school
@@ -96,17 +86,55 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "create_ok@test.com")
         self.assertEqual(body["is_private"], False)
         self.assertEqual(body["requested_spots"], 80)
-        self.assertEqual(body["quantidade_alunos"], 0)
+        self.assertEqual(body["student_count"], 0)
         self.assertTrue(body["is_active"])
         self.assertIsNone(body["deactivated_at"])
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
+    def test_create_school_with_phone_number_persists(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "school_phone@test.com"
+        resp = self.client.post(
+            "/school", json=self._payload(email, phone_number="+5511444443333")
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertEqual(user.phone_number, "+5511444443333")
+
+    def test_create_school_without_phone_number_persists_null(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "school_no_phone@test.com"
+        resp = self.client.post("/school", json=self._payload(email))
+        self.assertEqual(resp.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.phone_number)
+
     def test_create_school_duplicate_email_returns_409(self):
         self.client.post("/school", json=self._payload("school_dup@test.com"))
         resp = self.client.post("/school", json=self._payload("school_dup@test.com"))
         self.assertEqual(resp.status_code, 409)
-        self.assertIn("E-mail ja cadastrado", resp.json()["detail"])
+        self.assertIn("Email already registered", resp.json()["detail"])
 
     def test_create_school_integrity_error_returns_409(self):
         with patch(
@@ -116,7 +144,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             resp = self.client.post("/school", json=self._payload("school_integrity@test.com"))
 
         self.assertEqual(resp.status_code, 409)
-        self.assertIn("integridade", resp.json()["detail"].lower())
+        self.assertIn("integrity", resp.json()["detail"].lower())
 
     def test_create_school_invalid_email_returns_422(self):
         payload = self._payload("not-an-email")
@@ -150,20 +178,20 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.client.post(
             "/school",
             json={
-                "first_name": "Olimpo",
-                "last_name": "Educacional",
-                "email": "olimpo_filter@test.com",
-                "password": "senha1234",
+                "first_name": "Olympus",
+                "last_name": "Education",
+                "email": "olympus_filter@test.com",
+                "password": "password1234",
                 "is_private": False,
                 "requested_spots": 100,
             },
         )
 
-        resp = self.client.get("/school", params={"name": "olimpo"})
+        resp = self.client.get("/school", params={"name": "olympus"})
         self.assertEqual(resp.status_code, 200)
         items = resp.json()["items"]
         self.assertTrue(len(items) >= 1)
-        self.assertTrue(any("Olimpo" in item["name"] for item in items))
+        self.assertTrue(any("Olympus" in item["name"] for item in items))
 
     def test_list_schools_pagination_respects_size_and_page(self):
         resp = self.client.get("/school", params={"page": 1, "size": 1})
@@ -189,7 +217,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["user_id"], school_id)
         self.assertEqual(body["email"], "school_getbyid@test.com")
         self.assertEqual(body["requested_spots"], 42)
-        self.assertEqual(body["quantidade_alunos"], 0)
+        self.assertEqual(body["student_count"], 0)
         self.assertNotIn("password", body)
 
     def test_get_school_by_id_not_found_returns_404(self):
@@ -207,8 +235,8 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/school/{school_id}",
             json={
-                "first_name": "Novo",
-                "last_name": "Nome",
+                "first_name": "New",
+                "last_name": "Name",
                 "email": "school_upd_full_new@test.com",
                 "is_private": False,
                 "requested_spots": 200,
@@ -220,7 +248,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "school_upd_full_new@test.com")
         self.assertEqual(body["is_private"], False)
         self.assertEqual(body["requested_spots"], 200)
-        self.assertEqual(body["name"], "Novo Nome")
+        self.assertEqual(body["name"], "New Name")
 
     def test_update_school_email_conflict_returns_409(self):
         self.client.post("/school", json=self._payload("school_taken@test.com"))
@@ -237,7 +265,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def test_update_school_not_found_returns_404(self):
         resp = self.client.patch(
             f"/school/{uuid.uuid4()}",
-            json={"first_name": "Fantasma"},
+            json={"first_name": "Ghost"},
             headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 404)

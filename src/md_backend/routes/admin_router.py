@@ -14,8 +14,8 @@ from md_backend.utils.security import get_current_superadmin
 admin_service = AdminService()
 admin_router = APIRouter(prefix="/admin")
 
-_ALLOWED_STATUSES = {"aguardando", "aprovado", "negado"}
-_ALLOWED_ROLES = {"aluno", "admin", "responsavel"}
+_ALLOWED_STATUSES = {"waiting", "approved", "rejected"}
+_ALLOWED_ROLES = {"student", "admin", "guardian"}
 
 
 @admin_router.get("/users", dependencies=[Depends(get_current_superadmin)])
@@ -27,12 +27,12 @@ async def list_users(
     """List all users, optionally filtered by status."""
     if user_status is not None and user_status not in _ALLOWED_STATUSES:
         return JSONResponse(
-            content={"detail": "Status invalido."},
+            content={"detail": "Invalid status."},
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
     if role is not None and role not in _ALLOWED_ROLES:
         return JSONResponse(
-            content={"detail": "Role invalido."},
+            content={"detail": "Invalid role."},
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
@@ -55,7 +55,7 @@ async def update_user_status(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Usuario nao encontrado"},
+            content={"detail": "User not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
