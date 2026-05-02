@@ -411,3 +411,268 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
+
+class TestWellBeingGetValidation(unittest.TestCase):
+    """Validation tests for GET /student/{id}/well-being."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+        resp = self.client.post(
+            "/student",
+            json=_student_payload("wb_get_validation@example.com"),
+            headers=self.admin_headers,
+        )
+        self.student_id = resp.json()["user_id"]
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_invalid_student_uuid_returns_422(self):
+        response = self.client.get(
+            "/student/not-a-uuid/well-being",
+            params={"date": "2024-01-01"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_missing_date_param_returns_422(self):
+        response = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_invalid_date_format_returns_422(self):
+        response = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            params={"date": "01-01-2024"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+
+class TestWellBeingGetIntegration(unittest.TestCase):
+    """Integration tests for GET /student/{id}/well-being."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+        resp = self.client.post(
+            "/student",
+            json=_student_payload("wb_get_integration@example.com"),
+            headers=self.admin_headers,
+        )
+        self.student_id = resp.json()["user_id"]
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_get_well_being_returns_404_when_no_record(self):
+        """A date with no record must return 404 (expected empty state)."""
+        response = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            params={"date": "2000-01-01"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertIn("detail", response.json())
+
+    def test_get_well_being_returns_200_with_correct_values(self):
+        """After a PUT, the GET for the same date must return the stored values."""
+        import datetime
+
+        today = datetime.date.today().isoformat()
+
+        self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"humor": "good", "online_activity_minutes": 45, "sleep_hours": 7.5},
+            headers=self.admin_headers,
+        )
+
+        response = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            params={"date": today},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["humor"], "good")
+        self.assertEqual(body["online_activity_minutes"], 45)
+        self.assertAlmostEqual(body["sleep_hours"], 7.5, places=1)
+        self.assertEqual(body["student_id"], self.student_id)
+        self.assertEqual(body["date"], today)
+
+    def test_get_well_being_unknown_student_returns_404(self):
+        """A valid UUID that belongs to no student must return 404."""
+        response = self.client.get(
+            f"/student/{uuid.uuid4()}/well-being",
+            params={"date": "2024-01-01"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+
+
+class TestWellBeingPutValidation(unittest.TestCase):
+    """Unit-level validation tests for PUT /student/{id}/well-being."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+        resp = self.client.post(
+            "/student",
+            json=_student_payload("wb_put_validation@example.com"),
+            headers=self.admin_headers,
+        )
+        self.student_id = resp.json()["user_id"]
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_invalid_humor_enum_returns_400(self):
+        """An unrecognised humor string must be rejected with 400."""
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"humor": "ecstatic"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("humor", response.json()["detail"])
+
+    def test_negative_online_activity_minutes_returns_422(self):
+        """Negative integers for online_activity_minutes must be rejected with 422."""
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"online_activity_minutes": -10},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_sleep_hours_above_24_returns_422(self):
+        """sleep_hours above 24 must be rejected with 422."""
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"sleep_hours": 25},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_sleep_hours_as_string_returns_422(self):
+        """A non-numeric sleep_hours must be rejected with 422."""
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"sleep_hours": "eight"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_online_activity_minutes_as_string_returns_422(self):
+        """A non-integer online_activity_minutes must be rejected with 422."""
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"online_activity_minutes": "sixty"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+    def test_invalid_student_uuid_returns_422(self):
+        response = self.client.put(
+            "/student/not-a-uuid/well-being",
+            json={"humor": "good"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 422)
+
+
+class TestWellBeingPutIntegration(unittest.TestCase):
+    """Integration tests for PUT /student/{id}/well-being (upsert behaviour)."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+        resp = self.client.post(
+            "/student",
+            json=_student_payload("wb_put_integration@example.com"),
+            headers=self.admin_headers,
+        )
+        self.student_id = resp.json()["user_id"]
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_first_put_creates_record_returns_200(self):
+        """First PUT for a student with no record today must return 200 (upsert)."""
+        resp = self.client.post(
+            "/student",
+            json=_student_payload("wb_create_new@example.com"),
+            headers=self.admin_headers,
+        )
+        fresh_id = resp.json()["user_id"]
+
+        response = self.client.put(
+            f"/student/{fresh_id}/well-being",
+            json={"humor": "good", "online_activity_minutes": 30, "sleep_hours": 8},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["humor"], "good")
+        self.assertEqual(body["online_activity_minutes"], 30)
+        self.assertAlmostEqual(body["sleep_hours"], 8.0, places=1)
+
+    def test_second_put_updates_record_returns_200_no_duplicate(self):
+        """Second PUT for the same student and date must update the row and return 200."""
+        import asyncio
+        import datetime
+
+        from sqlalchemy import func, select
+
+        from md_backend.models.db_models import WellBeing
+        from md_backend.utils.database import AsyncSessionLocal
+
+        self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"humor": "bad", "online_activity_minutes": 10, "sleep_hours": 5},
+            headers=self.admin_headers,
+        )
+
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"humor": "good", "online_activity_minutes": 120, "sleep_hours": 9},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["humor"], "good")
+        self.assertEqual(body["online_activity_minutes"], 120)
+        self.assertAlmostEqual(body["sleep_hours"], 9.0, places=1)
+
+        async def count_rows():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(func.count()).where(
+                        WellBeing.student_id == uuid.UUID(self.student_id),
+                        WellBeing.date == datetime.date.today(),
+                    )
+                )
+                return result.scalar_one()
+
+        row_count = asyncio.run(count_rows())
+        self.assertEqual(row_count, 1, "Upsert must not create duplicate rows")
+
+    def test_put_all_none_fields_is_accepted(self):
+        """PUT with all optional fields as null must be accepted."""
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)

@@ -241,3 +241,32 @@ class SchoolListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+class WellBeingRequest(BaseModel):
+    """Request body for upserting a student's well-being state."""
+
+    humor: str | None = Field(
+        default=None,
+        description="Student's mood for the day.",
+    )
+    online_activity_minutes: int | None = Field(
+        default=None,
+        ge=0,
+        description="Total minutes of online activity.",
+    )
+    sleep_hours: float | None = Field(
+        default=None,
+        ge=0,
+        le=24,
+        description="Hours of sleep last night.",
+    )
+
+
+class WellBeingResponse(BaseModel):
+    """Response model for a student's well-being record."""
+
+    student_id: uuid.UUID
+    date: datetime.date
+    humor: str | None
+    online_activity_minutes: int | None
+    sleep_hours: float | None

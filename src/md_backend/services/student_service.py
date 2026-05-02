@@ -3,11 +3,11 @@
 import datetime
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import ClassEnum, StudentProfile, UserProfile
+from md_backend.models.db_models import ClassEnum, StudentProfile, UserProfile, WellBeing, HumorEnum
 from md_backend.utils.security import hash_password
 
 
@@ -172,6 +172,100 @@ class StudentService:
 
         await session.commit()
         return True
+    
+    async def upsert_well_being(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        date: datetime.date,
+        humor: str | None,
+        online_activity_minutes: int | None,
+        sleep_hours: float | None,
+    ) -> dict:
+        """Atomically insert or update a well-being record (upsert).
+
+        Uses a single database command with ON CONFLICT to avoid a prior SELECT.
+        Compatible with both SQLite (tests) and PostgreSQL (production).
+        """
+        dialect_name = session.bind.dialect.name if session.bind else "sqlite"  # type: ignore[union-attr]
+
+        if dialect_name == "postgresql":
+            from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+            stmt = pg_insert(WellBeing).values(
+                student_id=student_id,
+                date=date,
+                humor=humor,
+                online_activity_minutes=online_activity_minutes,
+                sleep_hours=sleep_hours,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["student_id", "date"],
+                set_={
+                    "humor": stmt.excluded.humor,
+                    "online_activity_minutes": stmt.excluded.online_activity_minutes,
+                    "sleep_hours": stmt.excluded.sleep_hours,
+                },
+            )
+        else:
+            # SQLite (used in tests) — INSERT OR REPLACE handles the composite PK conflict
+            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
+
+            stmt = sqlite_insert(WellBeing).values(
+                student_id=student_id,
+                date=date,
+                humor=humor,
+                online_activity_minutes=online_activity_minutes,
+                sleep_hours=sleep_hours,
+            )
+            stmt = stmt.on_conflict_do_update(
+                index_elements=["student_id", "date"],
+                set_={
+                    "humor": stmt.excluded.humor,
+                    "online_activity_minutes": stmt.excluded.online_activity_minutes,
+                    "sleep_hours": stmt.excluded.sleep_hours,
+                },
+            )
+
+        await session.execute(stmt)
+        await session.commit()
+
+        result = await session.execute(
+            select(WellBeing).where(
+                WellBeing.student_id == student_id,
+                WellBeing.date == date,
+            )
+        )
+        record = result.scalar_one()
+        return self._well_being_to_dict(record)
+
+    async def get_well_being(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        date: datetime.date,
+    ) -> dict | None:
+        """Return a student's well-being record for a given date, or None if not found."""
+        result = await session.execute(
+            select(WellBeing).where(
+                WellBeing.student_id == student_id,
+                WellBeing.date == date,
+            )
+        )
+        record = result.scalar_one_or_none()
+        if record is None:
+            return None
+        return self._well_being_to_dict(record)
+
+    def _well_being_to_dict(self, record: WellBeing) -> dict:
+        """Map a WellBeing ORM object to a serialisable dict."""
+        return {
+            "student_id": str(record.student_id),
+            "date": record.date.isoformat(),
+            "humor": record.humor.value if record.humor else None,
+            "online_activity_minutes": record.online_activity_minutes,
+            "sleep_hours": float(record.sleep_hours) if record.sleep_hours is not None else None,
+        }
 
     def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:
         """Map user_profile and student_profile to a full response dict."""
