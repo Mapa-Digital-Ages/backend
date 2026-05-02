@@ -420,9 +420,10 @@ class TestWellBeingGetValidation(unittest.TestCase):
         self.client = self.ctx.__enter__()
         self.admin_headers = get_admin_headers(self.client)
 
+        unique_email = f"wb_get_val_{uuid.uuid4().hex[:8]}@example.com"
         resp = self.client.post(
             "/student",
-            json=_student_payload("wb_get_validation@example.com"),
+            json=_student_payload(unique_email),
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
@@ -462,9 +463,10 @@ class TestWellBeingGetIntegration(unittest.TestCase):
         self.client = self.ctx.__enter__()
         self.admin_headers = get_admin_headers(self.client)
 
+        unique_email = f"wb_get_int_{uuid.uuid4().hex[:8]}@example.com"
         resp = self.client.post(
             "/student",
-            json=_student_payload("wb_get_integration@example.com"),
+            json=_student_payload(unique_email),
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
@@ -525,9 +527,10 @@ class TestWellBeingPutValidation(unittest.TestCase):
         self.client = self.ctx.__enter__()
         self.admin_headers = get_admin_headers(self.client)
 
+        unique_email = f"wb_put_val_{uuid.uuid4().hex[:8]}@example.com"
         resp = self.client.post(
             "/student",
-            json=_student_payload("wb_put_validation@example.com"),
+            json=_student_payload(unique_email),
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
@@ -598,9 +601,10 @@ class TestWellBeingPutIntegration(unittest.TestCase):
         self.client = self.ctx.__enter__()
         self.admin_headers = get_admin_headers(self.client)
 
+        unique_email = f"wb_put_int_{uuid.uuid4().hex[:8]}@example.com"
         resp = self.client.post(
             "/student",
-            json=_student_payload("wb_put_integration@example.com"),
+            json=_student_payload(unique_email),
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
@@ -610,9 +614,10 @@ class TestWellBeingPutIntegration(unittest.TestCase):
 
     def test_first_put_creates_record_returns_200(self):
         """First PUT for a student with no record today must return 200 (upsert)."""
+        fresh_email = f"wb_fresh_{uuid.uuid4().hex[:8]}@example.com"
         resp = self.client.post(
             "/student",
-            json=_student_payload("wb_create_new@example.com"),
+            json=_student_payload(fresh_email),
             headers=self.admin_headers,
         )
         fresh_id = resp.json()["user_id"]
