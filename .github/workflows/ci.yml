@@ -87,7 +87,6 @@ jobs:
     name: Deploy to EC2
     runs-on: self-hosted
     needs: [tests-and-coverage, type-check]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/mm/compose-deploy')
 
     steps:
       - name: Checkout
