@@ -124,6 +124,7 @@ class StudentUploadService:
 
     def _upload_to_dict(self, upload: StudentUpload) -> dict:
         """Map a StudentUpload to a response dict."""
+        
         return {
             "id": str(upload.id),
             "student_id": str(upload.student_id),
