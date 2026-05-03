@@ -281,10 +281,15 @@ class StudentService:
 
     def _task_to_dict(self, task: Task) -> dict:
         """Map a Task row to the response dict expected by the dashboard."""
+        task_status = task.task_status
         return {
             "id": str(task.id),
             "title": task.description,
             "date": task.date.isoformat() if task.date else None,
-            "status": _TASK_STATUS_TO_FRONTEND.get(task.task_status, "pending"),
+            "status": (
+                _TASK_STATUS_TO_FRONTEND.get(task_status, "pending")
+                if task_status is not None
+                else "pending"
+            ),
             "subject": {"label": ""},
         }
