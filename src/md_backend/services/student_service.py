@@ -75,8 +75,7 @@ class StudentService:
 
         if name:
             query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         if email:
@@ -89,9 +88,7 @@ class StudentService:
 
         return [self._to_dict(user, student) for user, student in rows]
 
-    async def get_student_by_id(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> dict | None:
+    async def get_student_by_id(self, session: AsyncSession, student_id: uuid.UUID) -> dict | None:
         """Get a student by user_id."""
         query = (
             select(UserProfile, StudentProfile)
@@ -149,9 +146,7 @@ class StudentService:
 
         return self._to_dict(user_profile, student_profile)
 
-    async def deactivate_student(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> bool:
+    async def deactivate_student(self, session: AsyncSession, student_id: uuid.UUID) -> bool:
         """Soft delete a student by setting is_active to False."""
         query = (
             select(UserProfile, StudentProfile)
