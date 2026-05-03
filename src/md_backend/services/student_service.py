@@ -3,12 +3,28 @@
 import datetime
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import ClassEnum, StudentProfile, UserProfile
+from md_backend.models.db_models import (
+    Attempt,
+    ClassEnum,
+    Content,
+    StudentContentProgress,
+    StudentProfile,
+    Subject,
+    Task,
+    TaskStatusEnum,
+    UserProfile,
+    WellBeing,
+)
 from md_backend.utils.security import hash_password
+
+_TASK_STATUS_TO_FRONTEND = {
+    TaskStatusEnum.COMPLETED: "done",
+    TaskStatusEnum.PENDING: "pending",
+}
 
 
 class StudentService:
@@ -173,6 +189,65 @@ class StudentService:
         await session.commit()
         return True
 
+    async def get_summary_metrics(
+        self, session: AsyncSession, student_id: uuid.UUID
+    ) -> list[dict]:
+        """Headline metrics for the student dashboard."""
+        completed_tasks_q = select(func.count(Task.id)).where(
+            Task.student_id == student_id,
+            Task.task_status == TaskStatusEnum.COMPLETED,
+            Task.deactivated_at.is_(None),
+        )
+        attempts_q = select(func.count(Attempt.id)).where(Attempt.student_id == student_id)
+        mood_days_q = select(func.count(WellBeing.date)).where(
+            WellBeing.student_id == student_id
+        )
+
+        completed_tasks = (await session.execute(completed_tasks_q)).scalar() or 0
+        attempts = (await session.execute(attempts_q)).scalar() or 0
+        mood_days = (await session.execute(mood_days_q)).scalar() or 0
+
+        return [
+            {"id": "completed-tasks", "title": "Tarefas Concluídas", "value": completed_tasks},
+            {"id": "activities", "title": "Atividades Feitas", "value": attempts},
+            {"id": "mood-days", "title": "Dias Registrados", "value": mood_days},
+        ]
+
+    async def get_disciplines_progress(
+        self, session: AsyncSession, student_id: uuid.UUID
+    ) -> list[dict]:
+        """Average mastery (0-100) per subject for the given student."""
+        query = (
+            select(
+                Subject.id,
+                Subject.name,
+                func.avg(StudentContentProgress.mastery_level).label("avg_mastery"),
+            )
+            .join(Content, Content.subject_id == Subject.id)
+            .join(StudentContentProgress, StudentContentProgress.content_id == Content.id)
+            .where(
+                StudentContentProgress.student_id == student_id,
+                StudentContentProgress.deactivated_at.is_(None),
+            )
+            .group_by(Subject.id, Subject.name)
+            .order_by(Subject.name)
+        )
+
+        rows = (await session.execute(query)).all()
+        return [self._discipline_to_dict(row) for row in rows]
+
+    async def get_tasks(
+        self, session: AsyncSession, student_id: uuid.UUID
+    ) -> list[dict]:
+        """All non-deactivated tasks for the student, newest first."""
+        query = (
+            select(Task)
+            .where(Task.student_id == student_id, Task.deactivated_at.is_(None))
+            .order_by(Task.date.desc())
+        )
+        tasks = (await session.execute(query)).scalars().all()
+        return [self._task_to_dict(task) for task in tasks]
+
     def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:
         """Map user_profile and student_profile to a full response dict."""
         return {
@@ -189,4 +264,23 @@ class StudentService:
             "school_id": str(student_profile.school_id) if student_profile.school_id else "",
             "is_active": user_profile.is_active,
             "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
+        }
+
+    def _discipline_to_dict(self, row) -> dict:
+        """Map a (subject_id, name, avg_mastery) row to a discipline progress dict."""
+        subject_id, name, avg_mastery = row
+        return {
+            "subjectId": str(subject_id),
+            "subjectLabel": name,
+            "progress": int(round(float(avg_mastery or 0) * 100)),
+        }
+
+    def _task_to_dict(self, task: Task) -> dict:
+        """Map a Task row to the response dict expected by the dashboard."""
+        return {
+            "id": str(task.id),
+            "title": task.description,
+            "date": task.date.isoformat() if task.date else None,
+            "status": _TASK_STATUS_TO_FRONTEND.get(task.task_status, "pending"),
+            "subject": {"label": ""},
         }

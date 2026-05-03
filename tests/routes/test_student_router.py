@@ -192,17 +192,53 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
-    def test_non_superadmin_returns_403(self):
+    def test_guardian_can_create_student_and_is_auto_linked(self):
+        from md_backend.models.db_models import StudentGuardian, UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
         token = create_approved_user(
-            self.client, self.admin_headers, "student_nonadmin@example.com"
+            self.client, self.admin_headers, "guardian_creator@example.com"
         )
         response = self.client.post(
             "/student",
-            json=_student_payload("student_forbidden@example.com"),
+            json=_student_payload("guardian_owned_student@example.com"),
             headers={"Authorization": f"Bearer {token}"},
         )
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["detail"], "Access denied")
+        self.assertEqual(response.status_code, 201)
+        student_user_id = response.json()["user_id"]
+
+        async def fetch_link_and_guardian():
+            async with AsyncSessionLocal() as session:
+                guardian_user = (
+                    await session.execute(
+                        select(UserProfile).where(
+                            UserProfile.email == "guardian_creator@example.com"
+                        )
+                    )
+                ).scalar_one()
+                link_row = (
+                    await session.execute(
+                        select(StudentGuardian).where(
+                            StudentGuardian.guardian_id == guardian_user.id,
+                            StudentGuardian.student_id == uuid.UUID(student_user_id),
+                            StudentGuardian.deactivated_at.is_(None),
+                        )
+                    )
+                ).scalar_one_or_none()
+                return link_row
+
+        link = asyncio.run(fetch_link_and_guardian())
+        self.assertIsNotNone(link, "guardian-student link was not created")
+
+        login_response = self.client.post(
+            "/login",
+            json={
+                "email": "guardian_owned_student@example.com",
+                "password": "securepass123",
+            },
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertEqual(login_response.json()["role"], "student")
 
     # ------------------------------------------------------------------
     # GET /student (list)

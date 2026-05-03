@@ -62,6 +62,27 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PasswordResetRequest(BaseModel):
+    """Request body for generating a password reset code."""
+
+    email: EmailStr
+
+
+class PasswordResetRequestResponse(BaseModel):
+    """Response body for password reset requests."""
+
+    detail: str
+    reset_code: str | None = None
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Request body for confirming a password reset."""
+
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8)
+
+
 class SetupRequest(BaseModel):
     """Setup request model for creating the first superadmin."""
 
