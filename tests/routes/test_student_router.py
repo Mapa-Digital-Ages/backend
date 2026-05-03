@@ -1,6 +1,7 @@
 """Tests for the /student router."""
 
 import asyncio
+import datetime
 import unittest
 import uuid
 
@@ -21,6 +22,63 @@ def _student_payload(email, *, first_name="John", last_name="Doe"):
         "birth_date": "2010-05-20",
         "student_class": "5th class",
     }
+
+
+def _login_token(client: TestClient, email: str, password: str) -> str:
+    response = client.post("/login", json={"email": email, "password": password})
+    return response.json()["token"]
+
+
+def _create_student_with_token(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    email: str | None = None,
+    password: str = "securepass123",
+) -> tuple[str, str, str]:
+    student_email = email or f"student_{uuid.uuid4().hex[:8]}@example.com"
+    payload = {**_student_payload(student_email), "password": password}
+    response = client.post("/student", json=payload, headers=admin_headers)
+    student_id = response.json()["user_id"]
+    return student_id, student_email, _login_token(client, student_email, password)
+
+
+def _create_guardian_with_token(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    email: str | None = None,
+    password: str = "guardianpass123",
+) -> tuple[str, str]:
+    guardian_email = email or f"guardian_{uuid.uuid4().hex[:8]}@example.com"
+    response = client.post(
+        "/guardian",
+        json={
+            "first_name": "Guardian",
+            "last_name": "Owner",
+            "email": guardian_email,
+            "password": password,
+        },
+        headers=admin_headers,
+    )
+    guardian_id = response.json()["user_id"]
+    client.patch(
+        f"/admin/users/{guardian_id}/status",
+        json={"status": "approved"},
+        headers=admin_headers,
+    )
+    return guardian_id, _login_token(client, guardian_email, password)
+
+
+def _link_guardian_to_student(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    guardian_id: str,
+    student_id: str,
+) -> None:
+    response = client.post(
+        f"/guardian/{guardian_id}/students/{student_id}",
+        headers=admin_headers,
+    )
+    assert response.status_code == 201
 
 
 class TestStudentRouterValidation(unittest.TestCase):
@@ -126,9 +184,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         payload["phone_number"] = "+5511666665555"
         payload["school_id"] = school_id
 
-        response = self.client.post(
-            "/student", json=payload, headers=self.admin_headers
-        )
+        response = self.client.post("/student", json=payload, headers=self.admin_headers)
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["phone_number"], "+5511666665555")
@@ -187,9 +243,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertEqual(response.json(), {"detail": "Email already registered"})
 
     def test_unauthenticated_returns_401(self):
-        response = self.client.post(
-            "/student", json=_student_payload("student_unauth@example.com")
-        )
+        response = self.client.post("/student", json=_student_payload("student_unauth@example.com"))
         self.assertEqual(response.status_code, 401)
 
     def test_non_superadmin_returns_403(self):
@@ -232,15 +286,11 @@ class TestStudentRouterIntegration(unittest.TestCase):
     def test_list_students_filter_by_name(self):
         self.client.post(
             "/student",
-            json=_student_payload(
-                "student_filter_name@example.com", first_name="Zelda"
-            ),
+            json=_student_payload("student_filter_name@example.com", first_name="Zelda"),
             headers=self.admin_headers,
         )
 
-        response = self.client.get(
-            "/student", params={"name": "zelda"}, headers=self.admin_headers
-        )
+        response = self.client.get("/student", params={"name": "zelda"}, headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         items = response.json()
         self.assertTrue(any(item["first_name"] == "Zelda" for item in items))
@@ -259,9 +309,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 200)
         items = response.json()
-        self.assertTrue(
-            any(item["email"] == "student_filter_email@example.com" for item in items)
-        )
+        self.assertTrue(any(item["email"] == "student_filter_email@example.com" for item in items))
 
     def test_list_students_unauthenticated_returns_401(self):
         response = self.client.get("/student")
@@ -279,18 +327,14 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         student_id = create_resp.json()["user_id"]
 
-        response = self.client.get(
-            f"/student/{student_id}", headers=self.admin_headers
-        )
+        response = self.client.get(f"/student/{student_id}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["user_id"], student_id)
         self.assertEqual(body["email"], "student_getbyid@example.com")
 
     def test_get_student_not_found_returns_404(self):
-        response = self.client.get(
-            f"/student/{uuid.uuid4()}", headers=self.admin_headers
-        )
+        response = self.client.get(f"/student/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
 
@@ -383,9 +427,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         student_id = create_resp.json()["user_id"]
 
-        response = self.client.delete(
-            f"/student/{student_id}", headers=self.admin_headers
-        )
+        response = self.client.delete(f"/student/{student_id}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 204)
 
         async def fetch():
@@ -394,9 +436,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
                     select(UserProfile).where(UserProfile.id == uuid.UUID(student_id))
                 )
                 student_row = await session.execute(
-                    select(StudentProfile).where(
-                        StudentProfile.user_id == uuid.UUID(student_id)
-                    )
+                    select(StudentProfile).where(StudentProfile.user_id == uuid.UUID(student_id))
                 )
                 return user_row.scalar_one(), student_row.scalar_one()
 
@@ -406,11 +446,10 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertIsNotNone(student.deactivated_at)
 
     def test_delete_student_not_found_returns_404(self):
-        response = self.client.delete(
-            f"/student/{uuid.uuid4()}", headers=self.admin_headers
-        )
+        response = self.client.delete(f"/student/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
+
 
 class TestWellBeingGetValidation(unittest.TestCase):
     """Validation tests for GET /student/{id}/well-being."""
@@ -470,6 +509,7 @@ class TestWellBeingGetIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
+        self.student_token = _login_token(self.client, unique_email, "securepass123")
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -493,7 +533,7 @@ class TestWellBeingGetIntegration(unittest.TestCase):
         self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"humor": "good", "online_activity_minutes": 45, "sleep_hours": 7.5},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
 
         response = self.client.get(
@@ -534,6 +574,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
+        self.student_token = _login_token(self.client, unique_email, "securepass123")
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -543,7 +584,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"humor": "ecstatic"},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 400)
         self.assertIn("humor", response.json()["detail"])
@@ -553,7 +594,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"online_activity_minutes": -10},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -562,7 +603,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"sleep_hours": 25},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -571,7 +612,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"sleep_hours": "eight"},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -580,7 +621,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"online_activity_minutes": "sixty"},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -588,7 +629,7 @@ class TestWellBeingPutValidation(unittest.TestCase):
         response = self.client.put(
             "/student/not-a-uuid/well-being",
             json={"humor": "good"},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 422)
 
@@ -608,6 +649,7 @@ class TestWellBeingPutIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.student_id = resp.json()["user_id"]
+        self.student_token = _login_token(self.client, unique_email, "securepass123")
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -615,17 +657,16 @@ class TestWellBeingPutIntegration(unittest.TestCase):
     def test_first_put_creates_record_returns_200(self):
         """First PUT for a student with no record today must return 200 (upsert)."""
         fresh_email = f"wb_fresh_{uuid.uuid4().hex[:8]}@example.com"
-        resp = self.client.post(
-            "/student",
-            json=_student_payload(fresh_email),
-            headers=self.admin_headers,
+        fresh_id, _, fresh_token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            fresh_email,
         )
-        fresh_id = resp.json()["user_id"]
 
         response = self.client.put(
             f"/student/{fresh_id}/well-being",
             json={"humor": "good", "online_activity_minutes": 30, "sleep_hours": 8},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {fresh_token}"},
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -646,13 +687,13 @@ class TestWellBeingPutIntegration(unittest.TestCase):
         self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"humor": "bad", "online_activity_minutes": 10, "sleep_hours": 5},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
 
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={"humor": "good", "online_activity_minutes": 120, "sleep_hours": 9},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 200)
         body = response.json()
@@ -678,6 +719,158 @@ class TestWellBeingPutIntegration(unittest.TestCase):
         response = self.client.put(
             f"/student/{self.student_id}/well-being",
             json={},
-            headers=self.admin_headers,
+            headers={"Authorization": f"Bearer {self.student_token}"},
         )
         self.assertEqual(response.status_code, 200)
+
+
+class TestWellBeingAuthorizationAndHistory(unittest.TestCase):
+    """Authorization and history contract tests for student well-being."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+        self.student_id, _, self.student_token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"wb_auth_student_{uuid.uuid4().hex[:8]}@example.com",
+        )
+        self.other_student_id, _, self.other_student_token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"wb_auth_other_student_{uuid.uuid4().hex[:8]}@example.com",
+        )
+        self.guardian_id, self.guardian_token = _create_guardian_with_token(
+            self.client,
+            self.admin_headers,
+            f"wb_auth_guardian_{uuid.uuid4().hex[:8]}@example.com",
+        )
+        _, self.other_guardian_token = _create_guardian_with_token(
+            self.client,
+            self.admin_headers,
+            f"wb_auth_other_guardian_{uuid.uuid4().hex[:8]}@example.com",
+        )
+        _link_guardian_to_student(
+            self.client,
+            self.admin_headers,
+            self.guardian_id,
+            self.student_id,
+        )
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _auth_headers(self, token: str) -> dict[str, str]:
+        return {"Authorization": f"Bearer {token}"}
+
+    def _seed_well_being(self, student_id: str, day: datetime.date, humor: str) -> None:
+        from md_backend.services.student_service import StudentService
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def seed():
+            async with AsyncSessionLocal() as session:
+                await StudentService().upsert_well_being(
+                    session=session,
+                    student_id=uuid.UUID(student_id),
+                    date=day,
+                    humor=humor,
+                    online_activity_minutes=30,
+                    sleep_hours=8,
+                )
+
+        asyncio.run(seed())
+
+    def test_put_is_restricted_to_authenticated_student(self):
+        response = self.client.put(
+            f"/student/{self.student_id}/well-being",
+            json={"humor": "good"},
+            headers=self._auth_headers(self.student_token),
+        )
+        self.assertEqual(response.status_code, 200)
+
+        for headers in (
+            self.admin_headers,
+            self._auth_headers(self.guardian_token),
+            self._auth_headers(self.other_student_token),
+        ):
+            denied = self.client.put(
+                f"/student/{self.student_id}/well-being",
+                json={"humor": "bad"},
+                headers=headers,
+            )
+            self.assertEqual(denied.status_code, 403)
+
+    def test_daily_get_allows_owner_guardian_admin_and_student_today_only(self):
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+        self._seed_well_being(self.student_id, today, "good")
+        self._seed_well_being(self.student_id, yesterday, "regular")
+
+        allowed_headers = (
+            self.admin_headers,
+            self._auth_headers(self.guardian_token),
+            self._auth_headers(self.student_token),
+        )
+        for headers in allowed_headers:
+            response = self.client.get(
+                f"/student/{self.student_id}/well-being",
+                params={"date": today.isoformat()},
+                headers=headers,
+            )
+            self.assertEqual(response.status_code, 200)
+
+        student_past = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            params={"date": yesterday.isoformat()},
+            headers=self._auth_headers(self.student_token),
+        )
+        self.assertEqual(student_past.status_code, 403)
+
+        other_student = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            params={"date": today.isoformat()},
+            headers=self._auth_headers(self.other_student_token),
+        )
+        self.assertEqual(other_student.status_code, 403)
+
+        other_guardian = self.client.get(
+            f"/student/{self.student_id}/well-being",
+            params={"date": today.isoformat()},
+            headers=self._auth_headers(self.other_guardian_token),
+        )
+        self.assertEqual(other_guardian.status_code, 403)
+
+    def test_history_returns_range_for_owner_guardian(self):
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+        self._seed_well_being(self.student_id, yesterday, "bad")
+        self._seed_well_being(self.student_id, today, "good")
+
+        response = self.client.get(
+            f"/student/{self.student_id}/well-being/history",
+            params={"from": yesterday.isoformat(), "to": today.isoformat()},
+            headers=self._auth_headers(self.guardian_token),
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(
+            [item["date"] for item in body], [yesterday.isoformat(), today.isoformat()]
+        )
+        self.assertEqual([item["humor"] for item in body], ["bad", "good"])
+
+    def test_history_forbids_students_and_non_owner_guardians(self):
+        today = datetime.date.today()
+        params = {"from": today.isoformat(), "to": today.isoformat()}
+
+        for headers in (
+            self._auth_headers(self.student_token),
+            self._auth_headers(self.other_student_token),
+            self._auth_headers(self.other_guardian_token),
+        ):
+            response = self.client.get(
+                f"/student/{self.student_id}/well-being/history",
+                params=params,
+                headers=headers,
+            )
+            self.assertEqual(response.status_code, 403)

@@ -242,6 +242,7 @@ class SchoolListResponse(BaseModel):
     page: int
     size: int
 
+
 class WellBeingRequest(BaseModel):
     """Request body for upserting a student's well-being state."""
 

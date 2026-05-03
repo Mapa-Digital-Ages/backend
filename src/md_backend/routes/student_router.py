@@ -5,16 +5,94 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import StudentRequest, StudentResponse, StudentUpdateRequest, WellBeingRequest, WellBeingResponse
-from md_backend.models.db_models import HumorEnum
+from md_backend.models.api_models import (
+    StudentRequest,
+    StudentResponse,
+    StudentUpdateRequest,
+    WellBeingRequest,
+    WellBeingResponse,
+)
+from md_backend.models.db_models import GuardianProfile, HumorEnum, StudentGuardian, StudentProfile
 from md_backend.services.student_service import StudentService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 
 student_service = StudentService()
 student_router = APIRouter(prefix="/student")
+
+
+async def _guardian_owns_student(
+    session: AsyncSession,
+    guardian_id: uuid.UUID,
+    student_id: uuid.UUID,
+) -> bool:
+    result = await session.execute(
+        select(StudentGuardian)
+        .join(GuardianProfile, GuardianProfile.user_id == StudentGuardian.guardian_id)
+        .where(
+            and_(
+                StudentGuardian.guardian_id == guardian_id,
+                StudentGuardian.student_id == student_id,
+                StudentGuardian.deactivated_at.is_(None),
+                GuardianProfile.deactivated_at.is_(None),
+            )
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _is_student(session: AsyncSession, user_id: uuid.UUID) -> bool:
+    result = await session.execute(
+        select(StudentProfile).where(
+            StudentProfile.user_id == user_id,
+            StudentProfile.deactivated_at.is_(None),
+        )
+    )
+    return result.scalar_one_or_none() is not None
+
+
+async def _can_read_daily_well_being(
+    session: AsyncSession,
+    current_user: dict,
+    student_id: uuid.UUID,
+    date: datetime.date,
+) -> bool:
+    if current_user.get("is_superadmin"):
+        return True
+
+    user_id = uuid.UUID(current_user["user_id"])
+    if await _guardian_owns_student(session, user_id, student_id):
+        return True
+
+    return (
+        user_id == student_id
+        and date == datetime.date.today()
+        and await _is_student(session, user_id)
+    )
+
+
+async def _can_read_well_being_history(
+    session: AsyncSession,
+    current_user: dict,
+    student_id: uuid.UUID,
+) -> bool:
+    if current_user.get("is_superadmin"):
+        return True
+
+    user_id = uuid.UUID(current_user["user_id"])
+    return await _guardian_owns_student(session, user_id, student_id)
+
+
+async def _can_write_well_being(
+    session: AsyncSession,
+    current_user: dict,
+    student_id: uuid.UUID,
+) -> bool:
+    user_id = uuid.UUID(current_user["user_id"])
+    return user_id == student_id and await _is_student(session, user_id)
 
 
 @student_router.post(
@@ -119,9 +197,7 @@ async def delete_student(
     _: dict = Depends(get_current_approved_user),
 ):
     """Soft delete a student by ID."""
-    success = await student_service.deactivate_student(
-        session=session, student_id=student_id
-    )
+    success = await student_service.deactivate_student(session=session, student_id=student_id)
 
     if not success:
         return JSONResponse(
@@ -130,6 +206,7 @@ async def delete_student(
         )
 
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+
 
 @student_router.get(
     "/{student_id}/well-being",
@@ -154,17 +231,22 @@ async def get_student_well_being(
     date: datetime.date = Query(
         ...,
         description="Date to query in YYYY-MM-DD format.",
-        example="2024-09-01",
+        examples=["2024-09-01"],
     ),
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
+    current_user: dict = Depends(get_current_approved_user),
 ):
-    """Return the well-being record (humor, online_activity_minutes, sleep_hours) for a student
-    on a specific date.
+    """Return a student's well-being record for a specific date.
 
     A **404** response is expected and intentional when the student has not yet registered
     their state for that day — the frontend should treat it as an empty/initial state.
     """
+    if not await _can_read_daily_well_being(session, current_user, student_id, date):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     record = await student_service.get_well_being(
         session=session,
         student_id=student_id,
@@ -178,6 +260,40 @@ async def get_student_well_being(
         )
 
     return JSONResponse(content=record, status_code=status.HTTP_200_OK)
+
+
+@student_router.get(
+    "/{student_id}/well-being/history",
+    response_model=list[WellBeingResponse],
+    summary="Get student well-being history for a date range",
+)
+async def get_student_well_being_history(
+    student_id: uuid.UUID,
+    from_date: datetime.date = Query(..., alias="from"),
+    to_date: datetime.date = Query(..., alias="to"),
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return well-being records in ascending date order for a student."""
+    if from_date > to_date:
+        return JSONResponse(
+            content={"detail": "'from' must be before or equal to 'to'."},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    if not await _can_read_well_being_history(session, current_user, student_id):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    records = await student_service.get_well_being_range(
+        session=session,
+        student_id=student_id,
+        from_date=from_date,
+        to_date=to_date,
+    )
+    return JSONResponse(content=records, status_code=status.HTTP_200_OK)
 
 
 @student_router.put(
@@ -205,7 +321,7 @@ async def upsert_student_well_being(
     student_id: uuid.UUID,
     request: WellBeingRequest,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
+    current_user: dict = Depends(get_current_approved_user),
 ):
     """Atomically create or update the student's well-being state for today.
 
@@ -215,6 +331,12 @@ async def upsert_student_well_being(
     - If no record exists for today → **201 Created**.
     - If a record already exists for today → **200 OK** (updated in place, no duplicate row).
     """
+    if not await _can_write_well_being(session, current_user, student_id):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     # Validate humor enum before hitting the database
     if request.humor is not None:
         try:

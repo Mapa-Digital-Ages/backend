@@ -3,11 +3,11 @@
 import datetime
 import uuid
 
-from sqlalchemy import select, text
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import ClassEnum, StudentProfile, UserProfile, WellBeing, HumorEnum
+from md_backend.models.db_models import ClassEnum, StudentProfile, UserProfile, WellBeing
 from md_backend.utils.security import hash_password
 
 
@@ -75,8 +75,7 @@ class StudentService:
 
         if name:
             query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         if email:
@@ -89,9 +88,7 @@ class StudentService:
 
         return [self._to_dict(user, student) for user, student in rows]
 
-    async def get_student_by_id(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> dict | None:
+    async def get_student_by_id(self, session: AsyncSession, student_id: uuid.UUID) -> dict | None:
         """Get a student by user_id."""
         query = (
             select(UserProfile, StudentProfile)
@@ -149,9 +146,7 @@ class StudentService:
 
         return self._to_dict(user_profile, student_profile)
 
-    async def deactivate_student(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> bool:
+    async def deactivate_student(self, session: AsyncSession, student_id: uuid.UUID) -> bool:
         """Soft delete a student by setting is_active to False."""
         query = (
             select(UserProfile, StudentProfile)
@@ -172,7 +167,7 @@ class StudentService:
 
         await session.commit()
         return True
-    
+
     async def upsert_well_being(
         self,
         session: AsyncSession,
@@ -256,6 +251,25 @@ class StudentService:
         if record is None:
             return None
         return self._well_being_to_dict(record)
+
+    async def get_well_being_range(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        from_date: datetime.date,
+        to_date: datetime.date,
+    ) -> list[dict]:
+        """Return a student's well-being records in date order for a date range."""
+        result = await session.execute(
+            select(WellBeing)
+            .where(
+                WellBeing.student_id == student_id,
+                WellBeing.date >= from_date,
+                WellBeing.date <= to_date,
+            )
+            .order_by(WellBeing.date.asc())
+        )
+        return [self._well_being_to_dict(record) for record in result.scalars()]
 
     def _well_being_to_dict(self, record: WellBeing) -> dict:
         """Map a WellBeing ORM object to a serialisable dict."""
