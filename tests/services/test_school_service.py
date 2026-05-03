@@ -1,4 +1,4 @@
-"""Unit and integration tests for SchoolService and /school router."""
+"""Unit and integration tests for SchoolService and /api/school router."""
 
 import asyncio
 import unittest
@@ -42,7 +42,7 @@ class TestSchoolServiceUnit(unittest.TestCase):
 
 
 class TestSchoolServiceIntegration(unittest.TestCase):
-    """Integration tests against /school via FastAPI TestClient."""
+    """Integration tests against /api/school via FastAPI TestClient."""
 
     def setUp(self):
         from fastapi.testclient import TestClient
@@ -71,12 +71,12 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         return payload
 
     # ------------------------------------------------------------------
-    # POST /school
+    # POST /api/school
     # ------------------------------------------------------------------
 
     def test_create_school_success_returns_201(self):
         resp = self.client.post(
-            "/school",
+            "/api/school",
             json=self._payload("create_ok@test.com", is_private=False, requested_spots=80),
             headers=self.admin_headers,
         )
@@ -99,9 +99,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
         email = "school_phone@test.com"
         resp = self.client.post(
-            "/school",
-            json=self._payload(email, phone_number="+5511444443333"),
-            headers=self.admin_headers,
+            "/api/school", json=self._payload(email, phone_number="+5511444443333")
         )
         self.assertEqual(resp.status_code, 201)
 
@@ -120,11 +118,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         from md_backend.utils.database import AsyncSessionLocal
 
         email = "school_no_phone@test.com"
-        resp = self.client.post(
-            "/school",
-            json=self._payload(email),
-            headers=self.admin_headers,
-        )
+        resp = self.client.post("/api/school", json=self._payload(email))
         self.assertEqual(resp.status_code, 201)
 
         async def fetch():
@@ -138,12 +132,8 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertIsNone(user.phone_number)
 
     def test_create_school_duplicate_email_returns_409(self):
-        self.client.post(
-            "/school", json=self._payload("school_dup@test.com"), headers=self.admin_headers
-        )
-        resp = self.client.post(
-            "/school", json=self._payload("school_dup@test.com"), headers=self.admin_headers
-        )
+        self.client.post("/api/school", json=self._payload("school_dup@test.com"))
+        resp = self.client.post("/api/school", json=self._payload("school_dup@test.com"))
         self.assertEqual(resp.status_code, 409)
         self.assertIn("Email already registered", resp.json()["detail"])
 
@@ -153,9 +143,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             new=AsyncMock(side_effect=IntegrityError("forced", {}, Exception("forced"))),
         ):
             resp = self.client.post(
-                "/school",
-                json=self._payload("school_integrity@test.com"),
-                headers=self.admin_headers,
+                "/api/school", json=self._payload("school_integrity@test.com")
             )
 
         self.assertEqual(resp.status_code, 409)
@@ -163,15 +151,11 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_create_school_invalid_email_returns_422(self):
         payload = self._payload("not-an-email")
-        resp = self.client.post("/school", json=payload, headers=self.admin_headers)
+        resp = self.client.post("/api/school", json=payload)
         self.assertEqual(resp.status_code, 422)
 
     def test_create_school_missing_required_fields_returns_422(self):
-        resp = self.client.post(
-            "/school",
-            json={"email": "incomplete@test.com"},
-            headers=self.admin_headers,
-        )
+        resp = self.client.post("/api/school", json={"email": "incomplete@test.com"})
         self.assertEqual(resp.status_code, 422)
 
     def test_create_school_unauthenticated_returns_401(self):
@@ -192,18 +176,14 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(resp.status_code, 403)
 
     # ------------------------------------------------------------------
-    # GET /school
+    # GET /api/school
     # ------------------------------------------------------------------
 
     def test_list_schools_returns_pagination_envelope(self):
-        self.client.post(
-            "/school", json=self._payload("school_list_a@test.com"), headers=self.admin_headers
-        )
-        self.client.post(
-            "/school", json=self._payload("school_list_b@test.com"), headers=self.admin_headers
-        )
+        self.client.post("/api/school", json=self._payload("school_list_a@test.com"))
+        self.client.post("/api/school", json=self._payload("school_list_b@test.com"))
 
-        resp = self.client.get("/school", headers=self.admin_headers)
+        resp = self.client.get("/api/school")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertIn("items", body)
@@ -216,7 +196,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_list_schools_filter_by_name_partial_case_insensitive(self):
         self.client.post(
-            "/school",
+            "/api/school",
             json={
                 "first_name": "Olympus",
                 "last_name": "Education",
@@ -228,14 +208,14 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
 
-        resp = self.client.get("/school", params={"name": "olympus"}, headers=self.admin_headers)
+        resp = self.client.get("/api/school", params={"name": "olympus"})
         self.assertEqual(resp.status_code, 200)
         items = resp.json()["items"]
         self.assertTrue(len(items) >= 1)
         self.assertTrue(any("Olympus" in item["name"] for item in items))
 
     def test_list_schools_pagination_respects_size_and_page(self):
-        resp = self.client.get("/school", params={"page": 1, "size": 1}, headers=self.admin_headers)
+        resp = self.client.get("/api/school", params={"page": 1, "size": 1})
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["page"], 1)
@@ -247,18 +227,16 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
     # ------------------------------------------------------------------
-    # GET /school/{id}
+    # GET /api/school/{id}
     # ------------------------------------------------------------------
 
     def test_get_school_by_id_returns_correct_data(self):
         create_resp = self.client.post(
-            "/school",
-            json=self._payload("school_getbyid@test.com", requested_spots=42),
-            headers=self.admin_headers,
+            "/api/school", json=self._payload("school_getbyid@test.com", requested_spots=42)
         )
         school_id = create_resp.json()["user_id"]
 
-        resp = self.client.get(f"/school/{school_id}", headers=self.admin_headers)
+        resp = self.client.get(f"/api/school/{school_id}")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["user_id"], school_id)
@@ -268,7 +246,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertNotIn("password", body)
 
     def test_get_school_by_id_not_found_returns_404(self):
-        resp = self.client.get(f"/school/{uuid.uuid4()}", headers=self.admin_headers)
+        resp = self.client.get(f"/api/school/{uuid.uuid4()}")
         self.assertEqual(resp.status_code, 404)
 
     def test_get_school_by_id_unauthenticated_returns_401(self):
@@ -276,19 +254,17 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
     # ------------------------------------------------------------------
-    # PATCH /school/{id}
+    # PATCH /api/school/{id}
     # ------------------------------------------------------------------
 
     def test_update_school_partial_updates_all_fields(self):
         create_resp = self.client.post(
-            "/school",
-            json=self._payload("school_upd_full@test.com"),
-            headers=self.admin_headers,
+            "/api/school", json=self._payload("school_upd_full@test.com")
         )
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
-            f"/school/{school_id}",
+            f"/api/school/{school_id}",
             json={
                 "first_name": "New",
                 "last_name": "Name",
@@ -306,18 +282,14 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["name"], "New Name")
 
     def test_update_school_email_conflict_returns_409(self):
-        self.client.post(
-            "/school", json=self._payload("school_taken@test.com"), headers=self.admin_headers
-        )
+        self.client.post("/api/school", json=self._payload("school_taken@test.com"))
         create_resp = self.client.post(
-            "/school",
-            json=self._payload("school_to_update@test.com"),
-            headers=self.admin_headers,
+            "/api/school", json=self._payload("school_to_update@test.com")
         )
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
-            f"/school/{school_id}",
+            f"/api/school/{school_id}",
             json={"email": "school_taken@test.com"},
             headers=self.admin_headers,
         )
@@ -325,7 +297,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_update_school_not_found_returns_404(self):
         resp = self.client.patch(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             json={"first_name": "Ghost"},
             headers=self.admin_headers,
         )
@@ -333,7 +305,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_update_school_unauthenticated_returns_401(self):
         resp = self.client.patch(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             json={"first_name": "X"},
         )
         self.assertEqual(resp.status_code, 401)
@@ -345,14 +317,14 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             self.client, self.admin_headers, "school_patch_nonadmin@test.com"
         )
         resp = self.client.patch(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             json={"first_name": "X"},
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(resp.status_code, 403)
 
     # ------------------------------------------------------------------
-    # DELETE /school/{id}
+    # DELETE /api/school/{id}
     # ------------------------------------------------------------------
 
     def test_deactivate_school_sets_is_active_false(self):
@@ -360,13 +332,11 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         from md_backend.utils.database import AsyncSessionLocal
 
         create_resp = self.client.post(
-            "/school",
-            json=self._payload("school_deact@test.com"),
-            headers=self.admin_headers,
+            "/api/school", json=self._payload("school_deact@test.com")
         )
         school_id = create_resp.json()["user_id"]
 
-        resp = self.client.delete(f"/school/{school_id}", headers=self.admin_headers)
+        resp = self.client.delete(f"/api/school/{school_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 204)
 
         async def fetch():
@@ -385,11 +355,13 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertIsNotNone(school.deactivated_at)
 
     def test_deactivate_school_not_found_returns_404(self):
-        resp = self.client.delete(f"/school/{uuid.uuid4()}", headers=self.admin_headers)
+        resp = self.client.delete(
+            f"/api/school/{uuid.uuid4()}", headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 404)
 
     def test_deactivate_school_unauthenticated_returns_401(self):
-        resp = self.client.delete(f"/school/{uuid.uuid4()}")
+        resp = self.client.delete(f"/api/school/{uuid.uuid4()}")
         self.assertEqual(resp.status_code, 401)
 
     def test_deactivate_school_non_superadmin_returns_403(self):
@@ -399,7 +371,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             self.client, self.admin_headers, "school_delete_nonadmin@test.com"
         )
         resp = self.client.delete(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(resp.status_code, 403)

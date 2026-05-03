@@ -18,7 +18,7 @@ class TestDatabase(unittest.TestCase):
         self.ctx.__exit__(None, None, None)
 
     def test_init_db_creates_tables(self):
-        response = self.test_client.get("/")
+        response = self.test_client.get("/api")
         self.assertEqual(response.status_code, 200)
 
     def test_session_factory_exists(self):
