@@ -141,9 +141,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             "md_backend.routes.school_router.school_service.create_school",
             new=AsyncMock(side_effect=IntegrityError("forced", {}, Exception("forced"))),
         ):
-            resp = self.client.post(
-                "/school", json=self._payload("school_integrity@test.com")
-            )
+            resp = self.client.post("/school", json=self._payload("school_integrity@test.com"))
 
         self.assertEqual(resp.status_code, 409)
         self.assertIn("integrity", resp.json()["detail"].lower())
@@ -231,9 +229,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_update_school_partial_updates_all_fields(self):
-        create_resp = self.client.post(
-            "/school", json=self._payload("school_upd_full@test.com")
-        )
+        create_resp = self.client.post("/school", json=self._payload("school_upd_full@test.com"))
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
@@ -256,9 +252,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_update_school_email_conflict_returns_409(self):
         self.client.post("/school", json=self._payload("school_taken@test.com"))
-        create_resp = self.client.post(
-            "/school", json=self._payload("school_to_update@test.com")
-        )
+        create_resp = self.client.post("/school", json=self._payload("school_to_update@test.com"))
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
@@ -304,9 +298,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         from md_backend.models.db_models import SchoolProfile, UserProfile
         from md_backend.utils.database import AsyncSessionLocal
 
-        create_resp = self.client.post(
-            "/school", json=self._payload("school_deact@test.com")
-        )
+        create_resp = self.client.post("/school", json=self._payload("school_deact@test.com"))
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.delete(f"/school/{school_id}", headers=self.admin_headers)
@@ -318,9 +310,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
                     select(UserProfile).where(UserProfile.id == uuid.UUID(school_id))
                 )
                 school_row = await session.execute(
-                    select(SchoolProfile).where(
-                        SchoolProfile.user_id == uuid.UUID(school_id)
-                    )
+                    select(SchoolProfile).where(SchoolProfile.user_id == uuid.UUID(school_id))
                 )
                 return user_row.scalar_one(), school_row.scalar_one()
 
@@ -330,9 +320,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertIsNotNone(school.deactivated_at)
 
     def test_deactivate_school_not_found_returns_404(self):
-        resp = self.client.delete(
-            f"/school/{uuid.uuid4()}", headers=self.admin_headers
-        )
+        resp = self.client.delete(f"/school/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 404)
 
     def test_deactivate_school_unauthenticated_returns_401(self):

@@ -241,3 +241,37 @@ class SchoolListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class CreateCompanyRequest(BaseModel):
+    """Request body for POST /company."""
+
+    first_name: str = Field(min_length=1, description="Primeiro nome")
+    last_name: str = Field(min_length=1, description="Sobrenome")
+    email: EmailStr = Field(description="E-mail")
+    password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
+    spots: int = Field(ge=0, description="Quantidade total de vagas")
+
+
+class UpdateCompanyRequest(BaseModel):
+    """Partial update body for PATCH /company/{user_id}."""
+
+    first_name: str | None = None
+    last_name: str | None = None
+    email: EmailStr | None = None
+    phone_number: str | None = None
+    spots: int | None = None
+    is_active: bool | None = None
+
+
+class CompanyResponse(BaseModel):
+    """Response model for a single company."""
+
+    user_id: uuid.UUID
+    email: str
+    phone_number: str | None = None
+    name: str
+    spots: int
+    available_spots: int
+    status: str
+    created_at: str
