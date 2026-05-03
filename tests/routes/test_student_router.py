@@ -330,6 +330,25 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
 
+    def test_get_deleted_student_returns_404(self):
+        create_resp = self.client.post(
+            "/student",
+            json=_student_payload("student_get_deleted@example.com"),
+            headers=self.admin_headers,
+        )
+        student_id = create_resp.json()["user_id"]
+
+        delete_response = self.client.delete(
+            f"/student/{student_id}", headers=self.admin_headers
+        )
+        self.assertEqual(delete_response.status_code, 204)
+
+        response = self.client.get(
+            f"/student/{student_id}", headers=self.admin_headers
+        )
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "Student not found")
+
     # ------------------------------------------------------------------
     # PUT /student/{id}
     # ------------------------------------------------------------------

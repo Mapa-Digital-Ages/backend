@@ -112,7 +112,11 @@ class StudentService:
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(StudentProfile.user_id == student_id)
+            .where(
+                StudentProfile.user_id == student_id,
+                UserProfile.is_active.is_(True),
+                StudentProfile.deactivated_at.is_(None),
+            )
         )
 
         result = await session.execute(query)

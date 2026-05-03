@@ -123,25 +123,6 @@ async def update_my_guardian(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@guardian_router.patch("/me/disable", status_code=status.HTTP_204_NO_CONTENT)
-async def disable_my_guardian(
-    session: AsyncSession = Depends(get_db_session),
-    current_user: dict = Depends(get_current_approved_user),
-):
-    """Deactivate the authenticated guardian's own account."""
-    success = await guardian_service.deactivate_guardian(
-        session=session, guardian_id=uuid.UUID(current_user["user_id"])
-    )
-
-    if not success:
-        return JSONResponse(
-            content={"detail": "Guardian not found"},
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
-
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
-
-
 @guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_guardian(
     session: AsyncSession = Depends(get_db_session),

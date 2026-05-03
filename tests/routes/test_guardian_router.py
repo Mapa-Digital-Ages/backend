@@ -47,15 +47,15 @@ class TestGuardianSelfRoutes(unittest.TestCase):
         self.assertEqual(body["last_name"], "Guardian")
         self.assertEqual(body["phone_number"], "+5551999999999")
 
-    def test_guardian_can_disable_own_profile(self):
+    def test_guardian_can_delete_own_profile(self):
         token = create_approved_user(
             self.client,
             self.admin_headers,
-            "guardian_self_disable@example.com",
+            "guardian_self_delete@example.com",
         )
 
-        response = self.client.patch(
-            "/guardian/me/disable",
+        response = self.client.delete(
+            "/guardian/me",
             headers={"Authorization": f"Bearer {token}"},
         )
         me_response = self.client.get(
