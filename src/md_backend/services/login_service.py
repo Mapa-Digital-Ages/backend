@@ -6,9 +6,12 @@ from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import (
     GuardianStatusEnum,
+    LoginHistory,
     UserProfile,
 )
-from md_backend.utils.security import create_access_token, verify_password
+from md_backend.utils.security import create_access_token, hash_password, verify_password
+
+_DUMMY_HASH: str = hash_password("__dummy_timing_guard__")
 
 
 def _derive_role(user: UserProfile) -> str:
@@ -22,7 +25,9 @@ def _derive_role(user: UserProfile) -> str:
 class LoginService:
     """Service for handling user login."""
 
-    async def login(self, email: str, password: str, session: AsyncSession) -> dict:
+    async def login(
+        self, email: str, password: str, session: AsyncSession, ip: str | None = None
+    ) -> dict:
         """Authenticate user and return JWT token, or error dict."""
         result = await session.execute(
             select(UserProfile)
@@ -36,6 +41,7 @@ class LoginService:
         user = result.scalar_one_or_none()
 
         if user is None:
+            verify_password(password, _DUMMY_HASH)
             return {"error": "invalid_credentials"}
 
         if not verify_password(password, user.password):
@@ -47,7 +53,10 @@ class LoginService:
             if user.guardian_profile.guardian_status == GuardianStatusEnum.REJECTED:
                 return {"error": "REJECTED"}
 
-        token = create_access_token({"sub": user.email, "user_id": str(user.id)})
+        session.add(LoginHistory(user_id=user.id, ip=ip))
+        await session.commit()
+
+        token = create_access_token({"sub": str(user.id), "user_id": str(user.id)})
         name = f"{user.first_name} {user.last_name}".strip()
         return {
             "token": token,

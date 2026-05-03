@@ -1,12 +1,13 @@
 """Login Router."""
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import LoginRequest
 from md_backend.services.login_service import LoginService
 from md_backend.utils.database import get_db_session
+from md_backend.utils.limiter import limiter
 
 login_service = LoginService()
 
@@ -14,10 +15,16 @@ login_router = APIRouter(prefix="/login")
 
 
 @login_router.post("")
-async def login(request: LoginRequest, session: AsyncSession = Depends(get_db_session)):
+@limiter.limit("10/minute")
+async def login(
+    request: Request,
+    body: LoginRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
     """Authenticate user and return JWT token."""
+    ip = request.client.host if request.client else None
     result = await login_service.login(
-        email=request.email, password=request.password, session=session
+        email=body.email, password=body.password, session=session, ip=ip
     )
 
     if result.get("error") == "invalid_credentials":
