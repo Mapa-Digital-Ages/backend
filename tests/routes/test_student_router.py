@@ -111,7 +111,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         from md_backend.utils.database import AsyncSessionLocal
 
         school_resp = self.client.post(
-            "/school",
+            "/api/school",
             json={
                 "first_name": "School",
                 "last_name": "Host",
@@ -273,7 +273,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
 
     def test_get_student_by_id_returns_200(self):
         create_resp = self.client.post(
-            "/api/api/student",
+            "/api/student",
             json=_student_payload("student_getbyid@example.com"),
             headers=self.admin_headers,
         )
@@ -302,7 +302,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         from md_backend.models.api_models import CreateSchoolRequest  # noqa: F401
 
         school_create = self.client.post(
-            "/school",
+            "/api/school",
             json={
                 "first_name": "School",
                 "last_name": "Host",
