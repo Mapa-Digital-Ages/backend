@@ -54,6 +54,7 @@ def _session_with_user(user):
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = user
     mock_session = AsyncMock()
+    mock_session.add = MagicMock()
     mock_session.execute.return_value = mock_result
     return mock_session
 
@@ -77,15 +78,11 @@ class TestLoginService(unittest.TestCase):
 
     def test_login_success_admin(self):
         service = LoginService()
-        user = _make_user(
-            has_guardian=False, has_admin=True, is_superadmin=True
-        )
+        user = _make_user(has_guardian=False, has_admin=True, is_superadmin=True)
         session = _session_with_user(user)
 
         with patch("md_backend.services.login_service.verify_password", return_value=True):
-            with patch(
-                "md_backend.services.login_service.create_access_token", return_value="tok"
-            ):
+            with patch("md_backend.services.login_service.create_access_token", return_value="tok"):
                 result = asyncio.run(service.login(user.email, "pass", session))
 
         self.assertEqual(result["role"], "admin")
@@ -96,9 +93,7 @@ class TestLoginService(unittest.TestCase):
         session = _session_with_user(user)
 
         with patch("md_backend.services.login_service.verify_password", return_value=True):
-            with patch(
-                "md_backend.services.login_service.create_access_token", return_value="tok"
-            ):
+            with patch("md_backend.services.login_service.create_access_token", return_value="tok"):
                 result = asyncio.run(service.login(user.email, "pass", session))
 
         self.assertEqual(result["role"], "student")

@@ -11,6 +11,7 @@ import tests.keys_test  # noqa: F401
 from md_backend.main import app
 from md_backend.models.db_models import StudentProfile, UserProfile
 from md_backend.utils.database import AsyncSessionLocal
+from tests.helpers import get_admin_headers
 
 
 def _guardian_payload(email, **overrides):
@@ -41,6 +42,7 @@ class TestRegisterRouter(unittest.TestCase):
     def setUp(self):
         self.ctx = TestClient(app, raise_server_exceptions=False)
         self.test_client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.test_client)
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -76,9 +78,7 @@ class TestRegisterRouter(unittest.TestCase):
 
     def test_register_guardian_without_phone_number_persists_null(self):
         email = "guardian_no_phone@test.com"
-        response = self.test_client.post(
-            "/register/guardian", json=_guardian_payload(email)
-        )
+        response = self.test_client.post("/register/guardian", json=_guardian_payload(email))
         self.assertEqual(response.status_code, 201)
 
         async def fetch():
@@ -92,9 +92,7 @@ class TestRegisterRouter(unittest.TestCase):
         self.assertIsNone(user.phone_number)
 
     def test_register_guardian_duplicate_email(self):
-        self.test_client.post(
-            "/register/guardian", json=_guardian_payload("duplicate@test.com")
-        )
+        self.test_client.post("/register/guardian", json=_guardian_payload("duplicate@test.com"))
         response = self.test_client.post(
             "/register/guardian", json=_guardian_payload("duplicate@test.com")
         )
@@ -144,15 +142,14 @@ class TestRegisterRouter(unittest.TestCase):
                 "password": "password1234",
                 "is_private": True,
             },
+            headers=self.admin_headers,
         )
         school_id = school_resp.json()["user_id"]
 
         email = "student_optional@test.com"
         response = self.test_client.post(
             "/register/student",
-            json=_student_payload(
-                email, phone_number="+5511777776666", school_id=school_id
-            ),
+            json=_student_payload(email, phone_number="+5511777776666", school_id=school_id),
         )
         self.assertEqual(response.status_code, 201)
 
@@ -173,9 +170,7 @@ class TestRegisterRouter(unittest.TestCase):
 
     def test_register_student_without_optional_fields_persists_null(self):
         email = "student_no_optional@test.com"
-        response = self.test_client.post(
-            "/register/student", json=_student_payload(email)
-        )
+        response = self.test_client.post("/register/student", json=_student_payload(email))
         self.assertEqual(response.status_code, 201)
 
         async def fetch():

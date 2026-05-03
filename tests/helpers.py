@@ -22,9 +22,7 @@ def get_admin_headers(test_client):
 
 def get_admin_id(test_client, admin_headers):
     """Return the id of the shared superadmin user."""
-    resp = test_client.get(
-        "/admin/users", params={"role": "admin"}, headers=admin_headers
-    )
+    resp = test_client.get("/admin/users", params={"role": "admin"}, headers=admin_headers)
     for user in resp.json():
         if user["email"] == ADMIN_EMAIL:
             return user["id"]

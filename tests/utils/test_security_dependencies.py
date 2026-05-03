@@ -69,9 +69,7 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
         session = _session_with_user(None)
         with self.assertRaises(HTTPException) as ctx:
             asyncio.run(
-                get_current_approved_user(
-                    payload=self._payload(uuid.uuid4()), session=session
-                )
+                get_current_approved_user(payload=self._payload(uuid.uuid4()), session=session)
             )
         self.assertEqual(ctx.exception.status_code, 401)
         self.assertEqual(ctx.exception.detail, "User not found")
@@ -80,40 +78,28 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
         user = _build_user(is_active=False)
         session = _session_with_user(user)
         with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(
-                get_current_approved_user(payload=self._payload(user.id), session=session)
-            )
+            asyncio.run(get_current_approved_user(payload=self._payload(user.id), session=session))
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertEqual(ctx.exception.detail, "Account deactivated")
 
     def test_guardian_waiting_raises_403(self):
-        user = _build_user(
-            has_guardian=True, guardian_status=GuardianStatusEnum.WAITING
-        )
+        user = _build_user(has_guardian=True, guardian_status=GuardianStatusEnum.WAITING)
         session = _session_with_user(user)
         with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(
-                get_current_approved_user(payload=self._payload(user.id), session=session)
-            )
+            asyncio.run(get_current_approved_user(payload=self._payload(user.id), session=session))
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertEqual(ctx.exception.detail, "Account awaiting approval")
 
     def test_guardian_rejected_raises_403(self):
-        user = _build_user(
-            has_guardian=True, guardian_status=GuardianStatusEnum.REJECTED
-        )
+        user = _build_user(has_guardian=True, guardian_status=GuardianStatusEnum.REJECTED)
         session = _session_with_user(user)
         with self.assertRaises(HTTPException) as ctx:
-            asyncio.run(
-                get_current_approved_user(payload=self._payload(user.id), session=session)
-            )
+            asyncio.run(get_current_approved_user(payload=self._payload(user.id), session=session))
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertEqual(ctx.exception.detail, "Account rejected")
 
     def test_approved_guardian_returns_user_dict(self):
-        user = _build_user(
-            has_guardian=True, guardian_status=GuardianStatusEnum.APPROVED
-        )
+        user = _build_user(has_guardian=True, guardian_status=GuardianStatusEnum.APPROVED)
         session = _session_with_user(user)
         result = asyncio.run(
             get_current_approved_user(payload=self._payload(user.id), session=session)

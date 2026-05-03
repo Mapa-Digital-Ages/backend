@@ -49,9 +49,7 @@ class TestRegisterServiceIntegrityError(unittest.TestCase):
         mock_session.add = MagicMock()
         mock_session.commit.side_effect = IntegrityError("", "", Exception())
 
-        result = asyncio.run(
-            service.register_guardian(**_guardian_kwargs(), session=mock_session)
-        )
+        result = asyncio.run(service.register_guardian(**_guardian_kwargs(), session=mock_session))
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()
@@ -67,9 +65,7 @@ class TestRegisterServiceIntegrityError(unittest.TestCase):
         mock_session.add = MagicMock()
         mock_session.commit.side_effect = IntegrityError("", "", Exception())
 
-        result = asyncio.run(
-            service.register_student(**_student_kwargs(), session=mock_session)
-        )
+        result = asyncio.run(service.register_student(**_student_kwargs(), session=mock_session))
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()
@@ -129,9 +125,7 @@ class TestRegisterServiceSuccess(unittest.TestCase):
         mock_session.add = MagicMock()
 
         result = asyncio.run(
-            service.register_guardian(
-                **_guardian_kwargs(email="ok@test.com"), session=mock_session
-            )
+            service.register_guardian(**_guardian_kwargs(email="ok@test.com"), session=mock_session)
         )
 
         assert result is not None
@@ -173,9 +167,7 @@ class TestRegisterServiceSuccess(unittest.TestCase):
         mock_session.add = MagicMock()
 
         result = asyncio.run(
-            service.register_student(
-                **_student_kwargs(email="stu@test.com"), session=mock_session
-            )
+            service.register_student(**_student_kwargs(email="stu@test.com"), session=mock_session)
         )
 
         assert result is not None

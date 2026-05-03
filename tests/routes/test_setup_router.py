@@ -32,9 +32,7 @@ class TestSetupRouter(unittest.TestCase):
         self.ctx.__exit__(None, None, None)
 
     def test_setup_creates_superadmin(self):
-        response = self.test_client.post(
-            "/setup", json=_setup_payload("sa_create@test.com")
-        )
+        response = self.test_client.post("/setup", json=_setup_payload("sa_create@test.com"))
         self.assertIn(response.status_code, (201, 409))
         if response.status_code == 201:
             self.assertEqual(response.json(), {"detail": "Superadmin created successfully"})

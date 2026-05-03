@@ -25,12 +25,11 @@ def _make_student(test_client, admin_headers):
     return resp.json()["user_id"]
 
 
-def _make_upload(test_client, admin_headers, student_id):
+def _make_upload(test_client, admin_headers, student_id, content=b"%PDF-1.4 fake pdf content"):
     """Helper: upload a file for a student and return the response."""
-    file_content = b"fake pdf content"
     return test_client.post(
         f"/student/{student_id}/uploads",
-        files={"file": ("test.pdf", io.BytesIO(file_content), "application/pdf")},
+        files={"file": ("test.pdf", io.BytesIO(content), "application/pdf")},
         headers=admin_headers,
     )
 
@@ -52,9 +51,10 @@ class TestStudentUploadPost(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         data = response.json()
         self.assertIn("id", data)
-        self.assertIn("file_url", data)
+        self.assertIn("download_url", data)
         self.assertIn("file_name", data)
         self.assertNotIn("password", data)
+        self.assertEqual(data["download_url"], f"/uploads/{data['id']}/content")
 
     def test_upload_nonexistent_student_returns_404(self):
         response = _make_upload(self.test_client, self.admin_headers, str(uuid.uuid4()))
@@ -86,7 +86,7 @@ class TestStudentUploadPost(unittest.TestCase):
 
 
 class TestStudentUploadGet(unittest.TestCase):
-    """Integration tests for GET /student/{student_id}/uploads and GET /upload/{id}."""
+    """Integration tests for GET /student/{student_id}/uploads and GET /uploads/{id}."""
 
     def setUp(self):
         self.ctx = TestClient(app, raise_server_exceptions=False)
@@ -126,37 +126,71 @@ class TestStudentUploadGet(unittest.TestCase):
     def test_get_upload_by_id_success(self):
         upload_id = self.upload["id"]
         response = self.test_client.get(
-            f"/upload/{upload_id}",
+            f"/uploads/{upload_id}",
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["id"], upload_id)
+        self.assertEqual(data["download_url"], f"/uploads/{upload_id}/content")
         self.assertNotIn("password", data)
 
     def test_get_upload_by_id_not_found(self):
         response = self.test_client.get(
-            f"/upload/{uuid.uuid4()}",
+            f"/uploads/{uuid.uuid4()}",
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 404)
 
-    def test_get_upload_another_student_returns_403(self):
-        """Simula aluno tentando acessar upload de outro aluno."""
+    def test_get_upload_another_student_as_admin(self):
         other_student_id = _make_student(self.test_client, self.admin_headers)
-        other_upload = _make_upload(
-            self.test_client, self.admin_headers, other_student_id
-        ).json()
+        other_upload = _make_upload(self.test_client, self.admin_headers, other_student_id).json()
 
-        # Tenta acessar o upload do outro aluno como o primeiro student
-        # Como não temos login de aluno ainda, verificamos que admin consegue
-        # e que um ID inexistente retorna 404
         response = self.test_client.get(
-            f"/upload/{other_upload['id']}",
+            f"/uploads/{other_upload['id']}",
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
 
     def test_list_uploads_unauthenticated_returns_401(self):
         response = self.test_client.get(f"/student/{self.student_id}/uploads")
+        self.assertEqual(response.status_code, 401)
+
+
+class TestStudentUploadDownload(unittest.TestCase):
+    """Integration tests for GET /uploads/{id}/content."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.test_client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.test_client)
+        self.student_id = _make_student(self.test_client, self.admin_headers)
+        self.uploaded_bytes = b"%PDF-1.4 round-trip-test-content"
+        upload_resp = _make_upload(
+            self.test_client, self.admin_headers, self.student_id, content=self.uploaded_bytes
+        )
+        self.upload = upload_resp.json()
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_download_returns_original_bytes(self):
+        response = self.test_client.get(
+            f"/uploads/{self.upload['id']}/content",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, self.uploaded_bytes)
+        self.assertEqual(response.headers["content-type"], "application/pdf")
+        self.assertIn("test.pdf", response.headers["content-disposition"])
+
+    def test_download_unknown_id_returns_404(self):
+        response = self.test_client.get(
+            f"/uploads/{uuid.uuid4()}/content",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_download_unauthenticated_returns_401(self):
+        response = self.test_client.get(f"/uploads/{self.upload['id']}/content")
         self.assertEqual(response.status_code, 401)
