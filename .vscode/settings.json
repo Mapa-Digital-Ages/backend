@@ -40,5 +40,4 @@
     "python.testing.pytestEnabled": false,
     "python.testing.unittestEnabled": true,
     "python.terminal.useEnvFile": true,
-    "python.REPL.enableREPLSmartSend": false,
 }
