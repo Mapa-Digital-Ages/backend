@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from md_backend.models.api_models import StudentRequest, StudentResponse, StudentUpdateRequest
 from md_backend.services.student_service import StudentService
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_approved_user
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 student_service = StudentService()
 student_router = APIRouter(prefix="/student")
@@ -19,19 +19,13 @@ student_router = APIRouter(prefix="/student")
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=StudentResponse,
+    dependencies=[Depends(get_current_superadmin)],
 )
 async def create_student(
     request: StudentRequest,
     session: AsyncSession = Depends(get_db_session),
-    current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Restricted to superadmin or approved guardian/school users."""
-    if not current_user.get("is_superadmin"):
-        return JSONResponse(
-            content={"detail": "Access denied"},
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
-
+    """Create a new student. Restricted to superadmin."""
     result = await student_service.create_student(
         first_name=request.first_name,
         last_name=request.last_name,
@@ -53,10 +47,12 @@ async def create_student(
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 
-@student_router.get("")
+@student_router.get(
+    "",
+    dependencies=[Depends(get_current_approved_user)],
+)
 async def list_students(
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
     name: str | None = Query(default=None, description="Filter by first or last name"),
     email: str | None = Query(default=None, description="Filter by email"),
     page: int = Query(default=1, ge=1, description="Page number"),
@@ -69,11 +65,13 @@ async def list_students(
     return JSONResponse(content=students, status_code=status.HTTP_200_OK)
 
 
-@student_router.get("/{student_id}")
+@student_router.get(
+    "/{student_id}",
+    dependencies=[Depends(get_current_approved_user)],
+)
 async def get_student(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
 ):
     """Get a student by ID."""
     result = await student_service.get_student_by_id(session=session, student_id=student_id)
@@ -87,18 +85,20 @@ async def get_student(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@student_router.put("/{student_id}")
+@student_router.put(
+    "/{student_id}",
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def update_student(
     student_id: uuid.UUID,
     request: StudentUpdateRequest,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
 ):
-    """Update a student by ID."""
+    """Update a student by ID. Restricted to superadmin."""
     result = await student_service.update_student(
         session=session,
         student_id=student_id,
-        data=request.model_dump(),
+        data=request.model_dump(exclude_unset=True),
     )
 
     if result is None:
@@ -110,16 +110,17 @@ async def update_student(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@student_router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+@student_router.delete(
+    "/{student_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def delete_student(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
 ):
-    """Soft delete a student by ID."""
-    success = await student_service.deactivate_student(
-        session=session, student_id=student_id
-    )
+    """Soft delete a student by ID. Restricted to superadmin."""
+    success = await student_service.deactivate_student(session=session, student_id=student_id)
 
     if not success:
         return JSONResponse(
