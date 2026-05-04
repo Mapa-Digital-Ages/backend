@@ -9,9 +9,9 @@ from md_backend.models.db_models import (
     LoginHistory,
     UserProfile,
 )
-from md_backend.utils.security import create_access_token, hash_password, verify_password
+from md_backend.utils.security import _hash_sync, create_access_token, verify_password
 
-_DUMMY_HASH: str = hash_password("__dummy_timing_guard__")
+_DUMMY_HASH: str = _hash_sync("__dummy_timing_guard__")
 
 
 def _derive_role(user: UserProfile) -> str:
@@ -41,10 +41,10 @@ class LoginService:
         user = result.scalar_one_or_none()
 
         if user is None:
-            verify_password(password, _DUMMY_HASH)
+            await verify_password(password, _DUMMY_HASH)
             return {"error": "invalid_credentials"}
 
-        if not verify_password(password, user.password):
+        if not await verify_password(password, user.password):
             return {"error": "invalid_credentials"}
 
         if not user.is_active:
