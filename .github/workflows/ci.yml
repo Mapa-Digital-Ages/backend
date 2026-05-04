@@ -88,6 +88,12 @@ jobs:
           uv run coverage run -a -m unittest discover -s . -p "test_s3*.py"
           uv run coverage report -m --fail-under=70
         env:
+          DATABASE_URL: sqlite+aiosqlite:///
+          JWT_SECRET_KEY: ci-test-secret-key-for-unit-tests-32chars
+          PASSWORD_PEPPER: ci-test-pepper-key-for-unit-tests-32chars
+          SETUP_TOKEN: ci-test-setup-token-for-unit-tests-32chars
+          JWT_ALGORITHM: HS256
+          JWT_EXPIRATION_MINUTES: "30"
           STORAGE_BACKEND: s3
           AWS_S3_BUCKET: test-bucket
           AWS_S3_REGION: us-east-1
@@ -118,3 +124,8 @@ jobs:
 
       - name: Run Pyright
         run: uv run pyright src/
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///
+          JWT_SECRET_KEY: ci-test-secret-key-for-unit-tests-32chars
+          PASSWORD_PEPPER: ci-test-pepper-key-for-unit-tests-32chars
+          SETUP_TOKEN: ci-test-setup-token-for-unit-tests-32chars
