@@ -14,7 +14,7 @@ from md_backend.models.api_models import (
 )
 from md_backend.services.guardian_service import GuardianService
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_superadmin
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 guardian_service = GuardianService()
 guardian_router = APIRouter(prefix="/guardian")
@@ -105,8 +105,14 @@ async def update_my_guardian(
 
     if result is None:
         return JSONResponse(
-            content={"detail": "Guardian not found or email already in use"},
+            content={"detail": "Guardian not found"},
             status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    if result == "email_conflict":
+        return JSONResponse(
+            content={"detail": "Email already in use"},
+            status_code=status.HTTP_409_CONFLICT,
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
@@ -131,7 +137,11 @@ async def delete_my_guardian(
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
 
 
-@guardian_router.get("/{guardian_id}", response_model=GuardianResponse)
+@guardian_router.get(
+    "/{guardian_id}",
+    response_model=GuardianResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def get_guardian(
     guardian_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
