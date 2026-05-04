@@ -199,7 +199,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             self.client, self.admin_headers, "guardian_creator@example.com"
         )
         response = self.client.post(
-            "/student",
+            "/api/student",
             json=_student_payload("guardian_owned_student@example.com"),
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -230,7 +230,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertIsNotNone(link, "guardian-student link was not created")
 
         login_response = self.client.post(
-            "/login",
+            "/api/login",
             json={
                 "email": "guardian_owned_student@example.com",
                 "password": "securepass123",
@@ -258,9 +258,10 @@ class TestStudentRouterIntegration(unittest.TestCase):
         response = self.client.get("/api/student", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertTrue(len(data) >= 2)
-        for item in data:
+        self.assertIn("items", data)
+        self.assertIn("total", data)
+        self.assertGreaterEqual(len(data["items"]), 2)
+        for item in data["items"]:
             self.assertNotIn("password", item)
             self.assertTrue(item["is_active"])
 
@@ -275,7 +276,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             "/api/student", params={"name": "zelda"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["first_name"] == "Zelda" for item in items))
 
     def test_list_students_filter_by_email(self):
@@ -291,7 +292,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["email"] == "student_filter_email@example.com" for item in items))
 
     def test_list_students_unauthenticated_returns_401(self):
@@ -317,22 +318,24 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "student_getbyid@example.com")
 
     def test_get_student_not_found_returns_404(self):
-        response = self.client.get(f"/student/{uuid.uuid4()}", headers=self.admin_headers)
+        response = self.client.get(f"/api/student/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
 
     def test_get_deleted_student_returns_404(self):
         create_resp = self.client.post(
-            "/student",
+            "/api/student",
             json=_student_payload("student_get_deleted@example.com"),
             headers=self.admin_headers,
         )
         student_id = create_resp.json()["user_id"]
 
-        delete_response = self.client.delete(f"/student/{student_id}", headers=self.admin_headers)
+        delete_response = self.client.delete(
+            f"/api/student/{student_id}", headers=self.admin_headers
+        )
         self.assertEqual(delete_response.status_code, 204)
 
-        response = self.client.get(f"/student/{student_id}", headers=self.admin_headers)
+        response = self.client.get(f"/api/student/{student_id}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
 
