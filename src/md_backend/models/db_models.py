@@ -95,9 +95,7 @@ class PasswordResetCode(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), nullable=False, index=True
     )
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    expires_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False
-    )
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -117,7 +115,7 @@ class AdminProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     subject_area: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
