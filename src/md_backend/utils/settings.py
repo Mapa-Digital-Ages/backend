@@ -17,14 +17,15 @@ class Settings(BaseSettings):
     TEST_VARIABLE: str = ""
 
     # Database
-    DATABASE_URL: str = ""
+    DATABASE_URL: str = Field(min_length=1)
 
-    # Security — both fields are required and must be at least 32 characters.
+    # Security — all secret fields are required and must be at least 32 characters.
     # An empty or short value means the service was deployed without secrets configured.
     JWT_SECRET_KEY: str = Field(min_length=32)
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 30
     PASSWORD_PEPPER: str = Field(min_length=32)
+    SETUP_TOKEN: str = Field(min_length=32)
 
     # CORS — comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com"
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
