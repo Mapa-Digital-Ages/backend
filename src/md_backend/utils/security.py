@@ -1,5 +1,6 @@
 """Security utilities for password hashing and JWT tokens."""
 
+import asyncio
 import datetime
 import hashlib
 import hmac
@@ -35,14 +36,25 @@ def _pepper_bytes(plain_password: str) -> bytes:
     )
 
 
-def hash_password(plain_password: str) -> str:
-    """Hash a password with HMAC-pepper and bcrypt."""
+def _hash_sync(plain_password: str) -> str:
     return bcrypt.hashpw(_pepper_bytes(plain_password), bcrypt.gensalt()).decode("utf-8")
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash (constant-time)."""
-    return bcrypt.checkpw(_pepper_bytes(plain_password), hashed_password.encode("utf-8"))
+def _verify_sync(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(_pepper_bytes(plain_password), hashed_password.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+async def hash_password(plain_password: str) -> str:
+    """Hash a password with HMAC-pepper and bcrypt (off event loop)."""
+    return await asyncio.to_thread(_hash_sync, plain_password)
+
+
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash (constant-time, off event loop)."""
+    return await asyncio.to_thread(_verify_sync, plain_password, hashed_password)
 
 
 def create_access_token(data: dict) -> str:
