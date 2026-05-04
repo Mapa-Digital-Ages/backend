@@ -65,7 +65,9 @@ class TestLoginService(unittest.TestCase):
         user = _make_user(guardian_status=GuardianStatusEnum.APPROVED)
         session = _session_with_user(user)
 
-        with patch("md_backend.services.login_service.verify_password", return_value=True):
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
             with patch(
                 "md_backend.services.login_service.create_access_token", return_value="tok123"
             ):
@@ -81,7 +83,9 @@ class TestLoginService(unittest.TestCase):
         user = _make_user(has_guardian=False, has_admin=True, is_superadmin=True)
         session = _session_with_user(user)
 
-        with patch("md_backend.services.login_service.verify_password", return_value=True):
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
             with patch("md_backend.services.login_service.create_access_token", return_value="tok"):
                 result = asyncio.run(service.login(user.email, "pass", session))
 
@@ -92,7 +96,9 @@ class TestLoginService(unittest.TestCase):
         user = _make_user(has_guardian=False, has_student=True)
         session = _session_with_user(user)
 
-        with patch("md_backend.services.login_service.verify_password", return_value=True):
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
             with patch("md_backend.services.login_service.create_access_token", return_value="tok"):
                 result = asyncio.run(service.login(user.email, "pass", session))
 
@@ -110,7 +116,9 @@ class TestLoginService(unittest.TestCase):
         user = _make_user()
         session = _session_with_user(user)
 
-        with patch("md_backend.services.login_service.verify_password", return_value=False):
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=False)
+        ):
             result = asyncio.run(service.login(user.email, "wrong", session))
 
         self.assertEqual(result, {"error": "invalid_credentials"})
@@ -120,7 +128,9 @@ class TestLoginService(unittest.TestCase):
         user = _make_user(guardian_status=GuardianStatusEnum.WAITING)
         session = _session_with_user(user)
 
-        with patch("md_backend.services.login_service.verify_password", return_value=True):
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
             result = asyncio.run(service.login(user.email, "pass", session))
 
         self.assertEqual(result, {"error": "WAITING"})
@@ -130,7 +140,9 @@ class TestLoginService(unittest.TestCase):
         user = _make_user(guardian_status=GuardianStatusEnum.REJECTED)
         session = _session_with_user(user)
 
-        with patch("md_backend.services.login_service.verify_password", return_value=True):
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
             result = asyncio.run(service.login(user.email, "pass", session))
 
         self.assertEqual(result, {"error": "REJECTED"})
