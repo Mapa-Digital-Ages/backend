@@ -91,7 +91,6 @@ jobs:
           SETUP_TOKEN: ci-test-setup-token-for-unit-tests-32chars
           JWT_ALGORITHM: HS256
           JWT_EXPIRATION_MINUTES: "30"
-          STORAGE_BACKEND: s3
           AWS_S3_BUCKET: test-bucket
           AWS_S3_REGION: us-east-1
           AWS_ACCESS_KEY_ID: minioadmin
