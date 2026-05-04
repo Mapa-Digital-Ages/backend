@@ -450,22 +450,3 @@ class GuardianService:
             ),
             "students": students,
         }
-
-    def _to_list_response_dict(
-        self,
-        user_profile: UserProfile,
-        guardian_profile: GuardianProfile,
-        student_count: int,
-    ) -> dict:
-        """Map profiles to a list response dict."""
-        return {
-            "user_id": str(guardian_profile.user_id),
-            "first_name": user_profile.first_name,
-            "last_name": user_profile.last_name,
-            "email": user_profile.email,
-            "phone_number": user_profile.phone_number,
-            "guardian_status": guardian_profile.guardian_status.value,
-            "is_active": user_profile.is_active,
-            "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
-            "student_count": student_count,
-        }

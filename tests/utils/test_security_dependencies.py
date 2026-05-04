@@ -5,7 +5,9 @@ import unittest
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
+import jwt
 from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 
 import tests.keys_test  # noqa: F401
 from md_backend.models.db_models import GuardianStatusEnum
@@ -14,6 +16,7 @@ from md_backend.utils.security import (
     get_current_superadmin,
     get_current_user,
 )
+from md_backend.utils.settings import settings
 
 
 def _build_user(
@@ -60,10 +63,47 @@ class TestGetCurrentUser(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 401)
         self.assertEqual(ctx.exception.detail, "Missing authorization header")
 
+    def test_expired_token_raises_401(self):
+        expired = jwt.encode(
+            {"user_id": str(uuid.uuid4()), "exp": 1},
+            settings.JWT_SECRET_KEY,
+            algorithm=settings.JWT_ALGORITHM,
+        )
+        creds = MagicMock(spec=HTTPAuthorizationCredentials)
+        creds.credentials = expired
+        with self.assertRaises(HTTPException) as ctx:
+            asyncio.run(get_current_user(credentials=creds))
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.detail, "Token expired")
+
+    def test_invalid_token_raises_401(self):
+        creds = MagicMock(spec=HTTPAuthorizationCredentials)
+        creds.credentials = "not.a.valid.token"
+        with self.assertRaises(HTTPException) as ctx:
+            asyncio.run(get_current_user(credentials=creds))
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.detail, "Invalid token")
+
 
 class TestGetCurrentApprovedUser(unittest.TestCase):
     def _payload(self, user_id):
         return {"sub": "u@test.com", "user_id": str(user_id)}
+
+    def test_bad_user_id_in_payload_raises_401(self):
+        session = AsyncMock()
+        with self.assertRaises(HTTPException) as ctx:
+            asyncio.run(
+                get_current_approved_user(payload={"user_id": "not-a-uuid"}, session=session)
+            )
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.detail, "Invalid token")
+
+    def test_missing_user_id_in_payload_raises_401(self):
+        session = AsyncMock()
+        with self.assertRaises(HTTPException) as ctx:
+            asyncio.run(get_current_approved_user(payload={}, session=session))
+        self.assertEqual(ctx.exception.status_code, 401)
+        self.assertEqual(ctx.exception.detail, "Invalid token")
 
     def test_user_not_found_raises_401(self):
         session = _session_with_user(None)

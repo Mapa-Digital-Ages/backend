@@ -29,6 +29,12 @@ class TestPasswordHashing(unittest.TestCase):
         self.assertFalse(asyncio.run(verify_password("wrongpassword", hashed)))
 
 
+class TestVerifyPasswordBadHash(unittest.TestCase):
+    def test_verify_with_malformed_hash_returns_false(self):
+        result = asyncio.run(verify_password("anypassword", "not_a_valid_hash"))
+        self.assertFalse(result)
+
+
 class TestJWT(unittest.TestCase):
     def test_create_and_decode_token(self):
         data = {"sub": "user@test.com", "user_id": 1}

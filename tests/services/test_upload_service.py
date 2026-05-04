@@ -264,3 +264,115 @@ class TestGetUploadContent(unittest.TestCase):
             )
         )
         self.assertIsNone(result)
+
+    def test_returns_none_when_storage_has_no_bytes(self):
+        """Upload metadata exists but storage returns None for the bytes."""
+
+        class EmptyStorage(StorageService):
+            async def upload_file(self, upload_id, storage_key, file_bytes, content_type):
+                return None
+
+            async def read_file(self, upload_id, storage_key):
+                return None
+
+        service = UploadService(storage=EmptyStorage())
+
+        upload = MagicMock()
+        upload.id = uuid.uuid4()
+        upload.student_id = uuid.uuid4()
+        upload.storage_key = "missing/key"
+
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = upload
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        result = asyncio.run(
+            service.get_upload_content(
+                upload_id=upload.id,
+                requester_id=str(uuid.uuid4()),
+                session=mock_session,
+                is_superadmin=True,
+            )
+        )
+        self.assertIsNone(result)
+
+
+class TestDocxBadZipBranch(unittest.TestCase):
+    """Cover the BadZipFile branch in _detect_mime."""
+
+    def test_zip_magic_with_invalid_data_returns_none(self):
+        # PK\x03\x04 magic header followed by garbage triggers zipfile.BadZipFile.
+        bad = b"PK\x03\x04" + b"\x00" * 32
+        self.assertIsNone(_detect_mime(bad))
+
+
+class TestUploadStudentFileMissingFilename(unittest.TestCase):
+    """Cover the empty-filename guard in upload_student_file."""
+
+    def test_returns_error_when_filename_is_missing(self):
+        service = UploadService(storage=MockStorage())
+
+        # Student lookup → exists
+        student = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = student
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        upload_file = MagicMock()
+        upload_file.filename = ""
+
+        result = asyncio.run(
+            service.upload_student_file(
+                student_id=uuid.uuid4(),
+                file=upload_file,
+                session=mock_session,
+            )
+        )
+        self.assertEqual(result, "File name is required.")
+
+    def test_returns_400_string_when_too_large(self):
+        """Drives the >MAX_FILE_SIZE path so we exercise the chunked read loop."""
+        service = UploadService(storage=MockStorage())
+
+        student = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = student
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        big_chunks = [b"x" * (MAX_FILE_SIZE + 1), b""]
+
+        upload_file = MagicMock()
+        upload_file.filename = "big.pdf"
+        upload_file.read = AsyncMock(side_effect=big_chunks)
+
+        result = asyncio.run(
+            service.upload_student_file(
+                student_id=uuid.uuid4(),
+                file=upload_file,
+                session=mock_session,
+            )
+        )
+        self.assertEqual(result, "File too large. Maximum size is 10MB.")
+
+
+class TestCanAccessNonUuidRequester(unittest.TestCase):
+    """Cover the ValueError branch in UploadService._can_access."""
+
+    def test_non_uuid_requester_returns_false(self):
+        service = UploadService(storage=MockStorage())
+
+        upload = MagicMock()
+        upload.student_id = uuid.uuid4()
+
+        result = asyncio.run(
+            service._can_access(
+                upload=upload,
+                requester_id="not-a-uuid",
+                session=AsyncMock(),
+                is_superadmin=False,
+            )
+        )
+        self.assertFalse(result)
