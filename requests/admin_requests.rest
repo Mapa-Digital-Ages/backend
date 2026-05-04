@@ -1,4 +1,6 @@
 @BaseUrl = http://localhost:8000
+@ApproveGuardianEmail = teste.approve@example.com
+@DenyGuardianEmail = teste.deny@example.com
 
 ### Login as superadmin (run this first to get the token)
 # @name adminLogin
@@ -15,50 +17,55 @@ Content-Type: application/json
 GET {{BaseUrl}}/admin/users
 Authorization: Bearer {{adminLogin.response.body.token}}
 
-### List users filtered by status (aguardando, negado, aprovado)
-GET {{BaseUrl}}/admin/users?user_status=aguardando
+### List users filtered by status (waiting, rejected, approved)
+GET {{BaseUrl}}/admin/users?user_status=waiting
 Authorization: Bearer {{adminLogin.response.body.token}}
 
-### List users filtered by role (responsavel, aluno, admin)
-GET {{BaseUrl}}/admin/users?role=responsavel
+### List users filtered by role (guardian, student, admin)
+GET {{BaseUrl}}/admin/users?role=guardian
 Authorization: Bearer {{adminLogin.response.body.token}}
 
-### Register a user to approve (capture id from response)
+### Register a guardian to approve
+### If this returns 409, change @ApproveGuardianEmail before running the PATCH below.
 # @name registerApproveUser
-POST {{BaseUrl}}/register/responsavel
+POST {{BaseUrl}}/register/guardian
 Content-Type: application/json
 
 {
-    "email": "user12@example.com",
-    "password": "validpass123",
-    "name": "User Approve"
+  "first_name": "Guilherme",
+  "last_name": "Vieira",
+  "email": "{{ApproveGuardianEmail}}",
+  "password": "12345678"
 }
 
 ### Approve user
-PATCH {{BaseUrl}}/admin/users/{{registerApproveUser.response.body.id}}/status
-Content-Type: application/json
+### Run the named POST request above first so {{registerApproveUser.response.body.id}} resolves to a UUID.
+PATCH {{BaseUrl}}/admin/users/{6adebc70-366c-4021-bd11-c15ce4190f3c}/status
 Authorization: Bearer {{adminLogin.response.body.token}}
+Content-Type: application/json
 
 {
-    "status": "aprovado"
+  "status": "approved"
 }
 
-### Register a user to deny (capture id from response)
+### Register a guardian to reject
+### If this returns 409, change @DenyGuardianEmail before running the PATCH below.
 # @name registerDenyUser
-POST {{BaseUrl}}/register/responsavel
+POST {{BaseUrl}}/register/guardian
 Content-Type: application/json
 
 {
-    "email": "user123@example.com",
-    "password": "validpass123",
-    "name": "User Deny"
+  "first_name": "User",
+  "last_name": "Deny",
+  "email": "{{DenyGuardianEmail}}",
+  "password": "validpass123"
 }
 
 ### Deny user
 PATCH {{BaseUrl}}/admin/users/{{registerDenyUser.response.body.id}}/status
-Content-Type: application/json
 Authorization: Bearer {{adminLogin.response.body.token}}
+Content-Type: application/json
 
 {
-    "status": "negado"
+  "status": "rejected"
 }
