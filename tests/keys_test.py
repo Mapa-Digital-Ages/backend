@@ -11,6 +11,7 @@ DEFAULT_KEYS = {
     "JWT_EXPIRATION_MINUTES": "30",
     "PASSWORD_PEPPER": "test-pepper-for-unit-tests-only-32chars",
     "RATE_LIMIT_ENABLED": "false",
+    "SETUP_TOKEN": "test-setup-token-for-unit-tests-only-32c",
 }
 
 for key, value in DEFAULT_KEYS.items():
