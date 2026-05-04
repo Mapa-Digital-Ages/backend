@@ -30,7 +30,7 @@ class TestGuardianSelfRoutes(unittest.TestCase):
         )
 
         response = self.client.patch(
-            "/guardian/me",
+            "/api/guardian/me",
             json={
                 "email": "guardian_self_updated@example.com",
                 "first_name": "New",
@@ -55,11 +55,11 @@ class TestGuardianSelfRoutes(unittest.TestCase):
         )
 
         response = self.client.delete(
-            "/guardian/me",
+            "/api/guardian/me",
             headers={"Authorization": f"Bearer {token}"},
         )
         me_response = self.client.get(
-            "/guardian/me",
+            "/api/guardian/me",
             headers={"Authorization": f"Bearer {token}"},
         )
 
