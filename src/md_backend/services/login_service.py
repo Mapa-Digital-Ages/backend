@@ -40,6 +40,9 @@ class LoginService:
 
         if not verify_password(password, user.password):
             return {"error": "invalid_credentials"}
+        
+        if not user.is_active:
+            return {"error": "invalid_credentials"}
 
         if user.guardian_profile is not None:
             if user.guardian_profile.guardian_status == GuardianStatusEnum.WAITING:
