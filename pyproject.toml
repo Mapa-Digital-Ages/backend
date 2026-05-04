@@ -50,6 +50,8 @@ dev = [
     "httpx>=0.28",
     "pyright>=1.1",
     "pytest>=8.0",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
     "ruff>=0.14.13",
 ]
 
@@ -69,15 +71,8 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 source = ["src"]
+omit = ["src/**/__init__.py"]
 concurrency = ["greenlet", "thread"]
-omit = [
-    "src/__init__.py",
-    "src/md_backend/__init__.py",
-    "src/md_backend/models/__init__.py",
-    "src/md_backend/routes/__init__.py",
-    "src/md_backend/services/__init__.py",
-    "src/md_backend/utils/__init__.py",
-]
 
 [tool.coverage.report]
 fail_under = 100
