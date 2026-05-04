@@ -20,7 +20,6 @@ from md_backend.services.student_service import StudentService
 from md_backend.utils.access_control import (
     can_access_student,
     guardian_owns_student,
-    is_active_guardian,
     is_active_student,
 )
 from md_backend.utils.database import get_db_session
@@ -82,19 +81,11 @@ async def create_student(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Allowed for superadmins and active guardians.
+    """Create a new student. Restricted to superadmin or approved guardian users."""
+    is_superadmin = current_user.get("is_superadmin")
+    is_guardian = current_user.get("is_guardian")
 
-    When the requester is a guardian, the new student is automatically linked
-    to that guardian via the ``student_guardian`` table.
-    """
-    is_admin = bool(current_user.get("is_superadmin"))
-    user_id = uuid.UUID(current_user["user_id"])
-
-    is_guardian = False
-    if not is_admin:
-        is_guardian = await is_active_guardian(session=session, user_id=user_id)
-
-    if not is_admin and not is_guardian:
+    if not is_superadmin and not is_guardian:
         return JSONResponse(
             content={"detail": "Access denied"},
             status_code=status.HTTP_403_FORBIDDEN,
@@ -119,9 +110,10 @@ async def create_student(
         )
 
     if is_guardian:
-        student_id = uuid.UUID(result["user_id"])
         await guardian_service.link_student_to_guardian(
-            session=session, guardian_id=user_id, student_id=student_id
+            session=session,
+            guardian_id=uuid.UUID(current_user["user_id"]),
+            student_id=uuid.UUID(result["user_id"]),
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)

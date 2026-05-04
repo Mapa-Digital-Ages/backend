@@ -35,7 +35,7 @@ jobs:
         run: uv run ruff format --check .
 
   tests-and-coverage:
-    name: Tests & Coverage (>= 70%)
+    name: Tests & Coverage (100%)
     runs-on: ubuntu-latest
 
     services:
@@ -82,11 +82,8 @@ jobs:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
 
-      - name: Run tests with coverage gate (unittest)
-        run: |
-          uv run coverage run -m unittest discover -s .
-          uv run coverage run -a -m unittest discover -s . -p "test_s3*.py"
-          uv run coverage report -m --fail-under=70
+      - name: Run tests with coverage gate (pytest -n auto, fail_under=100)
+        run: uv run pytest -n auto --cov=src --cov-report=term-missing
         env:
           DATABASE_URL: sqlite+aiosqlite:///
           JWT_SECRET_KEY: ci-test-secret-key-for-unit-tests-32chars

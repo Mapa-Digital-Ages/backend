@@ -5,7 +5,7 @@ import uuid
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import GuardianProfile, StudentGuardian, StudentProfile
+from md_backend.models.db_models import StudentGuardian, StudentProfile
 
 
 async def guardian_owns_student(
@@ -19,17 +19,6 @@ async def guardian_owns_student(
                 StudentGuardian.student_id == student_id,
                 StudentGuardian.deactivated_at.is_(None),
             )
-        )
-    )
-    return result.scalar_one_or_none() is not None
-
-
-async def is_active_guardian(session: AsyncSession, user_id: uuid.UUID) -> bool:
-    """Return True if user_id belongs to an active guardian profile."""
-    result = await session.execute(
-        select(GuardianProfile).where(
-            GuardianProfile.user_id == user_id,
-            GuardianProfile.deactivated_at.is_(None),
         )
     )
     return result.scalar_one_or_none() is not None

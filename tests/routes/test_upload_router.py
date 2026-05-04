@@ -221,9 +221,7 @@ class TestStudentUploadAccessDenied(unittest.TestCase):
         self.admin_headers = get_admin_headers(self.test_client)
 
         self.target_student_id = _make_student(self.test_client, self.admin_headers)
-        upload_resp = _make_upload(
-            self.test_client, self.admin_headers, self.target_student_id
-        )
+        upload_resp = _make_upload(self.test_client, self.admin_headers, self.target_student_id)
         self.upload = upload_resp.json()
 
         _, self.outsider_token = _create_student_login(
