@@ -7,11 +7,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import StudentRequest, StudentResponse, StudentUpdateRequest
+from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 
 student_service = StudentService()
+guardian_service = GuardianService()
 student_router = APIRouter(prefix="/student")
 
 
@@ -25,8 +27,11 @@ async def create_student(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Restricted to superadmin or approved guardian/school users."""
-    if not current_user.get("is_superadmin"):
+    """Create a new student. Restricted to superadmin or approved guardian users."""
+    is_superadmin = current_user.get("is_superadmin")
+    is_guardian = current_user.get("is_guardian")
+
+    if not is_superadmin and not is_guardian:
         return JSONResponse(
             content={"detail": "Access denied"},
             status_code=status.HTTP_403_FORBIDDEN,
@@ -48,6 +53,13 @@ async def create_student(
         return JSONResponse(
             content={"detail": "Email already registered"},
             status_code=status.HTTP_409_CONFLICT,
+        )
+
+    if is_guardian:
+        await guardian_service.link_student_to_guardian(
+            session=session,
+            guardian_id=uuid.UUID(current_user["user_id"]),
+            student_id=uuid.UUID(result["user_id"]),
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
