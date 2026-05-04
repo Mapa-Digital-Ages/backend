@@ -1,26 +1,33 @@
-# Use Python 3.12 slim image
-FROM python:3.12-slim
+# ── build stage ──────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS builder
 
-# Set working directory
-WORKDIR /app
+WORKDIR /build
 
-# Install uv
 RUN pip install --no-cache-dir uv
 
-# Copy dependency files
 COPY pyproject.toml uv.lock ./
-
-# Install dependencies
 RUN uv sync --frozen --no-dev
 
-# Copy application source code
+# ── runtime stage ─────────────────────────────────────────────────────────────
+FROM python:3.12-slim AS runtime
+
+RUN adduser --system --no-create-home --uid 1001 app
+
+WORKDIR /app
+
+COPY --from=builder /build/.venv /app/.venv
 COPY src/ ./src/
 
-# Set environment variable for Python path
-ENV PYTHONPATH=/app/src
+ENV PYTHONPATH=/app/src \
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Expose FastAPI port
 EXPOSE 8000
 
-# Run the application
-CMD ["uv", "run", "uvicorn", "md_backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/api')" || exit 1
+
+USER app
+
+CMD ["uvicorn", "md_backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
