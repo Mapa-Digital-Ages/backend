@@ -78,9 +78,7 @@ class TestRegisterRouter(unittest.TestCase):
 
     def test_register_guardian_without_phone_number_persists_null(self):
         email = "guardian_no_phone@test.com"
-        response = self.test_client.post(
-            "/api/register/guardian", json=_guardian_payload(email)
-        )
+        response = self.test_client.post("/api/register/guardian", json=_guardian_payload(email))
         self.assertEqual(response.status_code, 201)
 
         async def fetch():
@@ -153,9 +151,7 @@ class TestRegisterRouter(unittest.TestCase):
         email = "student_optional@test.com"
         response = self.test_client.post(
             "/api/register/student",
-            json=_student_payload(
-                email, phone_number="+5511777776666", school_id=school_id
-            ),
+            json=_student_payload(email, phone_number="+5511777776666", school_id=school_id),
         )
         self.assertEqual(response.status_code, 201)
 
@@ -176,9 +172,7 @@ class TestRegisterRouter(unittest.TestCase):
 
     def test_register_student_without_optional_fields_persists_null(self):
         email = "student_no_optional@test.com"
-        response = self.test_client.post(
-            "/api/register/student", json=_student_payload(email)
-        )
+        response = self.test_client.post("/api/register/student", json=_student_payload(email))
         self.assertEqual(response.status_code, 201)
 
         async def fetch():
