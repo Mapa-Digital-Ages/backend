@@ -13,6 +13,7 @@ from md_backend.services.storage_service import (
     StorageService,
 )
 from md_backend.services.upload_service import UploadService
+from md_backend.utils.access_control import can_access_student
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 from md_backend.utils.settings import settings
@@ -51,7 +52,15 @@ async def upload_student_file(
     current_user: dict = Depends(get_current_approved_user),
     storage: StorageService = Depends(get_storage_service),
 ):
-    """Upload a file for a student."""
+    """Upload a file for a student. Requires ownership (admin or linked guardian)."""
+    if not await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    ):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     service = UploadService(storage=storage)
     result = await service.upload_student_file(
         student_id=student_id,
@@ -83,7 +92,15 @@ async def list_student_uploads(
     page: int = Query(default=1, ge=1, description="Page number"),
     size: int = Query(default=10, ge=1, le=100, description="Page size"),
 ):
-    """List all uploads for a student."""
+    """List all uploads for a student. Requires ownership (admin or linked guardian)."""
+    if not await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    ):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
     service = UploadService(storage=storage)
     result = await service.get_student_uploads(
         student_id=student_id,
@@ -162,8 +179,13 @@ async def download_upload_content(
 
     upload, content = result
     safe_name = quote(upload.file_name)
+    ascii_name = upload.file_name.encode("ascii", errors="replace").decode("ascii")
     return StreamingResponse(
         _iter_bytes(content),
         media_type=upload.file_type,
-        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
+        headers={
+            "Content-Disposition": (
+                f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{safe_name}"
+            )
+        },
     )
