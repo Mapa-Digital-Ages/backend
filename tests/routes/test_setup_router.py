@@ -1,6 +1,7 @@
 """Tests for the setup router."""
 
 import asyncio
+import os
 import unittest
 
 from fastapi.testclient import TestClient
@@ -10,6 +11,8 @@ import tests.keys_test  # noqa: F401
 from md_backend.main import app
 from md_backend.models.db_models import UserProfile
 from md_backend.utils.database import AsyncSessionLocal
+
+_SETUP_HEADERS = {"X-Setup-Token": os.environ.get("SETUP_TOKEN", "")}
 
 
 def _setup_payload(email, **overrides):
@@ -33,7 +36,7 @@ class TestSetupRouter(unittest.TestCase):
 
     def test_setup_creates_superadmin(self):
         response = self.test_client.post(
-            "/api/setup", json=_setup_payload("sa_create@test.com")
+            "/api/setup", json=_setup_payload("sa_create@test.com"), headers=_SETUP_HEADERS
         )
         self.assertIn(response.status_code, (201, 409))
         if response.status_code == 201:
@@ -50,6 +53,7 @@ class TestSetupRouter(unittest.TestCase):
                 last_name="Lovelace",
                 phone_number="+5511555554444",
             ),
+            headers=_SETUP_HEADERS,
         )
         if response.status_code != 201:
             self.skipTest("Superadmin already created in this test DB")
@@ -68,7 +72,9 @@ class TestSetupRouter(unittest.TestCase):
 
     def test_setup_without_phone_number_persists_null(self):
         email = "sa_no_phone@test.com"
-        response = self.test_client.post("/api/setup", json=_setup_payload(email))
+        response = self.test_client.post(
+            "/api/setup", json=_setup_payload(email), headers=_SETUP_HEADERS
+        )
         if response.status_code != 201:
             self.skipTest("Superadmin already created in this test DB")
 
@@ -83,7 +89,9 @@ class TestSetupRouter(unittest.TestCase):
         self.assertIsNone(user.phone_number)
 
     def test_setup_superadmin_can_login(self):
-        self.test_client.post("/api/setup", json=_setup_payload("sa_canlogin@test.com"))
+        self.test_client.post(
+            "/api/setup", json=_setup_payload("sa_canlogin@test.com"), headers=_SETUP_HEADERS
+        )
         response = self.test_client.post(
             "/api/login", json={"email": "sa_canlogin@test.com", "password": "adminpass123"}
         )
@@ -91,29 +99,41 @@ class TestSetupRouter(unittest.TestCase):
             self.assertIn("token", response.json())
 
     def test_setup_duplicate_returns_409(self):
-        self.test_client.post("/api/setup", json=_setup_payload("sa_dup@test.com"))
-        response = self.test_client.post("/api/setup", json=_setup_payload("sa_dup2@test.com"))
+        self.test_client.post(
+            "/api/setup", json=_setup_payload("sa_dup@test.com"), headers=_SETUP_HEADERS
+        )
+        response = self.test_client.post(
+            "/api/setup", json=_setup_payload("sa_dup2@test.com"), headers=_SETUP_HEADERS
+        )
         self.assertEqual(response.status_code, 409)
         self.assertEqual(response.json(), {"detail": "Setup already completed"})
 
     def test_setup_invalid_email(self):
-        response = self.test_client.post("/api/setup", json=_setup_payload("not-an-email"))
+        response = self.test_client.post(
+            "/api/setup", json=_setup_payload("not-an-email"), headers=_SETUP_HEADERS
+        )
         self.assertEqual(response.status_code, 422)
 
     def test_setup_short_password(self):
         response = self.test_client.post(
-            "/api/setup", json=_setup_payload("sa@test.com", password="short")
+            "/api/setup",
+            json=_setup_payload("sa@test.com", password="short"),
+            headers=_SETUP_HEADERS,
         )
         self.assertEqual(response.status_code, 422)
 
     def test_setup_missing_first_name_returns_422(self):
         payload = _setup_payload("sa_no_first@test.com")
         del payload["first_name"]
-        response = self.test_client.post("/api/setup", json=payload)
+        response = self.test_client.post("/api/setup", json=payload, headers=_SETUP_HEADERS)
         self.assertEqual(response.status_code, 422)
 
     def test_setup_missing_last_name_returns_422(self):
         payload = _setup_payload("sa_no_last@test.com")
         del payload["last_name"]
-        response = self.test_client.post("/api/setup", json=payload)
+        response = self.test_client.post("/api/setup", json=payload, headers=_SETUP_HEADERS)
         self.assertEqual(response.status_code, 422)
+
+    def test_setup_without_token_returns_401(self):
+        response = self.test_client.post("/api/setup", json=_setup_payload("sa_notoken@test.com"))
+        self.assertEqual(response.status_code, 401)
