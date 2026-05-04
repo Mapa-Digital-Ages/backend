@@ -40,12 +40,14 @@ class SchoolService:
             last_name=last_name,
             phone_number=phone_number,
         )
+        session.add(user)
+        await session.flush()
+
         school = SchoolProfile(
-            user=user,
+            user_id=user.id,
             is_private=is_private,
             requested_spots=requested_spots,
         )
-        session.add(user)
         session.add(school)
 
         await session.commit()

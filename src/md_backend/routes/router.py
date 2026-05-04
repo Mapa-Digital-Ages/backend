@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from md_backend.routes.admin_router import admin_router
+from md_backend.routes.company_router import company_router
 from md_backend.routes.guardian_router import guardian_router
 from md_backend.routes.login_router import login_router
 from md_backend.routes.password_reset_router import password_reset_router
@@ -22,4 +23,5 @@ router.include_router(admin_router)
 router.include_router(student_router)
 router.include_router(school_router)
 router.include_router(guardian_router)
+router.include_router(company_router)
 router.include_router(upload_router)

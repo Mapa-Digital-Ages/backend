@@ -307,7 +307,9 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_update_school_email_conflict_returns_409(self):
         self.client.post(
-            "/api/school", json=self._payload("school_taken@test.com"), headers=self.admin_headers
+            "/api/school",
+            json=self._payload("school_taken@test.com"),
+            headers=self.admin_headers,
         )
         create_resp = self.client.post(
             "/api/school",
