@@ -94,7 +94,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
             "md_backend.routes.company_router.company_service.create_company",
             new=AsyncMock(side_effect=IntegrityError("forced", {}, Exception("forced"))),
         ):
-            resp = self.client.post("/api/company", json=self._payload("company_integrity@test.com"))
+            resp = self.client.post(
+                "/api/company", json=self._payload("company_integrity@test.com")
+            )
 
         self.assertEqual(resp.status_code, 409)
         self.assertIn("integridade", resp.json()["detail"].lower())
@@ -171,7 +173,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_update_company_partial_updates_all_fields(self):
-        create_resp = self.client.post("/api/company", json=self._payload("company_upd_full@test.com"))
+        create_resp = self.client.post(
+            "/api/company", json=self._payload("company_upd_full@test.com")
+        )
         company_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
@@ -191,7 +195,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_update_company_email_conflict_returns_409(self):
         self.client.post("/api/company", json=self._payload("company_taken@test.com"))
-        create_resp = self.client.post("/api/company", json=self._payload("company_to_update@test.com"))
+        create_resp = self.client.post(
+            "/api/company", json=self._payload("company_to_update@test.com")
+        )
         company_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
