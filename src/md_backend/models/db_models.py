@@ -80,6 +80,32 @@ class UserProfile(Base):
     guardian_profile: Mapped[Optional["GuardianProfile"]] = relationship(
         "GuardianProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+    password_reset_codes: Mapped[list["PasswordResetCode"]] = relationship(
+        "PasswordResetCode", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class PasswordResetCode(Base):
+    """Single-use password reset code linked to a user."""
+
+    __tablename__ = "password_reset_code"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("user_profile.id"), nullable=False, index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )
+    consumed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="password_reset_codes")
 
 
 class AdminProfile(Base):

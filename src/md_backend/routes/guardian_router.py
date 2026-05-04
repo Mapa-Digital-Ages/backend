@@ -71,11 +71,67 @@ async def list_guardians(
     return JSONResponse(content=guardians, status_code=status.HTTP_200_OK)
 
 
-@guardian_router.get(
-    "/{guardian_id}",
-    response_model=GuardianResponse,
-    dependencies=[Depends(get_current_superadmin)],
-)
+@guardian_router.get("/me", response_model=GuardianResponse)
+async def get_my_guardian(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the authenticated guardian's profile and linked students."""
+    result = await guardian_service.get_guardian_by_id(
+        session=session, guardian_id=uuid.UUID(current_user["user_id"])
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Responsável não encontrado"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@guardian_router.patch("/me", response_model=GuardianResponse)
+async def update_my_guardian(
+    request: GuardianUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Update the authenticated guardian's own profile."""
+    result = await guardian_service.update_guardian(
+        session=session,
+        guardian_id=uuid.UUID(current_user["user_id"]),
+        data=request.model_dump(exclude_unset=True),
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Guardian not found or email already in use"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_guardian(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Deactivate the authenticated guardian's own account."""
+    success = await guardian_service.deactivate_guardian(
+        session=session, guardian_id=uuid.UUID(current_user["user_id"])
+    )
+
+    if not success:
+        return JSONResponse(
+            content={"detail": "Guardian not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+
+
+@guardian_router.get("/{guardian_id}", response_model=GuardianResponse)
 async def get_guardian(
     guardian_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),

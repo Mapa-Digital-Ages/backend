@@ -127,9 +127,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         payload["phone_number"] = "+5511666665555"
         payload["school_id"] = school_id
 
-        response = self.client.post(
-            "/api/student", json=payload, headers=self.admin_headers
-        )
+        response = self.client.post("/api/student", json=payload, headers=self.admin_headers)
         self.assertEqual(response.status_code, 201)
         body = response.json()
         self.assertEqual(body["phone_number"], "+5511666665555")
@@ -193,17 +191,53 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 401)
 
-    def test_non_superadmin_returns_403(self):
+    def test_guardian_can_create_student_and_is_auto_linked(self):
+        from md_backend.models.db_models import StudentGuardian, UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
         token = create_approved_user(
-            self.client, self.admin_headers, "student_nonadmin@example.com"
+            self.client, self.admin_headers, "guardian_creator@example.com"
         )
         response = self.client.post(
-            "/api/student",
-            json=_student_payload("student_forbidden@example.com"),
+            "/student",
+            json=_student_payload("guardian_owned_student@example.com"),
             headers={"Authorization": f"Bearer {token}"},
         )
-        self.assertEqual(response.status_code, 403)
-        self.assertEqual(response.json()["detail"], "Access restricted to administrators")
+        self.assertEqual(response.status_code, 201)
+        student_user_id = response.json()["user_id"]
+
+        async def fetch_link_and_guardian():
+            async with AsyncSessionLocal() as session:
+                guardian_user = (
+                    await session.execute(
+                        select(UserProfile).where(
+                            UserProfile.email == "guardian_creator@example.com"
+                        )
+                    )
+                ).scalar_one()
+                link_row = (
+                    await session.execute(
+                        select(StudentGuardian).where(
+                            StudentGuardian.guardian_id == guardian_user.id,
+                            StudentGuardian.student_id == uuid.UUID(student_user_id),
+                            StudentGuardian.deactivated_at.is_(None),
+                        )
+                    )
+                ).scalar_one_or_none()
+                return link_row
+
+        link = asyncio.run(fetch_link_and_guardian())
+        self.assertIsNotNone(link, "guardian-student link was not created")
+
+        login_response = self.client.post(
+            "/login",
+            json={
+                "email": "guardian_owned_student@example.com",
+                "password": "securepass123",
+            },
+        )
+        self.assertEqual(login_response.status_code, 200)
+        self.assertEqual(login_response.json()["role"], "student")
 
     # ------------------------------------------------------------------
     # GET /student (list)
@@ -233,9 +267,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
     def test_list_students_filter_by_name(self):
         self.client.post(
             "/api/student",
-            json=_student_payload(
-                "student_filter_name@example.com", first_name="Zelda"
-            ),
+            json=_student_payload("student_filter_name@example.com", first_name="Zelda"),
             headers=self.admin_headers,
         )
 
@@ -278,18 +310,29 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         student_id = create_resp.json()["user_id"]
 
-        response = self.client.get(
-            f"/api/student/{student_id}", headers=self.admin_headers
-        )
+        response = self.client.get(f"/api/student/{student_id}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         body = response.json()
         self.assertEqual(body["user_id"], student_id)
         self.assertEqual(body["email"], "student_getbyid@example.com")
 
     def test_get_student_not_found_returns_404(self):
-        response = self.client.get(
-            f"/api/student/{uuid.uuid4()}", headers=self.admin_headers
+        response = self.client.get(f"/student/{uuid.uuid4()}", headers=self.admin_headers)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(response.json()["detail"], "Student not found")
+
+    def test_get_deleted_student_returns_404(self):
+        create_resp = self.client.post(
+            "/student",
+            json=_student_payload("student_get_deleted@example.com"),
+            headers=self.admin_headers,
         )
+        student_id = create_resp.json()["user_id"]
+
+        delete_response = self.client.delete(f"/student/{student_id}", headers=self.admin_headers)
+        self.assertEqual(delete_response.status_code, 204)
+
+        response = self.client.get(f"/student/{student_id}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
 
@@ -383,9 +426,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         student_id = create_resp.json()["user_id"]
 
-        response = self.client.delete(
-            f"/api/student/{student_id}", headers=self.admin_headers
-        )
+        response = self.client.delete(f"/api/student/{student_id}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 204)
 
         async def fetch():
@@ -404,8 +445,6 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertIsNotNone(student.deactivated_at)
 
     def test_delete_student_not_found_returns_404(self):
-        response = self.client.delete(
-            f"/api/student/{uuid.uuid4()}", headers=self.admin_headers
-        )
+        response = self.client.delete(f"/api/student/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(response.json()["detail"], "Student not found")
