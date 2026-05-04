@@ -1,5 +1,5 @@
 test:
-	uv run coverage run -m unittest discover -s .
+	uv run pytest -n auto --cov=src --cov-report=term-missing
 
 report:
 	uv run coverage report
