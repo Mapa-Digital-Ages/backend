@@ -4,13 +4,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
-from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import StudentRequest, StudentResponse, StudentUpdateRequest
-from md_backend.models.db_models import GuardianProfile, StudentGuardian
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
+from md_backend.utils.access_control import can_access_student, is_active_guardian
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
@@ -19,40 +18,15 @@ guardian_service = GuardianService()
 student_router = APIRouter(prefix="/student")
 
 
-async def _is_active_guardian(session: AsyncSession, user_id: uuid.UUID) -> bool:
-    result = await session.execute(
-        select(GuardianProfile).where(
-            GuardianProfile.user_id == user_id,
-            GuardianProfile.deactivated_at.is_(None),
-        )
-    )
-    return result.scalar_one_or_none() is not None
-
-
-async def _guardian_owns_student(
-    session: AsyncSession, guardian_id: uuid.UUID, student_id: uuid.UUID
-) -> bool:
-    result = await session.execute(
-        select(StudentGuardian).where(
-            and_(
-                StudentGuardian.guardian_id == guardian_id,
-                StudentGuardian.student_id == student_id,
-                StudentGuardian.deactivated_at.is_(None),
-            )
-        )
-    )
-    return result.scalar_one_or_none() is not None
-
-
 @student_router.post(
     "",
     status_code=status.HTTP_201_CREATED,
     response_model=StudentResponse,
-    dependencies=[Depends(get_current_superadmin)],
 )
 async def create_student(
     request: StudentRequest,
     session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
 ):
     """Create a new student. Allowed for superadmins and active guardians.
 
@@ -64,7 +38,7 @@ async def create_student(
 
     is_guardian = False
     if not is_admin:
-        is_guardian = await _is_active_guardian(session=session, user_id=user_id)
+        is_guardian = await is_active_guardian(session=session, user_id=user_id)
 
     if not is_admin and not is_guardian:
         return JSONResponse(
@@ -123,15 +97,11 @@ async def _ensure_can_access_student(
     student_id: uuid.UUID,
 ) -> JSONResponse | None:
     """Authorize access to a student. Admins pass; guardians must own the student."""
-    if current_user.get("is_superadmin"):
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if allowed:
         return None
-
-    user_id = uuid.UUID(current_user["user_id"])
-    if await _guardian_owns_student(
-        session=session, guardian_id=user_id, student_id=student_id
-    ):
-        return None
-
     return JSONResponse(
         content={"detail": "Access denied"},
         status_code=status.HTTP_403_FORBIDDEN,
@@ -205,9 +175,7 @@ async def delete_student(
     if denied is not None:
         return denied
 
-    success = await student_service.deactivate_student(
-        session=session, student_id=student_id
-    )
+    success = await student_service.deactivate_student(session=session, student_id=student_id)
 
     if not success:
         return JSONResponse(
@@ -229,9 +197,7 @@ async def get_student_summary(
     if denied is not None:
         return denied
 
-    metrics = await student_service.get_summary_metrics(
-        session=session, student_id=student_id
-    )
+    metrics = await student_service.get_summary_metrics(session=session, student_id=student_id)
     return JSONResponse(content=metrics, status_code=status.HTTP_200_OK)
 
 
