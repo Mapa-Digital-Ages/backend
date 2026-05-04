@@ -71,7 +71,7 @@ class TestLoginRouter(unittest.TestCase):
 
     def test_login_deactivated_user_is_forbidden(self):
         reg = self.test_client.post(
-            "/guardian",
+            "/api/guardian",
             json={
                 "email": "inactive_lg@test.com",
                 "password": "validpass123",
@@ -82,14 +82,14 @@ class TestLoginRouter(unittest.TestCase):
         )
         user_id = reg.json()["user_id"]
         self.test_client.patch(
-            f"/admin/users/{user_id}/status",
+            f"/api/admin/users/{user_id}/status",
             json={"status": "approved"},
             headers=self.admin_headers,
         )
-        self.test_client.delete(f"/guardian/{user_id}", headers=self.admin_headers)
+        self.test_client.delete(f"/api/guardian/{user_id}", headers=self.admin_headers)
 
         response = self.test_client.post(
-            "/login", json={"email": "inactive_lg@test.com", "password": "validpass123"}
+            "/api/login", json={"email": "inactive_lg@test.com", "password": "validpass123"}
         )
         self.assertEqual(response.status_code, 403)
         self.assertEqual(response.json(), {"detail": "Account deactivated"})
