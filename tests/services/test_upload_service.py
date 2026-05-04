@@ -1,8 +1,10 @@
 """Unit tests for UploadService."""
 
 import asyncio
+import io
 import unittest
 import uuid
+import zipfile
 from unittest.mock import AsyncMock, MagicMock
 
 import tests.keys_test  # noqa: F401
@@ -14,6 +16,14 @@ from md_backend.services.upload_service import (
     _detect_mime,
     _sanitize_filename,
 )
+
+
+def _make_docx_bytes() -> bytes:
+    """Minimal in-memory ZIP with [Content_Types].xml — passes DOCX magic check."""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as zf:
+        zf.writestr("[Content_Types].xml", "<Types/>")
+    return buf.getvalue()
 
 
 class MockStorage(StorageService):
@@ -47,9 +57,15 @@ class TestDetectMime(unittest.TestCase):
 
     def test_docx_detected(self):
         self.assertEqual(
-            _detect_mime(b"PK\x03\x04" + b"\x00" * 100),
+            _detect_mime(_make_docx_bytes()),
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         )
+
+    def test_docx_zip_without_content_types_returns_none(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as zf:
+            zf.writestr("word/document.xml", "<document/>")
+        self.assertIsNone(_detect_mime(buf.getvalue()))
 
     def test_unknown_returns_none(self):
         self.assertIsNone(_detect_mime(b"unknown binary content"))
@@ -59,17 +75,16 @@ class TestDetectMime(unittest.TestCase):
 
     def test_all_allowed_types_have_magic(self):
         magic_samples = {
-            "image/jpeg": b"\xff\xd8\xff",
-            "image/png": b"\x89PNG\r\n\x1a\n",
-            "application/pdf": b"%PDF",
-            "application/msword": b"\xd0\xcf\x11\xe0",
+            "image/jpeg": b"\xff\xd8\xff" + b"\x00" * 32,
+            "image/png": b"\x89PNG\r\n\x1a\n" + b"\x00" * 32,
+            "application/pdf": b"%PDF" + b"\x00" * 32,
+            "application/msword": b"\xd0\xcf\x11\xe0" + b"\x00" * 32,
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document": (
-                b"PK\x03\x04"
+                _make_docx_bytes()
             ),
         }
         for mime_type in ALLOWED_TYPES:
-            sample = magic_samples[mime_type] + b"\x00" * 32
-            self.assertEqual(_detect_mime(sample), mime_type)
+            self.assertEqual(_detect_mime(magic_samples[mime_type]), mime_type)
 
 
 class TestSanitizeFilename(unittest.TestCase):
@@ -125,10 +140,13 @@ class TestGetUploadById(unittest.TestCase):
         upload = MagicMock()
         upload.student_id = student_id
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = upload
+        # First execute → upload found; second execute (guardian_owns_student) → no link
+        found_result = MagicMock()
+        found_result.scalar_one_or_none.return_value = upload
+        no_link_result = MagicMock()
+        no_link_result.scalar_one_or_none.return_value = None
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [found_result, no_link_result]
 
         result = asyncio.run(
             self.service.get_upload_by_id(
@@ -164,6 +182,7 @@ class TestGetUploadById(unittest.TestCase):
             )
         )
         self.assertIsInstance(result, dict)
+        assert isinstance(result, dict)
         self.assertNotIn("password", result)
         self.assertIn("download_url", result)
         self.assertEqual(result["download_url"], f"/uploads/{upload.id}/content")
@@ -197,6 +216,7 @@ class TestGetUploadContent(unittest.TestCase):
             )
         )
         self.assertIsInstance(result, tuple)
+        assert isinstance(result, tuple)
         returned_upload, content = result
         self.assertEqual(content, b"hello")
         self.assertIs(returned_upload, upload)
@@ -210,10 +230,13 @@ class TestGetUploadContent(unittest.TestCase):
         upload.student_id = uuid.uuid4()
         upload.storage_key = "some/key"
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = upload
+        # First execute → upload found; second (guardian_owns_student) → no link
+        found_result = MagicMock()
+        found_result.scalar_one_or_none.return_value = upload
+        no_link_result = MagicMock()
+        no_link_result.scalar_one_or_none.return_value = None
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.execute.side_effect = [found_result, no_link_result]
 
         result = asyncio.run(
             service.get_upload_content(
