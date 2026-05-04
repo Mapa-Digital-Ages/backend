@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import StudentProfile, StudentUpload
 from md_backend.services.storage_service import StorageService
+from md_backend.utils.access_control import guardian_owns_student
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _UPLOAD_CHUNK = 65536  # 64 KB read chunks
@@ -38,6 +39,18 @@ def _detect_mime(data: bytes) -> str | None:
     """Return MIME type from magic bytes, or None if unrecognised."""
     for magic, mime in _MAGIC_MAP:
         if data[: len(magic)] == magic:
+            # Extra validation for OOXML (.docx): must contain [Content_Types].xml
+            if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+                import zipfile
+
+                try:
+                    import io
+
+                    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+                        if "[Content_Types].xml" not in zf.namelist():
+                            return None
+                except zipfile.BadZipFile:
+                    return None
             return mime
     return None
 
@@ -159,7 +172,7 @@ class UploadService:
         if upload is None:
             return None
 
-        if not is_superadmin and str(upload.student_id) != requester_id:
+        if not await self._can_access(upload, requester_id, session, is_superadmin):
             return "forbidden"
 
         return self._upload_to_dict(upload)
@@ -178,7 +191,7 @@ class UploadService:
         if upload is None:
             return None
 
-        if not is_superadmin and str(upload.student_id) != requester_id:
+        if not await self._can_access(upload, requester_id, session, is_superadmin):
             return "forbidden"
 
         content = await self.storage.read_file(
@@ -189,6 +202,29 @@ class UploadService:
             return None
 
         return upload, content
+
+    async def _can_access(
+        self,
+        upload: StudentUpload,
+        requester_id: str,
+        session: AsyncSession,
+        is_superadmin: bool,
+    ) -> bool:
+        """Return True if the requester may access this upload."""
+        if is_superadmin:
+            return True
+        if str(upload.student_id) == requester_id:
+            return True
+        # Allow guardian who owns the student
+        try:
+            guardian_id = uuid.UUID(requester_id)
+        except ValueError:
+            return False
+        return await guardian_owns_student(
+            session=session,
+            guardian_id=guardian_id,
+            student_id=upload.student_id,
+        )
 
     def _upload_to_dict(self, upload: StudentUpload) -> dict:
         """Map a StudentUpload to a response dict."""
