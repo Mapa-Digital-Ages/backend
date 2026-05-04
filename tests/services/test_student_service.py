@@ -35,9 +35,7 @@ class TestStudentServiceCreate(unittest.TestCase):
         mock_session = AsyncMock()
         mock_session.execute.return_value = mock_result
 
-        result = asyncio.run(
-            self.service.create_student(**self.kwargs, session=mock_session)
-        )
+        result = asyncio.run(self.service.create_student(**self.kwargs, session=mock_session))
 
         self.assertIsNone(result)
         mock_session.commit.assert_not_called()
@@ -52,9 +50,7 @@ class TestStudentServiceCreate(unittest.TestCase):
         mock_session.add = MagicMock()
         mock_session.commit.side_effect = IntegrityError("forced", {}, Exception("forced"))
 
-        result = asyncio.run(
-            self.service.create_student(**self.kwargs, session=mock_session)
-        )
+        result = asyncio.run(self.service.create_student(**self.kwargs, session=mock_session))
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()

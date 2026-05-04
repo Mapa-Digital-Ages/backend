@@ -15,13 +15,18 @@ from md_backend.models.api_models import (
 )
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_superadmin
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 school_service = SchoolService()
 school_router = APIRouter(prefix="/school", tags=["School"])
 
 
-@school_router.post("", status_code=status.HTTP_201_CREATED, response_model=SchoolResponse)
+@school_router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SchoolResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def create_school(
     request: CreateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
@@ -54,14 +59,17 @@ async def create_school(
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 
-@school_router.get("", response_model=SchoolListResponse, summary="List active schools")
+@school_router.get(
+    "",
+    response_model=SchoolListResponse,
+    summary="List active schools",
+    dependencies=[Depends(get_current_approved_user)],
+)
 async def list_schools(
     session: AsyncSession = Depends(get_db_session),
     page: int = Query(default=1, ge=1, description="Page number (starts at 1)"),
     size: int = Query(default=20, ge=1, le=100, description="Items per page"),
-    name: str | None = Query(
-        default=None, description="Partial filter by name (case-insensitive)"
-    ),
+    name: str | None = Query(default=None, description="Partial filter by name (case-insensitive)"),
 ) -> JSONResponse:
     """List paginated active schools with optional filters."""
     result = await school_service.list_schools(
@@ -77,6 +85,7 @@ async def list_schools(
     "/{school_id}",
     response_model=SchoolResponse,
     summary="Get school by ID",
+    dependencies=[Depends(get_current_approved_user)],
 )
 async def get_school(
     school_id: uuid.UUID,

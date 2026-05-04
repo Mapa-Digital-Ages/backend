@@ -1,35 +1,11 @@
 """Store API models."""
 
 import datetime
-import enum
 import uuid
 
 from pydantic import BaseModel, EmailStr, Field
 
 from md_backend.models.db_models import ClassEnum
-
-
-class UserStatusInput(enum.Enum):
-    """User approval status values used in API layer."""
-
-    WAITING = "waiting"
-    APPROVED = "approved"
-    REJECTED = "rejected"
-
-
-class RoleInput(enum.Enum):
-    """User role values used in API layer."""
-
-    ADMIN = "admin"
-    STUDENT = "student"
-    GUARDIAN = "guardian"
-
-
-class ValidateRequest(BaseModel):
-    """Validate request model."""
-
-    text: str
-    sender: str
 
 
 class RegisterRequest(BaseModel):
@@ -62,6 +38,26 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class PasswordResetRequest(BaseModel):
+    """Request body for generating a password reset code."""
+
+    email: EmailStr
+
+
+class PasswordResetRequestResponse(BaseModel):
+    """Response body for password reset requests."""
+
+    detail: str
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    """Request body for confirming a password reset."""
+
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    new_password: str = Field(min_length=8)
+
+
 class SetupRequest(BaseModel):
     """Setup request model for creating the first superadmin."""
 
@@ -86,7 +82,7 @@ class UserResponse(BaseModel):
 class UpdateStatusRequest(BaseModel):
     """Request to update user approval status."""
 
-    status: str = Field(pattern=r"^(approved|rejected)$")
+    status: str = Field(pattern=r"^(approved|rejected|waiting)$")
 
 
 class StudentResponse(BaseModel):
@@ -241,3 +237,15 @@ class SchoolListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class StudentUploadResponse(BaseModel):
+    """Response model for student upload."""
+
+    id: uuid.UUID
+    student_id: uuid.UUID
+    file_name: str
+    download_url: str
+    file_type: str
+    file_size_bytes: int
+    created_at: str

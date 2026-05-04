@@ -13,6 +13,7 @@ from sqlalchemy import (
     Enum,
     ForeignKey,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -79,6 +80,30 @@ class UserProfile(Base):
     guardian_profile: Mapped[Optional["GuardianProfile"]] = relationship(
         "GuardianProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
     )
+    password_reset_codes: Mapped[list["PasswordResetCode"]] = relationship(
+        "PasswordResetCode", back_populates="user", cascade="all, delete-orphan"
+    )
+
+
+class PasswordResetCode(Base):
+    """Single-use password reset code linked to a user."""
+
+    __tablename__ = "password_reset_code"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("user_profile.id"), nullable=False, index=True
+    )
+    code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="password_reset_codes")
 
 
 class AdminProfile(Base):
@@ -90,7 +115,7 @@ class AdminProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     subject_area: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -513,7 +538,6 @@ class StudentUpload(Base):
     )
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    file_url: Mapped[str] = mapped_column(Text, nullable=False)
     file_type: Mapped[str] = mapped_column(String(100), nullable=False)
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -521,3 +545,27 @@ class StudentUpload(Base):
     )
 
     student: Mapped["StudentProfile"] = relationship("StudentProfile", back_populates="uploads")
+    blob: Mapped["StudentUploadBlob"] = relationship(
+        "StudentUploadBlob",
+        back_populates="upload",
+        uselist=False,
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class StudentUploadBlob(Base):
+    """Binary content for student uploads (BYTEA)."""
+
+    __tablename__ = "student_upload_blobs"
+
+    upload_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("student_uploads.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    content: Mapped[bytes] = mapped_column(LargeBinary, nullable=False)
+
+    upload: Mapped["StudentUpload"] = relationship(
+        "StudentUpload", back_populates="blob", single_parent=True
+    )

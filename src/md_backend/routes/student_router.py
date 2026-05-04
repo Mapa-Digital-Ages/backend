@@ -7,11 +7,14 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import StudentRequest, StudentResponse, StudentUpdateRequest
+from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
+from md_backend.utils.access_control import can_access_student, is_active_guardian
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_approved_user
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 student_service = StudentService()
+guardian_service = GuardianService()
 student_router = APIRouter(prefix="/student")
 
 
@@ -25,8 +28,19 @@ async def create_student(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Restricted to superadmin or approved guardian/school users."""
-    if not current_user.get("is_superadmin"):
+    """Create a new student. Allowed for superadmins and active guardians.
+
+    When the requester is a guardian, the new student is automatically linked
+    to that guardian via the ``student_guardian`` table.
+    """
+    is_admin = bool(current_user.get("is_superadmin"))
+    user_id = uuid.UUID(current_user["user_id"])
+
+    is_guardian = False
+    if not is_admin:
+        is_guardian = await is_active_guardian(session=session, user_id=user_id)
+
+    if not is_admin and not is_guardian:
         return JSONResponse(
             content={"detail": "Access denied"},
             status_code=status.HTTP_403_FORBIDDEN,
@@ -50,13 +64,21 @@ async def create_student(
             status_code=status.HTTP_409_CONFLICT,
         )
 
+    if is_guardian:
+        student_id = uuid.UUID(result["user_id"])
+        await guardian_service.link_student_to_guardian(
+            session=session, guardian_id=user_id, student_id=student_id
+        )
+
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 
-@student_router.get("")
+@student_router.get(
+    "",
+    dependencies=[Depends(get_current_approved_user)],
+)
 async def list_students(
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
     name: str | None = Query(default=None, description="Filter by first or last name"),
     email: str | None = Query(default=None, description="Filter by email"),
     page: int = Query(default=1, ge=1, description="Page number"),
@@ -69,13 +91,34 @@ async def list_students(
     return JSONResponse(content=students, status_code=status.HTTP_200_OK)
 
 
+async def _ensure_can_access_student(
+    session: AsyncSession,
+    current_user: dict,
+    student_id: uuid.UUID,
+) -> JSONResponse | None:
+    """Authorize access to a student. Admins pass; guardians must own the student."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if allowed:
+        return None
+    return JSONResponse(
+        content={"detail": "Access denied"},
+        status_code=status.HTTP_403_FORBIDDEN,
+    )
+
+
 @student_router.get("/{student_id}")
 async def get_student(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
+    current_user: dict = Depends(get_current_approved_user),
 ):
-    """Get a student by ID."""
+    """Get a student by ID. Guardian-owners and admins only."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
     result = await student_service.get_student_by_id(session=session, student_id=student_id)
 
     if result is None:
@@ -87,18 +130,25 @@ async def get_student(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@student_router.put("/{student_id}")
+@student_router.put(
+    "/{student_id}",
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def update_student(
     student_id: uuid.UUID,
     request: StudentUpdateRequest,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
+    current_user: dict = Depends(get_current_approved_user),
 ):
-    """Update a student by ID."""
+    """Update a student by ID. Guardian-owners and admins only."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
     result = await student_service.update_student(
         session=session,
         student_id=student_id,
-        data=request.model_dump(),
+        data=request.model_dump(exclude_unset=True),
     )
 
     if result is None:
@@ -110,16 +160,22 @@ async def update_student(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@student_router.delete("/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+@student_router.delete(
+    "/{student_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def delete_student(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-    _: dict = Depends(get_current_approved_user),
+    current_user: dict = Depends(get_current_approved_user),
 ):
-    """Soft delete a student by ID."""
-    success = await student_service.deactivate_student(
-        session=session, student_id=student_id
-    )
+    """Soft delete a student by ID. Guardian-owners and admins only."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    success = await student_service.deactivate_student(session=session, student_id=student_id)
 
     if not success:
         return JSONResponse(
@@ -128,3 +184,50 @@ async def delete_student(
         )
 
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+
+
+@student_router.get("/{student_id}/summary")
+async def get_student_summary(
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Headline metrics for the student's dashboard."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    metrics = await student_service.get_summary_metrics(session=session, student_id=student_id)
+    return JSONResponse(content=metrics, status_code=status.HTTP_200_OK)
+
+
+@student_router.get("/{student_id}/disciplines")
+async def get_student_disciplines(
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Mastery progress per subject for the student."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    disciplines = await student_service.get_disciplines_progress(
+        session=session, student_id=student_id
+    )
+    return JSONResponse(content=disciplines, status_code=status.HTTP_200_OK)
+
+
+@student_router.get("/{student_id}/tasks")
+async def get_student_tasks(
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Tasks assigned to the student."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    tasks = await student_service.get_tasks(session=session, student_id=student_id)
+    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)

@@ -33,6 +33,7 @@ async def register_guardian(
         )
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
+
 @register_router.post("/student")
 async def register_student(
     request: StudentRegisterRequest, session: AsyncSession = Depends(get_db_session)

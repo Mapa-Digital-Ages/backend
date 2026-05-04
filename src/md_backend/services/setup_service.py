@@ -26,7 +26,7 @@ class SetupService:
         if result.scalar_one_or_none() is not None:
             return None
 
-        hashed = hash_password(password)
+        hashed = await hash_password(password)
         user = UserProfile(
             email=email,
             password=hashed,

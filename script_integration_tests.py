@@ -30,6 +30,7 @@ import httpx
 import jwt
 
 BASE_URL = "http://localhost:8000"
+API_PREFIX = "/api"
 JWT_RE = re.compile(r"^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$")
 
 
@@ -162,9 +163,7 @@ def expect_each_has_keys(expected: set[str]) -> Callable[[Any], None]:
             if actual != expected:
                 missing = expected - actual
                 extra = actual - expected
-                raise CheckError(
-                    f"item[{i}] keys mismatch missing={missing} extra={extra}"
-                )
+                raise CheckError(f"item[{i}] keys mismatch missing={missing} extra={extra}")
 
     return check
 
@@ -400,7 +399,7 @@ def _expected_statuses(case: Case) -> tuple[int, ...]:
     return tuple(case.expect_status)
 
 
-_TRANSIENT_HTTP_EXCEPTIONS: tuple[type[BaseException], ...] = (
+_TRANSIENT_HTTP_EXCEPTIONS: tuple[type[httpx.HTTPError], ...] = (
     httpx.RemoteProtocolError,
     httpx.ReadError,
     httpx.WriteError,
@@ -415,7 +414,7 @@ async def run_case(client: httpx.AsyncClient, ctx: dict, case: Case) -> CaseResu
     headers = case.headers_factory(ctx) if case.headers_factory else None
     started = time.perf_counter()
     try:
-        path = resolve_path(case.path, ctx)
+        path = API_PREFIX + resolve_path(case.path, ctx)
         body = resolve_body(case.json_body, ctx)
     except CheckError as e:
         elapsed = (time.perf_counter() - started) * 1000
@@ -579,7 +578,7 @@ _SCHOOL_KEYS = {
     "is_active",
     "deactivated_at",
     "created_at",
-    "quantidade_alunos",
+    "student_count",
 }
 
 _STUDENT_KEYS = {
@@ -610,9 +609,9 @@ def _existing_core_stages() -> list[Stage]:
             name="0. Healthcheck",
             cases=[
                 Case(
-                    name="GET / -> 200 alive",
+                    name="GET /api -> 200 alive",
                     method="GET",
-                    path="/",
+                    path="",
                     expect_status=200,
                     body_check=expect_detail_eq("Alive!"),
                 ),
@@ -633,14 +632,24 @@ def _existing_core_stages() -> list[Stage]:
                     name="S0.2 POST /setup invalid email -> 422",
                     method="POST",
                     path="/setup",
-                    json_body={"email": "not-an-email", "password": "12345678"},
+                    json_body={
+                        "first_name": "Test",
+                        "last_name": "User",
+                        "email": "not-an-email",
+                        "password": "12345678",
+                    },
                     expect_status=422,
                 ),
                 Case(
                     name="S0.3 POST /setup short password (7) -> 422",
                     method="POST",
                     path="/setup",
-                    json_body={"email": "validemail@test.com", "password": "1234567"},
+                    json_body={
+                        "first_name": "Test",
+                        "last_name": "User",
+                        "email": "validemail@test.com",
+                        "password": "1234567",
+                    },
                     expect_status=422,
                 ),
             ],
@@ -654,6 +663,8 @@ def _existing_core_stages() -> list[Stage]:
                     method="POST",
                     path="/setup",
                     json_body={
+                        "first_name": "Super",
+                        "last_name": "Admin",
                         "email": "superadmin@test.com",
                         "password": "superpass123",
                     },
@@ -670,15 +681,25 @@ def _existing_core_stages() -> list[Stage]:
                     name="POST /setup duplicate -> 409",
                     method="POST",
                     path="/setup",
-                    json_body={"email": "outro@test.com", "password": "outrapass123"},
+                    json_body={
+                        "first_name": "Outro",
+                        "last_name": "Admin",
+                        "email": "outro@test.com",
+                        "password": "outrapass123",
+                    },
                     expect_status=409,
-                    body_check=expect_detail_eq("Setup ja realizado"),
+                    body_check=expect_detail_eq("Setup already completed"),
                 ),
                 Case(
                     name="S1.1 POST /setup boundary password (8 chars) -> 409 (already setup)",
                     method="POST",
                     path="/setup",
-                    json_body={"email": "boundary@test.com", "password": "12345678"},
+                    json_body={
+                        "first_name": "Boundary",
+                        "last_name": "User",
+                        "email": "boundary@test.com",
+                        "password": "12345678",
+                    },
                     expect_status=409,
                 ),
             ],
@@ -749,14 +770,15 @@ def _existing_core_stages() -> list[Stage]:
         ),
         # ------- Stage 3.1: register Maria -------
         Stage(
-            name="3.1 Register Maria (responsavel)",
+            name="3.1 Register Maria (guardian)",
             cases=[
                 Case(
-                    name="POST /register/responsavel Maria -> 201",
+                    name="POST /register/guardian Maria -> 201",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "Maria Silva",
+                        "first_name": "Maria",
+                        "last_name": "Silva",
                         "email": "maria@test.com",
                         "password": "senha12345",
                     },
@@ -773,9 +795,10 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name="3.2 register Maria duplicate -> 409",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "Maria Silva",
+                        "first_name": "Maria",
+                        "last_name": "Silva",
                         "email": "maria@test.com",
                         "password": "senha12345",
                     },
@@ -785,35 +808,42 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name="3.3 register short password -> 422",
                     method="POST",
-                    path="/register/responsavel",
-                    json_body={"name": "X Y", "email": "x@test.com", "password": "123"},
+                    path="/register/guardian",
+                    json_body={
+                        "first_name": "X",
+                        "last_name": "Y",
+                        "email": "x@test.com",
+                        "password": "123",
+                    },
                     expect_status=422,
                 ),
                 Case(
-                    name="4.1 login Maria waiting -> 403 AGUARDANDO",
+                    name="4.1 login Maria waiting -> 403 WAITING",
                     method="POST",
                     path="/login",
                     json_body={"email": "maria@test.com", "password": "senha12345"},
                     expect_status=403,
-                    body_check=expect_detail_eq("AGUARDANDO"),
+                    body_check=expect_detail_eq("WAITING"),
                 ),
                 Case(
-                    name="5.1 register aluno missing fields -> 422",
+                    name="5.1 register student missing birth_date/class -> 422",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Joao Aluno",
+                        "first_name": "Joao",
+                        "last_name": "Aluno",
                         "email": "joao@test.com",
                         "password": "alunopass1",
                     },
                     expect_status=422,
                 ),
                 Case(
-                    name="5.2 register aluno invalid student_class -> 422",
+                    name="5.2 register student invalid student_class -> 422",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Joao Aluno",
+                        "first_name": "Joao",
+                        "last_name": "Aluno",
                         "email": "joao@test.com",
                         "password": "alunopass1",
                         "birth_date": "2012-05-10",
@@ -828,33 +858,36 @@ def _existing_core_stages() -> list[Stage]:
             name="R1. Register Pydantic extras (parallel)",
             cases=[
                 Case(
-                    name="R1.1 register responsavel invalid email -> 422",
+                    name="R1.1 register guardian invalid email -> 422",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "Bad Email",
+                        "first_name": "Bad",
+                        "last_name": "Email",
                         "email": "invalid",
                         "password": "validpass1",
                     },
                     expect_status=422,
                 ),
                 Case(
-                    name="R1.2 register responsavel password=7chars -> 422 (boundary)",
+                    name="R1.2 register guardian password=7chars -> 422 (boundary)",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "Boundary One",
+                        "first_name": "Boundary",
+                        "last_name": "One",
                         "email": "boundary1@test.com",
                         "password": "1234567",
                     },
                     expect_status=422,
                 ),
                 Case(
-                    name="R1.3 register responsavel password=8chars -> 201 (boundary)",
+                    name="R1.3 register guardian password=8chars -> 201 (boundary)",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "Boundary Two",
+                        "first_name": "Boundary",
+                        "last_name": "Two",
                         "email": "boundary2@test.com",
                         "password": "12345678",
                     },
@@ -862,24 +895,24 @@ def _existing_core_stages() -> list[Stage]:
                     body_check=expect_id_uuid,
                 ),
                 Case(
-                    name="R1.4 register responsavel name='' -> 201 (no min_length)",
+                    name="R1.4 register guardian first_name='' -> 422 (min_length=1)",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "",
+                        "first_name": "",
+                        "last_name": "Name",
                         "email": "emptyname@test.com",
                         "password": "senha12345",
                     },
-                    expect_status=201,
-                    body_check=expect_id_uuid,
-                    notes="documents-divergence: name='' is accepted",
+                    expect_status=422,
                 ),
                 Case(
-                    name="R1.5 register aluno duplicate email (preempt) -> 422 missing class",
+                    name="R1.5 register student missing class -> 422",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Some Aluno",
+                        "first_name": "Some",
+                        "last_name": "Student",
                         "email": "aluno-extra@test.com",
                         "password": "validpass1",
                         "birth_date": "2012-05-10",
@@ -887,11 +920,12 @@ def _existing_core_stages() -> list[Stage]:
                     expect_status=422,
                 ),
                 Case(
-                    name="R1.6 register aluno invalid birth_date -> 422",
+                    name="R1.6 register student invalid birth_date -> 422",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Bad Date",
+                        "first_name": "Bad",
+                        "last_name": "Date",
                         "email": "baddate@test.com",
                         "password": "validpass1",
                         "birth_date": "not-a-date",
@@ -900,11 +934,12 @@ def _existing_core_stages() -> list[Stage]:
                     expect_status=422,
                 ),
                 Case(
-                    name="R1.7 register aluno future birth_date -> 201 (no future check)",
+                    name="R1.7 register student future birth_date -> 201 (no future check)",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Future Kid",
+                        "first_name": "Future",
+                        "last_name": "Kid",
                         "email": "futurekid@test.com",
                         "password": "validpass1",
                         "birth_date": "2050-01-01",
@@ -923,9 +958,10 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name=f"R2.{i + 1} register aluno class={cls} -> 201",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": f"Aluno C{i + 5}",
+                        "first_name": "Aluno",
+                        "last_name": f"C{i + 5}",
                         "email": f"aluno-{cls.replace(' ', '-')}@test.com",
                         "password": "validpass1",
                         "birth_date": "2012-05-10",
@@ -952,9 +988,10 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name="5.3 register Joao -> 201, capture id",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Joao Aluno",
+                        "first_name": "Joao",
+                        "last_name": "Aluno",
                         "email": "joao@test.com",
                         "password": "alunopass1",
                         "birth_date": "2012-05-10",
@@ -973,9 +1010,10 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name="R3.1 register Joao again -> 409",
                     method="POST",
-                    path="/register/aluno",
+                    path="/register/student",
                     json_body={
-                        "name": "Joao Aluno",
+                        "first_name": "Joao",
+                        "last_name": "Aluno",
                         "email": "joao@test.com",
                         "password": "alunopass1",
                         "birth_date": "2012-05-10",
@@ -991,12 +1029,12 @@ def _existing_core_stages() -> list[Stage]:
             name="6. Login Joao -> ALUNO_TOKEN",
             cases=[
                 Case(
-                    name="6.1 login Joao -> 200, role=aluno",
+                    name="6.1 login Joao -> 200, role=student",
                     method="POST",
                     path="/login",
                     json_body={"email": "joao@test.com", "password": "alunopass1"},
                     expect_status=200,
-                    body_check=expect_token_role("aluno"),
+                    body_check=expect_token_role("student"),
                     capture=lambda ctx, body: ctx.update(ALUNO_TOKEN=body["token"]),
                 ),
             ],
@@ -1045,20 +1083,20 @@ def _existing_core_stages() -> list[Stage]:
                     expect_status=422,
                 ),
                 Case(
-                    name="7.6 filter user_status=aguardando -> only aguardando",
+                    name="7.6 filter user_status=waiting -> only waiting",
                     method="GET",
-                    path="/admin/users?user_status=aguardando",
+                    path="/admin/users?user_status=waiting",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
-                    body_check=expect_list_only_status("aguardando"),
+                    body_check=expect_list_only_status("waiting"),
                 ),
                 Case(
-                    name="7.7 filter role=aluno -> only alunos",
+                    name="7.7 filter role=student -> only alunos",
                     method="GET",
-                    path="/admin/users?role=aluno",
+                    path="/admin/users?role=student",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
-                    body_check=expect_list_only_role("aluno"),
+                    body_check=expect_list_only_role("student"),
                 ),
                 Case(
                     name="7.8 filter role=admin -> superadmin, capture id",
@@ -1137,7 +1175,7 @@ def _existing_core_stages() -> list[Stage]:
                         )
                     ),
                     expect_status=401,
-                    body_check=expect_detail_eq("Usuario nao encontrado"),
+                    body_check=expect_detail_eq("User not found"),
                 ),
                 Case(
                     name="A.6 Bearer JWT with non-uuid user_id -> 401 or 500 (bug)",
@@ -1153,28 +1191,28 @@ def _existing_core_stages() -> list[Stage]:
                     notes="documents-divergence: malformed user_id raises 500",
                 ),
                 Case(
-                    name="A.7 filter user_status=aprovado -> only aprovado",
+                    name="A.7 filter user_status=approved -> only approved",
                     method="GET",
-                    path="/admin/users?user_status=aprovado",
+                    path="/admin/users?user_status=approved",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
-                    body_check=expect_list_only_status("aprovado"),
+                    body_check=expect_list_only_status("approved"),
                 ),
                 Case(
-                    name="A.8 filter role=admin&user_status=aguardando -> empty",
+                    name="A.8 filter role=admin&user_status=waiting -> empty",
                     method="GET",
-                    path="/admin/users?role=admin&user_status=aguardando",
+                    path="/admin/users?role=admin&user_status=waiting",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=expect_list_empty,
                 ),
                 Case(
-                    name="A.9 filter role=responsavel -> only responsaveis",
+                    name="A.9 filter role=guardian -> only responsaveis",
                     method="GET",
-                    path="/admin/users?role=responsavel",
+                    path="/admin/users?role=guardian",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
-                    body_check=expect_list_only_role("responsavel"),
+                    body_check=expect_list_only_role("guardian"),
                 ),
             ],
         ),
@@ -1195,7 +1233,7 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/00000000-0000-0000-0000-000000000000/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=404,
                 ),
                 Case(
@@ -1203,7 +1241,7 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{admin_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "negado"},
+                    json_body={"status": "rejected"},
                     expect_status=403,
                 ),
                 Case(
@@ -1211,22 +1249,22 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{joao_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=403,
                 ),
                 Case(
-                    name="P.1 status=aguardando -> 422 (regex blocks)",
+                    name="P.1 status=waiting -> 422 (regex blocks)",
                     method="PATCH",
                     path="/admin/users/{maria_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "aguardando"},
+                    json_body={"status": "waiting"},
                     expect_status=422,
                 ),
                 Case(
                     name="P.2 PATCH no token -> 401",
                     method="PATCH",
                     path="/admin/users/{maria_id}/status",
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=401,
                 ),
                 Case(
@@ -1234,7 +1272,7 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{maria_id}/status",
                     headers_factory=auth("ALUNO_TOKEN"),
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=403,
                 ),
                 Case(
@@ -1242,7 +1280,7 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/abc/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=422,
                 ),
             ],
@@ -1256,9 +1294,9 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{maria_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=200,
-                    body_check=expect_status_eq("aprovado"),
+                    body_check=expect_status_eq("approved"),
                 ),
             ],
         ),
@@ -1272,7 +1310,7 @@ def _existing_core_stages() -> list[Stage]:
                     path="/login",
                     json_body={"email": "maria@test.com", "password": "senha12345"},
                     expect_status=200,
-                    body_check=expect_token_role("responsavel"),
+                    body_check=expect_token_role("guardian"),
                     capture=lambda ctx, body: ctx.update(RESPO_TOKEN=body["token"]),
                 ),
             ],
@@ -1286,9 +1324,9 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{maria_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "negado"},
+                    json_body={"status": "rejected"},
                     expect_status=200,
-                    body_check=expect_status_eq("negado"),
+                    body_check=expect_status_eq("rejected"),
                 ),
             ],
         ),
@@ -1296,21 +1334,20 @@ def _existing_core_stages() -> list[Stage]:
             name="P.toggle.2 RESPO_TOKEN now blocked by approval check",
             cases=[
                 Case(
-                    name="P.6 /validate with denied Maria token -> 403",
-                    method="POST",
-                    path="/validate",
+                    name="P.6 GET /school with rejected Maria token -> 403",
+                    method="GET",
+                    path="/school",
                     headers_factory=auth("RESPO_TOKEN"),
-                    json_body={"text": "oi", "sender": "+55"},
                     expect_status=403,
-                    body_check=expect_detail_eq("Conta negada"),
+                    body_check=expect_detail_eq("Account rejected"),
                 ),
                 Case(
-                    name="P.7 login Maria denied -> 403 NEGADO",
+                    name="P.7 login Maria denied -> 403 REJECTED",
                     method="POST",
                     path="/login",
                     json_body={"email": "maria@test.com", "password": "senha12345"},
                     expect_status=403,
-                    body_check=expect_detail_eq("NEGADO"),
+                    body_check=expect_detail_eq("REJECTED"),
                 ),
             ],
         ),
@@ -1322,61 +1359,42 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{maria_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "aprovado"},
+                    json_body={"status": "approved"},
                     expect_status=200,
-                    body_check=expect_status_eq("aprovado"),
+                    body_check=expect_status_eq("approved"),
                 ),
             ],
         ),
         # ------- Stage 9: validate (parallel) -------
         Stage(
-            name="9. Validate endpoint (parallel)",
+            name="9. Auth on protected endpoint /school (parallel)",
             cases=[
                 Case(
-                    name="9.1 POST /validate no token -> 401",
-                    method="POST",
-                    path="/validate",
-                    json_body={"text": "oi", "sender": "+55"},
+                    name="9.1 GET /school no token -> 401",
+                    method="GET",
+                    path="/school",
                     expect_status=401,
                 ),
                 Case(
-                    name="9.2 POST /validate with approved token -> 200",
-                    method="POST",
-                    path="/validate",
+                    name="9.2 GET /school with approved guardian token -> 200",
+                    method="GET",
+                    path="/school",
                     headers_factory=auth("RESPO_TOKEN"),
-                    json_body={"text": "oi", "sender": "+55"},
                     expect_status=200,
-                    body_check=expect_text_contains("+55", "oi"),
+                    body_check=expect_paginated(expected_page=1, expected_size=20),
                 ),
                 Case(
-                    name="V.1 POST /validate with admin token -> 200",
-                    method="POST",
-                    path="/validate",
+                    name="V.1 GET /school with admin token -> 200",
+                    method="GET",
+                    path="/school",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"text": "hi", "sender": "admin"},
                     expect_status=200,
-                    body_check=expect_text_contains("admin", "hi"),
+                    body_check=expect_paginated(expected_page=1, expected_size=20),
                 ),
                 Case(
-                    name="V.2 POST /validate body missing text -> 422",
-                    method="POST",
-                    path="/validate",
-                    headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"sender": "+55"},
-                    expect_status=422,
-                ),
-                Case(
-                    name="V.3 POST /validate empty body -> 422",
-                    method="POST",
-                    path="/validate",
-                    headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={},
-                    expect_status=422,
-                ),
-                Case(
-                    name="V.4 POST /validate expired token -> 401",
-                    method="POST",
-                    path="/validate",
+                    name="V.4 GET /school expired token -> 401",
+                    method="GET",
+                    path="/school",
                     headers_factory=bearer(
                         forge_jwt(
                             {
@@ -1386,7 +1404,6 @@ def _existing_core_stages() -> list[Stage]:
                             exp_offset_minutes=-5,
                         )
                     ),
-                    json_body={"text": "oi", "sender": "+55"},
                     expect_status=401,
                     body_check=expect_detail_eq("Token expired"),
                 ),
@@ -1399,9 +1416,10 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name="10.1 register Pedro -> 201",
                     method="POST",
-                    path="/register/responsavel",
+                    path="/register/guardian",
                     json_body={
-                        "name": "Pedro Bloqueado",
+                        "first_name": "Pedro",
+                        "last_name": "Bloqueado",
                         "email": "pedro@test.com",
                         "password": "pedrosenha1",
                     },
@@ -1418,11 +1436,11 @@ def _existing_core_stages() -> list[Stage]:
                 Case(
                     name="10.1.1 list responsaveis -> 200 contains Pedro",
                     method="GET",
-                    path="/admin/users?role=responsavel",
+                    path="/admin/users?role=guardian",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=all_checks(
-                        expect_list_only_role("responsavel"),
+                        expect_list_only_role("guardian"),
                         expect_contains_email("pedro@test.com"),
                         expect_contains_email("maria@test.com"),
                     ),
@@ -1438,9 +1456,9 @@ def _existing_core_stages() -> list[Stage]:
                     method="PATCH",
                     path="/admin/users/{pedro_id}/status",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    json_body={"status": "negado"},
+                    json_body={"status": "rejected"},
                     expect_status=200,
-                    body_check=expect_status_eq("negado"),
+                    body_check=expect_status_eq("rejected"),
                 ),
             ],
         ),
@@ -1449,21 +1467,21 @@ def _existing_core_stages() -> list[Stage]:
             name="10.3 Login Pedro denied",
             cases=[
                 Case(
-                    name="10.3 login Pedro -> 403 NEGADO",
+                    name="10.3 login Pedro -> 403 REJECTED",
                     method="POST",
                     path="/login",
                     json_body={"email": "pedro@test.com", "password": "pedrosenha1"},
                     expect_status=403,
-                    body_check=expect_detail_eq("NEGADO"),
+                    body_check=expect_detail_eq("REJECTED"),
                 ),
                 Case(
-                    name="A.10 filter user_status=negado -> contains Pedro",
+                    name="A.10 filter user_status=rejected -> contains Pedro",
                     method="GET",
-                    path="/admin/users?user_status=negado",
+                    path="/admin/users?user_status=rejected",
                     headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=all_checks(
-                        expect_list_only_status("negado"),
+                        expect_list_only_status("rejected"),
                         expect_contains_email("pedro@test.com"),
                     ),
                 ),
@@ -1483,6 +1501,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.1 POST /school school1 -> 201",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Escola",
                         "last_name": "Privada",
@@ -1497,7 +1516,7 @@ def _school_stages() -> list[Stage]:
                         lambda b: (
                             None
                             if b.get("is_private") is True
-                            and b.get("quantidade_alunos") == 0
+                            and b.get("student_count") == 0
                             and b.get("is_active") is True
                             else (_ for _ in ()).throw(
                                 CheckError(f"unexpected school1 body: {b!r}")
@@ -1515,6 +1534,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.2 POST /school school2 -> 201",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Escola",
                         "last_name": "Publica",
@@ -1528,8 +1548,7 @@ def _school_stages() -> list[Stage]:
                         expect_keys_eq(_SCHOOL_KEYS),
                         lambda b: (
                             None
-                            if b.get("is_private") is False
-                            and b.get("requested_spots") == 120
+                            if b.get("is_private") is False and b.get("requested_spots") == 120
                             else (_ for _ in ()).throw(
                                 CheckError(f"unexpected school2 body: {b!r}")
                             )
@@ -1547,6 +1566,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.3 POST /school duplicate email -> 409",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Outra",
                         "last_name": "Escola",
@@ -1555,12 +1575,13 @@ def _school_stages() -> list[Stage]:
                         "is_private": True,
                     },
                     expect_status=409,
-                    body_check=expect_detail_eq("E-mail ja cadastrado."),
+                    body_check=expect_detail_eq("Email already registered."),
                 ),
                 Case(
                     name="SC1.4 POST /school short password -> 422",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Short",
                         "last_name": "Pwd",
@@ -1574,6 +1595,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.5 POST /school missing is_private -> 422",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Missing",
                         "last_name": "Field",
@@ -1586,6 +1608,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.6 POST /school invalid email -> 422",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Bad",
                         "last_name": "Email",
@@ -1599,6 +1622,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.7 POST /school empty first_name -> 422 (min_length=1)",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "",
                         "last_name": "Last",
@@ -1612,6 +1636,7 @@ def _school_stages() -> list[Stage]:
                     name="SC1.8 POST /school requested_spots=-5 -> 201 (no ge=0)",
                     method="POST",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     json_body={
                         "first_name": "Negative",
                         "last_name": "Spots",
@@ -1633,6 +1658,7 @@ def _school_stages() -> list[Stage]:
                     name="SC2.1 GET /school -> 200 list both schools",
                     method="GET",
                     path="/school",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=all_checks(
                         expect_paginated(expected_page=1, expected_size=20, min_total=2),
@@ -1640,9 +1666,7 @@ def _school_stages() -> list[Stage]:
                             None
                             if any(s.get("email") == "escola1@test.com" for s in b["items"])
                             and any(s.get("email") == "escola2@test.com" for s in b["items"])
-                            else (_ for _ in ()).throw(
-                                CheckError(f"missing school in list: {b!r}")
-                            )
+                            else (_ for _ in ()).throw(CheckError(f"missing school in list: {b!r}"))
                         ),
                     ),
                 ),
@@ -1650,6 +1674,7 @@ def _school_stages() -> list[Stage]:
                     name="SC2.2 GET /school?name=Escola -> 200 (filter works)",
                     method="GET",
                     path="/school?name=Escola",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=expect_paginated(expected_page=1, expected_size=20, min_total=2),
                 ),
@@ -1657,6 +1682,7 @@ def _school_stages() -> list[Stage]:
                     name="SC2.3 GET /school?name=ZZZ -> 200 empty",
                     method="GET",
                     path="/school?name=ZZZ_no_match",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=expect_paginated(expected_page=1, expected_size=20, min_total=0),
                 ),
@@ -1664,6 +1690,7 @@ def _school_stages() -> list[Stage]:
                     name="SC2.4 GET /school?page=2&size=1 -> 200",
                     method="GET",
                     path="/school?page=2&size=1",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=expect_paginated(expected_page=2, expected_size=1, min_total=2),
                 ),
@@ -1671,24 +1698,28 @@ def _school_stages() -> list[Stage]:
                     name="SC2.5 GET /school?page=0 -> 422",
                     method="GET",
                     path="/school?page=0",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=422,
                 ),
                 Case(
                     name="SC2.6 GET /school?size=200 -> 422",
                     method="GET",
                     path="/school?size=200",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=422,
                 ),
                 Case(
                     name="SC2.7 GET /school?size=0 -> 422",
                     method="GET",
                     path="/school?size=0",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=422,
                 ),
                 Case(
                     name="SC2.8 GET /school/{school1_id} -> 200",
                     method="GET",
                     path="/school/{school1_id}",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=expect_keys_eq(_SCHOOL_KEYS),
                 ),
@@ -1696,13 +1727,15 @@ def _school_stages() -> list[Stage]:
                     name="SC2.9 GET /school/<unknown> -> 404",
                     method="GET",
                     path="/school/00000000-0000-0000-0000-000000000000",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=404,
-                    body_check=expect_detail_eq("Escola não encontrada."),
+                    body_check=expect_detail_eq("School not found."),
                 ),
                 Case(
                     name="SC2.10 GET /school/abc -> 422 (bad UUID)",
                     method="GET",
                     path="/school/abc",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=422,
                 ),
             ],
@@ -1741,7 +1774,7 @@ def _school_stages() -> list[Stage]:
                     headers_factory=auth("ADMIN_TOKEN"),
                     json_body={"email": "escola2@test.com"},
                     expect_status=409,
-                    body_check=expect_detail_eq("E-mail ja cadastrado."),
+                    body_check=expect_detail_eq("Email already registered."),
                 ),
                 Case(
                     name="SC3.5 PATCH /school invalid UUID -> 422",
@@ -1767,9 +1800,7 @@ def _school_stages() -> list[Stage]:
                     body_check=lambda b: (
                         None
                         if b.get("name", "").startswith("Renomeada")
-                        else (_ for _ in ()).throw(
-                            CheckError(f"name not updated: {b!r}")
-                        )
+                        else (_ for _ in ()).throw(CheckError(f"name not updated: {b!r}"))
                     ),
                 ),
             ],
@@ -1819,21 +1850,19 @@ def _school_stages() -> list[Stage]:
                     name="SC4.5 GET /school excludes deleted school1",
                     method="GET",
                     path="/school?size=100",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=lambda b: (
                         None
-                        if not any(
-                            s.get("email") == "escola1@test.com" for s in b.get("items", [])
-                        )
-                        else (_ for _ in ()).throw(
-                            CheckError("deleted school1 still in list")
-                        )
+                        if not any(s.get("email") == "escola1@test.com" for s in b.get("items", []))
+                        else (_ for _ in ()).throw(CheckError("deleted school1 still in list"))
                     ),
                 ),
                 Case(
                     name="SC4.6 GET /school/{school1_id} -> 200 with is_active=False",
                     method="GET",
                     path="/school/{school1_id}",
+                    headers_factory=auth("ADMIN_TOKEN"),
                     expect_status=200,
                     body_check=lambda b: (
                         None
@@ -2081,9 +2110,7 @@ def _student_stages() -> list[Stage]:
                     body_check=lambda b: (
                         None
                         if b.get("first_name") == "AnaMaria"
-                        else (_ for _ in ()).throw(
-                            CheckError(f"name not updated: {b!r}")
-                        )
+                        else (_ for _ in ()).throw(CheckError(f"name not updated: {b!r}"))
                     ),
                 ),
             ],
@@ -2101,9 +2128,7 @@ def _student_stages() -> list[Stage]:
                     body_check=lambda b: (
                         None
                         if b.get("school_id")
-                        else (_ for _ in ()).throw(
-                            CheckError(f"school_id not set: {b!r}")
-                        )
+                        else (_ for _ in ()).throw(CheckError(f"school_id not set: {b!r}"))
                     ),
                 ),
             ],
@@ -2208,19 +2233,13 @@ def _student_stages() -> list[Stage]:
                     body_check=expect_not_contains_email("ana-student@test.com"),
                 ),
                 Case(
-                    name="ST4.6 GET /student/{student_id} -> 200 with is_active=False",
+                    name="ST4.6 GET /student/{student_id} -> 404 (filters soft-deleted)",
                     method="GET",
                     path="/student/{student_id}",
                     headers_factory=auth("ADMIN_TOKEN"),
-                    expect_status=200,
-                    body_check=lambda b: (
-                        None
-                        if b.get("is_active") is False
-                        else (_ for _ in ()).throw(
-                            CheckError(f"expected deactivated student: {b!r}")
-                        )
-                    ),
-                    notes="documents-divergence: get_student_by_id ignores is_active",
+                    expect_status=404,
+                    body_check=expect_detail_eq("Student not found"),
+                    notes="documents-divergence: get_student_by_id filters is_active (school GET does not)",
                 ),
                 Case(
                     name="ST4.7 DELETE /student again -> 204 (idempotent)",
@@ -2272,7 +2291,7 @@ async def wait_for_backend(client: httpx.AsyncClient, timeout: float = 90.0) -> 
     last_err: Exception | None = None
     while time.monotonic() < deadline:
         try:
-            r = await client.get("/")
+            r = await client.get(API_PREFIX)
             if r.status_code == 200:
                 print(_color("Backend is up.", GREEN))
                 return
