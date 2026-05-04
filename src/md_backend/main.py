@@ -8,16 +8,19 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
 from md_backend.routes.router import router
-from md_backend.utils.database import init_db
+from md_backend.utils.database import engine, init_db
 from md_backend.utils.limiter import limiter
 from md_backend.utils.settings import settings
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Initialize database tables on startup."""
+    """Initialize database tables on startup, dispose engine on shutdown."""
     await init_db()
-    yield
+    try:
+        yield
+    finally:
+        await engine.dispose()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -29,8 +32,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(router, prefix="/api")
