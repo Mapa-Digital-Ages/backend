@@ -1,7 +1,10 @@
 """Shared test helpers."""
 
+import os
+
 ADMIN_EMAIL = "shared_admin@test.com"
 ADMIN_PASSWORD = "adminpass123"
+_SETUP_TOKEN = os.environ.get("SETUP_TOKEN", "")
 
 
 def get_admin_headers(test_client):
@@ -14,6 +17,7 @@ def get_admin_headers(test_client):
             "first_name": "Shared",
             "last_name": "Admin",
         },
+        headers={"X-Setup-Token": _SETUP_TOKEN},
     )
     resp = test_client.post("/api/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     if resp.status_code != 200:
@@ -24,9 +28,7 @@ def get_admin_headers(test_client):
 
 def get_admin_id(test_client, admin_headers):
     """Return the id of the shared superadmin user."""
-    resp = test_client.get(
-        "/api/admin/users", params={"role": "admin"}, headers=admin_headers
-    )
+    resp = test_client.get("/api/admin/users", params={"role": "admin"}, headers=admin_headers)
     for user in resp.json():
         if user["email"] == ADMIN_EMAIL:
             return user["id"]
