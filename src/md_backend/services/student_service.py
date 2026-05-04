@@ -3,15 +3,17 @@
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from md_backend.models.db_models import (
     Attempt,
     ClassEnum,
     Content,
     StudentContentProgress,
+    StudentGuardian,
     StudentProfile,
     Subject,
     Task,
@@ -47,7 +49,7 @@ class StudentService:
         if existing.scalar_one_or_none() is not None:
             return None
 
-        hashed = hash_password(password)
+        hashed = await hash_password(password)
 
         try:
             user_profile = UserProfile(
@@ -81,28 +83,43 @@ class StudentService:
         email: str | None = None,
         page: int = 1,
         size: int = 10,
-    ) -> list[dict]:
+    ) -> dict:
         """List active students with optional filters and pagination."""
+        base_where: list[ColumnElement[bool]] = [
+            UserProfile.is_active.is_(True),
+            StudentProfile.deactivated_at.is_(None),
+        ]
+
+        if name:
+            base_where.append(
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
+            )
+        if email:
+            base_where.append(UserProfile.email.ilike(f"%{email}%"))
+
+        count_query = (
+            select(func.count())
+            .select_from(UserProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(*base_where)
+        )
+        total = (await session.execute(count_query)).scalar() or 0
+
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(UserProfile.is_active.is_(True))
+            .where(*base_where)
+            .offset((page - 1) * size)
+            .limit(size)
         )
+        rows = (await session.execute(query)).all()
 
-        if name:
-            query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
-            )
-
-        if email:
-            query = query.where(UserProfile.email.ilike(f"%{email}%"))
-
-        query = query.offset((page - 1) * size).limit(size)
-
-        result = await session.execute(query)
-        rows = result.all()
-
-        return [self._to_dict(user, student) for user, student in rows]
+        return {
+            "items": [self._to_dict(user, student) for user, student in rows],
+            "total": total,
+            "page": page,
+            "size": size,
+        }
 
     async def get_student_by_id(self, session: AsyncSession, student_id: uuid.UUID) -> dict | None:
         """Get a student by user_id."""
@@ -135,7 +152,11 @@ class StudentService:
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(StudentProfile.user_id == student_id)
+            .where(
+                StudentProfile.user_id == student_id,
+                UserProfile.is_active.is_(True),
+                StudentProfile.deactivated_at.is_(None),
+            )
         )
         result = await session.execute(query)
         row = result.one_or_none()
@@ -185,12 +206,19 @@ class StudentService:
         user_profile.deactivated_at = now
         student_profile.deactivated_at = now
 
+        await session.execute(
+            update(StudentGuardian)
+            .where(
+                StudentGuardian.student_id == student_id,
+                StudentGuardian.deactivated_at.is_(None),
+            )
+            .values(deactivated_at=now)
+        )
+
         await session.commit()
         return True
 
-    async def get_summary_metrics(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> list[dict]:
+    async def get_summary_metrics(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
         """Headline metrics for the student dashboard."""
         completed_tasks_q = select(func.count(Task.id)).where(
             Task.student_id == student_id,
@@ -198,9 +226,7 @@ class StudentService:
             Task.deactivated_at.is_(None),
         )
         attempts_q = select(func.count(Attempt.id)).where(Attempt.student_id == student_id)
-        mood_days_q = select(func.count(WellBeing.date)).where(
-            WellBeing.student_id == student_id
-        )
+        mood_days_q = select(func.count(WellBeing.date)).where(WellBeing.student_id == student_id)
 
         completed_tasks = (await session.execute(completed_tasks_q)).scalar() or 0
         attempts = (await session.execute(attempts_q)).scalar() or 0
@@ -235,9 +261,7 @@ class StudentService:
         rows = (await session.execute(query)).all()
         return [self._discipline_to_dict(row) for row in rows]
 
-    async def get_tasks(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> list[dict]:
+    async def get_tasks(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
         """All non-deactivated tasks for the student, newest first."""
         query = (
             select(Task)
