@@ -1,7 +1,7 @@
 # ── build stage ──────────────────────────────────────────────────────────────
 FROM python:3.12-slim AS builder
 
-WORKDIR /build
+WORKDIR /app
 
 RUN pip install --no-cache-dir uv
 
@@ -15,7 +15,7 @@ RUN adduser --system --no-create-home --uid 1001 app
 
 WORKDIR /app
 
-COPY --from=builder /build/.venv /app/.venv
+COPY --from=builder /app/.venv /app/.venv
 COPY src/ ./src/
 
 ENV PYTHONPATH=/app/src \
