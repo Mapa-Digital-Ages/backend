@@ -17,6 +17,6 @@ class TestMain(unittest.TestCase):
         self.ctx.__exit__(None, None, None)
 
     def test_root_endpoint(self):
-        response = self.test_client.get("/")
+        response = self.test_client.get("/api")
         self.assertEqual(response.status_code, 200)
         self.assertEqual({"detail": "Alive!"}, response.json())

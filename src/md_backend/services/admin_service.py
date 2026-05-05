@@ -73,8 +73,10 @@ class AdminService:
             .order_by(UserProfile.created_at.desc())
         )
 
+        guardian_joined = False
         if role == "guardian":
             query = query.join(GuardianProfile, UserProfile.guardian_profile)
+            guardian_joined = True
         elif role == "student":
             query = query.join(StudentProfile, UserProfile.student_profile)
         elif role == "admin":
@@ -82,9 +84,9 @@ class AdminService:
 
         if status_filter is not None:
             guardian_status = _STATUS_INPUT_MAP[status_filter]
-            query = query.join(GuardianProfile, UserProfile.guardian_profile).where(
-                GuardianProfile.guardian_status == guardian_status
-            )
+            if not guardian_joined:
+                query = query.join(GuardianProfile, UserProfile.guardian_profile)
+            query = query.where(GuardianProfile.guardian_status == guardian_status)
 
         result = await session.execute(query)
         users = result.scalars().all()

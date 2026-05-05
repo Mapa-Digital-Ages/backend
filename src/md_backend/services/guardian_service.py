@@ -48,7 +48,7 @@ class GuardianService:
         if existing.scalar_one_or_none() is not None:
             return None
 
-        hashed = hash_password(password)
+        hashed = await hash_password(password)
 
         try:
             user_profile = UserProfile(
@@ -229,7 +229,7 @@ class GuardianService:
         session: AsyncSession,
         guardian_id: uuid.UUID,
         data: dict,
-    ) -> dict | None:
+    ) -> dict | None | str:
         """Update mutable fields on a guardian's user profile.
 
         Only the fields ``first_name``, ``last_name``, ``phone_number`` and ``email``
@@ -273,7 +273,7 @@ class GuardianService:
                 select(UserProfile).where(UserProfile.email == data["email"])
             )
             if existing.scalar_one_or_none() is not None:
-                return None  # Email already taken
+                return "email_conflict"
 
         for field, value in data.items():
             if value is None:
@@ -449,23 +449,4 @@ class GuardianService:
                 user_profile.deactivated_at.isoformat() if user_profile.deactivated_at else None
             ),
             "students": students,
-        }
-
-    def _to_list_response_dict(
-        self,
-        user_profile: UserProfile,
-        guardian_profile: GuardianProfile,
-        student_count: int,
-    ) -> dict:
-        """Map profiles to a list response dict."""
-        return {
-            "user_id": str(guardian_profile.user_id),
-            "first_name": user_profile.first_name,
-            "last_name": user_profile.last_name,
-            "email": user_profile.email,
-            "phone_number": user_profile.phone_number,
-            "guardian_status": guardian_profile.guardian_status.value,
-            "is_active": user_profile.is_active,
-            "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
-            "student_count": student_count,
         }

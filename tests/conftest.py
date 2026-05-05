@@ -15,6 +15,10 @@ for key, value in DEFAULT_KEYS.items():
 def _dispose_engine():
     """Dispose the async engine after all tests so aiosqlite connections close cleanly."""
     yield
+    import inspect
+
     from md_backend.utils.database import engine
 
-    asyncio.run(engine.dispose())
+    result = engine.dispose()
+    if inspect.iscoroutine(result):
+        asyncio.run(result)

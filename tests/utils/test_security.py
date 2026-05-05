@@ -1,5 +1,6 @@
 """Tests for security utilities."""
 
+import asyncio
 import unittest
 
 import jwt
@@ -16,16 +17,22 @@ from md_backend.utils.settings import settings
 
 class TestPasswordHashing(unittest.TestCase):
     def test_hash_password_returns_bcrypt_hash(self):
-        hashed = hash_password("testpassword")
+        hashed = asyncio.run(hash_password("testpassword"))
         self.assertTrue(hashed.startswith("$2b$"))
 
     def test_verify_password_correct(self):
-        hashed = hash_password("testpassword")
-        self.assertTrue(verify_password("testpassword", hashed))
+        hashed = asyncio.run(hash_password("testpassword"))
+        self.assertTrue(asyncio.run(verify_password("testpassword", hashed)))
 
     def test_verify_password_incorrect(self):
-        hashed = hash_password("testpassword")
-        self.assertFalse(verify_password("wrongpassword", hashed))
+        hashed = asyncio.run(hash_password("testpassword"))
+        self.assertFalse(asyncio.run(verify_password("wrongpassword", hashed)))
+
+
+class TestVerifyPasswordBadHash(unittest.TestCase):
+    def test_verify_with_malformed_hash_returns_false(self):
+        result = asyncio.run(verify_password("anypassword", "not_a_valid_hash"))
+        self.assertFalse(result)
 
 
 class TestJWT(unittest.TestCase):

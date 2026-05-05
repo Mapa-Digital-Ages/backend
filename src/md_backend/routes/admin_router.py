@@ -36,9 +36,7 @@ async def list_users(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
-    users = await admin_service.list_users(
-        session=session, status_filter=user_status, role=role
-    )
+    users = await admin_service.list_users(session=session, status_filter=user_status, role=role)
     return JSONResponse(content=users, status_code=status.HTTP_200_OK)
 
 

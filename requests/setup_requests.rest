@@ -5,6 +5,8 @@ POST {{BaseUrl}}/setup
 Content-Type: application/json
 
 {
+    "first_name": "Admin",
+    "last_name": "User",
     "email": "admin@admin.com",
     "password": "admin123"
 }
