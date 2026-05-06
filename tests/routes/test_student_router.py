@@ -544,6 +544,69 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_guardian_access_unlinked_student_returns_403(self):
+        """Test that a guardian cannot access a student they don't own."""
+        # Create a target student
+        target_id, _, _ = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"student_target_guardian_{uuid.uuid4().hex[:6]}@example.com",
+        )
+
+        # Create a guardian user
+        guardian_email = f"guardian_unlinked_{uuid.uuid4().hex[:6]}@example.com"
+        guardian_resp = self.client.post(
+            "/api/register/guardian",
+            json={
+                "email": guardian_email,
+                "password": "validpass123",
+                "first_name": "Guardian",
+                "last_name": "Unlinked",
+            },
+        )
+        guardian_id = guardian_resp.json()["id"]
+
+        # Approve the guardian
+        self.client.patch(
+            f"/api/admin/users/{guardian_id}/status",
+            json={"status": "approved"},
+            headers=self.admin_headers,
+        )
+
+        # Login as guardian
+        guardian_login = self.client.post(
+            "/api/login",
+            json={
+                "email": guardian_email,
+                "password": "validpass123",
+            },
+        )
+        guardian_token = guardian_login.json()["token"]
+
+        # Try to access the target student (which is not linked to this guardian)
+        response = self.client.get(
+            f"/api/student/{target_id}",
+            headers={"Authorization": f"Bearer {guardian_token}"},
+        )
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], "Access denied")
+
+    def test_student_can_read_own_profile(self):
+        """Test that a student can access their own profile."""
+        student_id, _, student_token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"student_own_profile_{uuid.uuid4().hex[:6]}@example.com",
+        )
+
+        response = self.client.get(
+            f"/api/student/{student_id}",
+            headers={"Authorization": f"Bearer {student_token}"},
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["user_id"], student_id)
+
     # ------------------------------------------------------------------
     # GET /student/{id}/summary, /disciplines, /tasks
     # ------------------------------------------------------------------
