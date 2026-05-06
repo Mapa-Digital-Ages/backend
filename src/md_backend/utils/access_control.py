@@ -40,8 +40,10 @@ async def can_access_student(
     current_user: dict,
     student_id: uuid.UUID,
 ) -> bool:
-    """Return True if current_user may access student_id (admin or linked guardian)."""
+    """Return True if current_user may access student_id (admin, the student themselves, or linked guardian)."""
     if current_user.get("is_superadmin"):
         return True
     user_id = uuid.UUID(current_user["user_id"])
+    if user_id == student_id:
+        return await is_active_student(session=session, user_id=user_id)
     return await guardian_owns_student(session=session, guardian_id=user_id, student_id=student_id)
