@@ -32,6 +32,7 @@ jobs:
           
           echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
           echo "PASSWORD_PEPPER=${{ secrets.PASSWORD_PEPPER }}" >> .env
+          echo "SETUP_TOKEN=${{ secrets.SETUP_TOKEN }}" >> .env
 
       - name: Subir containers de produção
         run: |
