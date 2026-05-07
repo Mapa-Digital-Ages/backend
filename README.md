@@ -145,9 +145,8 @@ Project Setup Startup
 5. Pre-commit Hooks
 
     The repo ships with a [pre-commit](https://pre-commit.com/) config that
-    runs ruff (lint + format with autofix) and pyright on every `git commit`,
-    and the full pytest suite with 80% coverage on every `git push`. Each step
-    prints a clear banner and the next action to take.
+    runs ruff (lint + format with autofix) and pyright on every `git commit`.
+    Each step prints a clear banner and the next action to take.
 
     Install once after cloning:
 
@@ -168,14 +167,11 @@ Project Setup Startup
     - Pyright runs on `src/`. Type errors abort the commit; fix them by hand,
       then `git add` + `git commit` again.
 
-    What happens on push:
-
-    - `pytest -n auto --cov` must pass with `fail_under=80`. Otherwise the
-      push is aborted.
+    Tests + coverage are not in the hook anymore — run them manually with
+    `make test` or `make cicd` before pushing.
 
     Emergency bypass (use sparingly):
 
     ```bash
     git commit --no-verify
-    git push --no-verify
     ```
