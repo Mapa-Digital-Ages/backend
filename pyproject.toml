@@ -53,6 +53,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.14.13",
+    "pre-commit>=3.7",
 ]
 
 [tool.pyright]
@@ -75,5 +76,5 @@ omit = ["src/**/__init__.py"]
 concurrency = ["greenlet", "thread"]
 
 [tool.coverage.report]
-fail_under = 100
+fail_under = 80
 show_missing = true

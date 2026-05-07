@@ -40,7 +40,10 @@ async def can_access_student(
     current_user: dict,
     student_id: uuid.UUID,
 ) -> bool:
-    """Return True if current_user may access student_id (admin, the student themselves, or linked guardian)."""
+    """Return True if current_user may access student_id.
+
+    Allowed when the caller is an admin, the student themselves, or a linked guardian.
+    """
     if current_user.get("is_superadmin"):
         return True
     user_id = uuid.UUID(current_user["user_id"])
