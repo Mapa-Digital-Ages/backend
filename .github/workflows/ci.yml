@@ -53,7 +53,7 @@ jobs:
 
       - name: Create MinIO test bucket
         run: |
-          docker run --rm --network host minio/mc sh -c "
+          docker run --rm --network host --entrypoint sh minio/mc -c "
             mc alias set local http://localhost:9000 minioadmin minioadmin &&
             mc mb -p local/test-bucket
           "
