@@ -53,6 +53,7 @@ dev = [
     "pytest-cov>=7.1.0",
     "pytest-xdist>=3.8.0",
     "ruff>=0.14.13",
+    "pre-commit>=3.7",
 ]
 
 [tool.pyright]

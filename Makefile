@@ -1,4 +1,4 @@
-.PHONY: test cicd
+.PHONY: test cicd hooks-install hooks-run
 
 test:
 	uv run pytest -n auto --cov=src --cov-report=term-missing
@@ -17,3 +17,10 @@ cicd:
 	@uv run pytest -n auto --cov=src --cov-report=term-missing || { echo ""; echo "FAIL: Tests or coverage"; exit 1; }
 	@echo ""
 	@echo "OK: all CI checks passed"
+
+hooks-install:
+	uv sync
+	uv run pre-commit install
+
+hooks-run:
+	uv run pre-commit run --all-files
