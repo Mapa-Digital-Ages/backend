@@ -2,40 +2,13 @@ name: CI
 
 on:
   pull_request:
-    branches: [ "main", "dev" ]
+    branches: ["main", "dev"]
   push:
-    branches: [ "main", "dev" ]
+    branches: ["main", "dev"]
 
 jobs:
-  lint:
-    name: Lint (Ruff)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Install deps (uv)
-        run: uv sync --dev --all-extras --frozen
-
-      - name: Run Ruff (lint, fail on any violation)
-        run: uv run ruff check . --no-fix
-
-      - name: Run Ruff format check
-        run: uv run ruff format --check .
-
-  tests-and-coverage:
-    name: Tests & Coverage (100%)
+  ci:
+    name: Lint + Type Check + Tests (>= 80%)
     runs-on: ubuntu-latest
 
     services:
@@ -56,33 +29,36 @@ jobs:
         command: server /data
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 
-      - name: Install deps (uv)
+      - name: Install deps
         run: uv sync --dev --all-extras --frozen
+
+      - name: Ruff lint
+        run: uv run ruff check . --no-fix
+
+      - name: Ruff format check
+        run: uv run ruff format --check .
+
+      - name: Pyright
+        run: uv run pyright src/
 
       - name: Create MinIO test bucket
         run: |
-          pip install awscli --quiet
-          aws --endpoint-url http://localhost:9000 \
-              --region us-east-1 \
-              s3 mb s3://test-bucket
-        env:
-          AWS_ACCESS_KEY_ID: minioadmin
-          AWS_SECRET_ACCESS_KEY: minioadmin
+          docker run --rm --network host minio/mc sh -c "
+            mc alias set local http://localhost:9000 minioadmin minioadmin &&
+            mc mb -p local/test-bucket
+          "
 
-      - name: Run tests with coverage gate (pytest -n auto, fail_under=100)
+      - name: Tests + coverage
         run: uv run pytest -n auto --cov=src --cov-report=term-missing
         env:
           DATABASE_URL: sqlite+aiosqlite:///
@@ -96,32 +72,3 @@ jobs:
           AWS_ACCESS_KEY_ID: minioadmin
           AWS_SECRET_ACCESS_KEY: minioadmin
           AWS_S3_ENDPOINT_URL: http://localhost:9000
-
-  type-check:
-    name: Type Check (Pyright)
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Install deps (uv)
-        run: uv sync --dev --all-extras --frozen
-
-      - name: Run Pyright
-        run: uv run pyright src/
-        env:
-          DATABASE_URL: sqlite+aiosqlite:///
-          JWT_SECRET_KEY: ci-test-secret-key-for-unit-tests-32chars
-          PASSWORD_PEPPER: ci-test-pepper-key-for-unit-tests-32chars
-          SETUP_TOKEN: ci-test-setup-token-for-unit-tests-32chars

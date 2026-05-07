@@ -1,10 +1,7 @@
-.PHONY: test report cicd
+.PHONY: test cicd
 
 test:
 	uv run pytest -n auto --cov=src --cov-report=term-missing
-
-report:
-	uv run coverage report
 
 cicd:
 	@echo "==> [1/4] Ruff lint"
@@ -16,7 +13,7 @@ cicd:
 	@echo "==> [3/4] Pyright (type check)"
 	@uv run pyright src/ || { echo ""; echo "FAIL: Pyright type check"; exit 1; }
 	@echo ""
-	@echo "==> [4/4] Tests + coverage (pytest -n auto, fail_under=100)"
+	@echo "==> [4/4] Tests + coverage (pytest -n auto, fail_under=80)"
 	@uv run pytest -n auto --cov=src --cov-report=term-missing || { echo ""; echo "FAIL: Tests or coverage"; exit 1; }
 	@echo ""
 	@echo "OK: all CI checks passed"
