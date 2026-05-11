@@ -113,13 +113,16 @@ class S3StorageService(StorageService):
         content_type: str,
     ) -> None:
         """Upload bytes to S3 under ``storage_key``."""
-        async with self._client() as s3:  # type: ignore[attr-defined]
-            await s3.put_object(
-                Bucket=self.bucket,
-                Key=storage_key,
-                Body=file_bytes,
-                ContentType=content_type,
-            )
+        try:
+            async with self._client() as s3:  # type: ignore[attr-defined]
+                await s3.put_object(
+                    Bucket=self.bucket,
+                    Key=storage_key,
+                    Body=file_bytes,
+                    ContentType=content_type,
+                )
+        except Exception as exc:
+            raise OSError(f"S3 upload failed: {exc}") from exc
 
     async def read_file(
         self,
