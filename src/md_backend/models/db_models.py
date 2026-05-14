@@ -485,9 +485,7 @@ class Task(Base):
     task_status: Mapped[TaskStatusEnum | None] = mapped_column(
         Enum(TaskStatusEnum, name="task_status_enum"), nullable=True
     )
-    subject_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("subjects.id"), nullable=False
-    )
+    subject_id: Mapped[int] = mapped_column(Integer, ForeignKey("subjects.id"), nullable=False)
     date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
