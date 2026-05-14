@@ -296,7 +296,8 @@ class TaskStatusEnum(enum.StrEnum):
     """Task progress status."""
 
     PENDING = "pending"
-    COMPLETED = "completed"
+    DONE = "done"
+    ADJUST = "adjust"
 
 
 class HumorEnum(enum.StrEnum):
