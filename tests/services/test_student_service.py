@@ -218,7 +218,7 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         task.id = uuid.uuid4()
         task.description = "Read chapter 1"
         task.date = datetime.date(2024, 6, 15)
-        task.task_status = TaskStatusEnum.COMPLETED
+        task.task_status = TaskStatusEnum.DONE
 
         result = service._task_to_dict(task)
 
