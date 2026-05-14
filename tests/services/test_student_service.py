@@ -216,7 +216,7 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         service = StudentService()
         task = MagicMock()
         task.id = uuid.uuid4()
-        task.description = "Read chapter 1"
+        task.title = "Read chapter 1"
         task.date = datetime.date(2024, 6, 15)
         task.task_status = TaskStatusEnum.DONE
 
@@ -232,7 +232,7 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         service = StudentService()
         task = MagicMock()
         task.id = uuid.uuid4()
-        task.description = "No status"
+        task.title = "No status"
         task.date = None
         task.task_status = None
 
