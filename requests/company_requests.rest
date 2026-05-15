@@ -1,0 +1,85 @@
+@BaseUrl = http://localhost:8000
+
+### Criar Empresa
+# @name createCompany
+POST {{BaseUrl}}/company
+Content-Type: application/json
+
+{
+    "first_name": "Testes",
+    "last_name": "Corporation",
+    "email": "Teste_Corporation@gmail.com",
+    "password": "senhagrandona",
+    "spots": 20
+}
+
+### Listar todas as Empresas
+GET {{BaseUrl}}/company
+
+
+### Buscar Empresa por ID
+GET {{BaseUrl}}/company/50948d43-b493-4db9-95dc-8264be3d8892
+
+
+
+### Atualizar dados da Empresa com erro de EMAIL correto
+PATCH {{BaseUrl}}/company/50948d43-b493-4db9-95dc-8264be3d8892
+Content-Type: application/json
+
+{
+    "first_name": "Testes Editados",
+    "last_name": "Corporation Nova",
+    "spots": 15,
+    "phone_number": "12345678912",
+    "email": "emailmodificado@gmail.com"
+}
+
+### Deletar Empresa (Ativo -> Soft Delete)
+DELETE {{BaseUrl}}/company/50948d43-b493-4db9-95dc-8264be3d8892
+
+### Reativar Empresa (Soft Delete -> Ativo)
+PATCH {{BaseUrl}}/company/50948d43-b493-4db9-95dc-8264be3d8892
+Content-Type: application/json
+
+{
+    "is_active": true
+}
+
+
+
+
+### --- TESTES DE ERRO ---
+
+### ERRO 422: Falta o campo 'spots'
+POST {{BaseUrl}}/company
+Content-Type: application/json
+
+{
+    "first_name": "Outra",
+    "last_name": "Empresa",
+    "email": "contato2@exemplo.com.br",
+    "password": "password123"
+}
+
+### ERRO 409: E-mail já cadastrado
+POST {{BaseUrl}}/company
+Content-Type: application/json
+
+{
+    "first_name": "Empresa",
+    "last_name": "Teste",
+    "email": "uau@exemplo.com.br",
+    "password": "password123",
+    "spots": 10
+}
+### ERRO 422: Atualizar dados da Empresa com erro de EMAIL
+PATCH {{BaseUrl}}/company/50948d43-b493-4db9-95dc-8264be3d8892
+Content-Type: application/json
+
+{
+    "first_name": "Testes Editados",
+    "last_name": "Corporation Nova",
+    "spots": 15,
+    "phone_number": "12345678912",
+    "email": "emailmodificado"
+}

@@ -1,10 +1,13 @@
-@BaseUrl = http://localhost:8000
+@BaseUrl = http://localhost:8000/api
 
 ### Setup - Create first superadmin (only works once)
 POST {{BaseUrl}}/setup
 Content-Type: application/json
+X-setup-token: change-me-to-a-strong-random-string
 
 {
+    "first_name": "Admin",
+    "last_name": "User",
     "email": "admin@admin.com",
     "password": "admin123"
 }

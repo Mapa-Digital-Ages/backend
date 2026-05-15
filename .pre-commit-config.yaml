@@ -1,0 +1,27 @@
+default_install_hook_types: [pre-commit]
+default_stages: [pre-commit]
+
+repos:
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check (lint + autofix)
+        entry: scripts/hooks/run-step.sh "ruff lint" uv run ruff check --fix --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format
+        name: ruff format
+        entry: scripts/hooks/run-step.sh "ruff format" uv run ruff format --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: pyright
+        name: pyright (type check)
+        entry: scripts/hooks/run-step.sh "pyright" uv run pyright src/
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
