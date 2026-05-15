@@ -638,6 +638,18 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(response.status_code, 403)
 
+    def test_student_can_access_own_summary(self):
+        student_id, _, token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"student_self_{uuid.uuid4().hex[:6]}@example.com",
+        )
+        response = self.client.get(
+            f"/api/student/{student_id}/summary",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(response.status_code, 200)
+
     def test_delete_access_denied_for_non_admin(self):
         target_id, _, _ = _create_student_with_token(
             self.client,
