@@ -2,58 +2,73 @@ name: CI
 
 on:
   pull_request:
-    branches: [ "main" ]
+    branches: ["main", "dev"]
   push:
-    branches: [ "main" ]
+    branches: ["main", "dev"]
 
 jobs:
-  build-and-compile:
-    name: Build & Compile
+  ci:
+    name: Lint + Type Check + Tests (>= 80%)
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    services:
+      minio:
+        image: minio/minio:latest
+        ports:
+          - 9000:9000
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin
+        options: >-
+          --health-cmd "curl -sf http://localhost:9000/minio/health/live"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        volumes:
+          - /tmp/minio-data:/data
+        command: server /data
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
 
-      - name: Install deps (uv)
+      - name: Install deps
         run: uv sync --dev --all-extras --frozen
 
-      - name: Compile check (syntax)
-        run: uv run python -m compileall -q .
+      - name: Ruff lint
+        run: uv run ruff check . --no-fix
 
-  tests-and-coverage:
-    name: Tests & Coverage (>= 70%)
-    runs-on: ubuntu-latest
-    needs: build-and-compile
+      - name: Ruff format check
+        run: uv run ruff format --check .
 
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Pyright
+        run: uv run pyright src/
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v6
-        with:
-          enable-cache: true
-
-      - name: Install deps (uv)
-        run: uv sync --dev --all-extras --frozen
-
-      - name: Run tests with coverage gate (unittest)
+      - name: Create MinIO test bucket
         run: |
-          uv run coverage run -m unittest discover -s .
-          uv run coverage report -m --fail-under=70
+          docker run --rm --network host --entrypoint sh minio/mc -c "
+            mc alias set local http://localhost:9000 minioadmin minioadmin &&
+            mc mb -p local/test-bucket
+          "
+
+      - name: Tests + coverage
+        run: uv run pytest -n auto --cov=src --cov-report=term-missing
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///
+          JWT_SECRET_KEY: ci-test-secret-key-for-unit-tests-32chars
+          PASSWORD_PEPPER: ci-test-pepper-key-for-unit-tests-32chars
+          SETUP_TOKEN: ci-test-setup-token-for-unit-tests-32chars
+          JWT_ALGORITHM: HS256
+          JWT_EXPIRATION_MINUTES: "30"
+          AWS_S3_BUCKET: test-bucket
+          AWS_S3_REGION: us-east-1
+          AWS_ACCESS_KEY_ID: minioadmin
+          AWS_SECRET_ACCESS_KEY: minioadmin
+          AWS_S3_ENDPOINT_URL: http://localhost:9000

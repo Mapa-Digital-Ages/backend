@@ -5,6 +5,26 @@
   "version": "0.2.0",
   "configurations": [
     {
+      "name": "Debug FastAPI (Local)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "md_backend.main:app",
+        "--host",
+        "0.0.0.0",
+        "--port",
+        "8000",
+        "--reload"
+      ],
+      "python": "${workspaceFolder}/.venv/bin/python",
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}/src"
+      },
+      "jinja": true,
+      "justMyCode": false
+    },
+    {
       "name": "Debug FastAPI (DevContainer)",
       "type": "debugpy",
       "request": "launch",
