@@ -296,7 +296,8 @@ class TaskStatusEnum(enum.StrEnum):
     """Task progress status."""
 
     PENDING = "pending"
-    COMPLETED = "completed"
+    DONE = "done"
+    ADJUST = "adjust"
 
 
 class HumorEnum(enum.StrEnum):
@@ -480,10 +481,11 @@ class Task(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
     )
-    description: Mapped[str] = mapped_column(String(255), nullable=False)
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
     task_status: Mapped[TaskStatusEnum | None] = mapped_column(
         Enum(TaskStatusEnum, name="task_status_enum"), nullable=True
     )
+    subject_id: Mapped[int] = mapped_column(Integer, ForeignKey("subjects.id"), nullable=False)
     date: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

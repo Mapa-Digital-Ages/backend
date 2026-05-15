@@ -23,7 +23,7 @@ from md_backend.models.db_models import (
 from md_backend.utils.security import hash_password
 
 _TASK_STATUS_TO_FRONTEND = {
-    TaskStatusEnum.COMPLETED: "done",
+    TaskStatusEnum.DONE: "done",
     TaskStatusEnum.PENDING: "pending",
 }
 
@@ -209,7 +209,7 @@ class StudentService:
         """Headline metrics for the student dashboard."""
         completed_tasks_q = select(func.count(Task.id)).where(
             Task.student_id == student_id,
-            Task.task_status == TaskStatusEnum.COMPLETED,
+            Task.task_status == TaskStatusEnum.DONE,
             Task.deactivated_at.is_(None),
         )
         attempts_q = select(func.count(Attempt.id)).where(Attempt.student_id == student_id)
@@ -403,7 +403,7 @@ class StudentService:
         task_status = task.task_status
         return {
             "id": str(task.id),
-            "title": task.description,
+            "title": task.title,
             "date": task.date.isoformat() if task.date else None,
             "status": (
                 _TASK_STATUS_TO_FRONTEND.get(task_status, "pending")
