@@ -121,12 +121,15 @@ class UploadService:
         )
         session.add(upload)
 
-        await self.storage.upload_file(
-            upload_id=upload_id,
-            storage_key=storage_key,
-            file_bytes=file_bytes,
-            content_type=detected_mime,
-        )
+        try:
+            await self.storage.upload_file(
+                upload_id=upload_id,
+                storage_key=storage_key,
+                file_bytes=file_bytes,
+                content_type=detected_mime,
+            )
+        except OSError:
+            return "Storage upload failed. Please try again later."
 
         await session.commit()
         await session.refresh(upload)
