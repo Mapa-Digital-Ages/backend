@@ -37,6 +37,15 @@ class StorageService(ABC):
         """Retrieve file bytes for the given upload, or None if missing."""
         ...
 
+    async def generate_download_url(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+        expires_in: int = 300,
+    ) -> str | None:
+        """Return a temporary download URL, or None to fall back to streaming the bytes."""
+        return None
+
 
 class PostgresBlobStorageService(StorageService):
     """Stores file bytes in a dedicated Postgres BYTEA table.
@@ -131,5 +140,22 @@ class S3StorageService(StorageService):
             try:
                 response = await s3.get_object(Bucket=self.bucket, Key=storage_key)
                 return await response["Body"].read()
+            except Exception:
+                return None
+
+    async def generate_download_url(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+        expires_in: int = 300,
+    ) -> str | None:
+        """Return a presigned GET URL valid for ``expires_in`` seconds."""
+        async with self._client() as s3:  # type: ignore[attr-defined]
+            try:
+                return await s3.generate_presigned_url(
+                    "get_object",
+                    Params={"Bucket": self.bucket, "Key": storage_key},
+                    ExpiresIn=expires_in,
+                )
             except Exception:
                 return None
