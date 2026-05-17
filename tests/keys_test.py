@@ -16,3 +16,5 @@ DEFAULT_KEYS = {
 
 for key, value in DEFAULT_KEYS.items():
     os.environ[key] = value
+    os.environ["SMTP_USERNAME"] = ""
+    os.environ["SMTP_PASSWORD"] = ""

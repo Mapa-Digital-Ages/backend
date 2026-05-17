@@ -40,6 +40,23 @@ class MockStorage(StorageService):
         return self.store.get(upload_id)
 
 
+class FailingUploadStorage(StorageService):
+    """Storage fake that fails while uploading bytes."""
+
+    async def upload_file(self, upload_id, storage_key, file_bytes, content_type):
+        raise RuntimeError("s3 unavailable")
+
+    async def read_file(self, upload_id, storage_key):
+        return None
+
+
+class PresignedUrlStorage(MockStorage):
+    """Storage fake that returns a presigned download URL."""
+
+    async def generate_download_url(self, upload_id, storage_key, expires_in=300):
+        return f"https://s3.example.test/{storage_key}?signature=abc&expires={expires_in}"
+
+
 class TestDetectMime(unittest.TestCase):
     """Unit tests for _detect_mime magic-bytes detection."""
 
@@ -121,10 +138,8 @@ class TestGetUploadById(unittest.TestCase):
         self.service = UploadService(storage=MockStorage())
 
     def test_returns_none_when_upload_not_found(self):
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = None
 
         result = asyncio.run(
             self.service.get_upload_by_id(
@@ -140,13 +155,12 @@ class TestGetUploadById(unittest.TestCase):
         upload = MagicMock()
         upload.student_id = student_id
 
-        # First execute → upload found; second execute (guardian_owns_student) → no link
-        found_result = MagicMock()
-        found_result.scalar_one_or_none.return_value = upload
+        # session.get → upload found; execute (guardian_owns_student) → no link
         no_link_result = MagicMock()
         no_link_result.scalar_one_or_none.return_value = None
         mock_session = AsyncMock()
-        mock_session.execute.side_effect = [found_result, no_link_result]
+        mock_session.get.return_value = upload
+        mock_session.execute.return_value = no_link_result
 
         result = asyncio.run(
             self.service.get_upload_by_id(
@@ -168,10 +182,8 @@ class TestGetUploadById(unittest.TestCase):
         upload.file_size_bytes = 1024
         upload.created_at = None
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = upload
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = upload
 
         result = asyncio.run(
             self.service.get_upload_by_id(
@@ -185,7 +197,43 @@ class TestGetUploadById(unittest.TestCase):
         assert isinstance(result, dict)
         self.assertNotIn("password", result)
         self.assertIn("download_url", result)
+        self.assertNotIn("file_url", result)
         self.assertEqual(result["download_url"], f"/uploads/{upload.id}/content")
+
+
+class TestGetDownloadUrl(unittest.TestCase):
+    """Unit tests for UploadService.get_download_url."""
+
+    def test_returns_presigned_s3_url_when_storage_provides_one(self):
+        service = UploadService(storage=PresignedUrlStorage())
+        student_id = uuid.uuid4()
+        upload = MagicMock()
+        upload.id = uuid.uuid4()
+        upload.student_id = student_id
+        upload.storage_key = "students/student-id/upload.pdf"
+        upload.file_name = "upload.pdf"
+        upload.file_type = "application/pdf"
+
+        mock_session = AsyncMock()
+        mock_session.get.return_value = upload
+
+        result = asyncio.run(
+            service.get_download_url(
+                upload_id=upload.id,
+                requester_id=str(student_id),
+                session=mock_session,
+                expires_in=600,
+            )
+        )
+
+        self.assertIsInstance(result, dict)
+        assert isinstance(result, dict)
+        self.assertEqual(
+            result["url"],
+            "https://s3.example.test/students/student-id/upload.pdf?signature=abc&expires=600",
+        )
+        self.assertTrue(result["presigned"])
+        self.assertEqual(result["expires_in"], 600)
 
 
 class TestGetUploadContent(unittest.TestCase):
@@ -203,10 +251,8 @@ class TestGetUploadContent(unittest.TestCase):
 
         storage.store[upload.id] = b"hello"
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = upload
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = upload
 
         result = asyncio.run(
             service.get_upload_content(
@@ -230,13 +276,12 @@ class TestGetUploadContent(unittest.TestCase):
         upload.student_id = uuid.uuid4()
         upload.storage_key = "some/key"
 
-        # First execute → upload found; second (guardian_owns_student) → no link
-        found_result = MagicMock()
-        found_result.scalar_one_or_none.return_value = upload
+        # session.get → upload found; execute (guardian_owns_student) → no link
         no_link_result = MagicMock()
         no_link_result.scalar_one_or_none.return_value = None
         mock_session = AsyncMock()
-        mock_session.execute.side_effect = [found_result, no_link_result]
+        mock_session.get.return_value = upload
+        mock_session.execute.return_value = no_link_result
 
         result = asyncio.run(
             service.get_upload_content(
@@ -251,10 +296,8 @@ class TestGetUploadContent(unittest.TestCase):
     def test_returns_none_when_upload_not_found(self):
         service = UploadService(storage=MockStorage())
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = None
 
         result = asyncio.run(
             service.get_upload_content(
@@ -282,10 +325,8 @@ class TestGetUploadContent(unittest.TestCase):
         upload.student_id = uuid.uuid4()
         upload.storage_key = "missing/key"
 
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = upload
         mock_session = AsyncMock()
-        mock_session.execute.return_value = mock_result
+        mock_session.get.return_value = upload
 
         result = asyncio.run(
             service.get_upload_content(
@@ -327,6 +368,7 @@ class TestUploadStudentFileMissingFilename(unittest.TestCase):
             service.upload_student_file(
                 student_id=uuid.uuid4(),
                 file=upload_file,
+                activity_type="activity",
                 session=mock_session,
             )
         )
@@ -352,10 +394,42 @@ class TestUploadStudentFileMissingFilename(unittest.TestCase):
             service.upload_student_file(
                 student_id=uuid.uuid4(),
                 file=upload_file,
+                activity_type="activity",
                 session=mock_session,
             )
         )
         self.assertEqual(result, "File too large. Maximum size is 10MB.")
+
+
+class TestUploadStudentFileStorageFailure(unittest.TestCase):
+    """Unit tests for storage failures while uploading student files."""
+
+    def test_returns_storage_error_without_persisting_metadata(self):
+        service = UploadService(storage=FailingUploadStorage())
+
+        student = MagicMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = student
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+
+        upload_file = MagicMock()
+        upload_file.filename = "activity.pdf"
+        upload_file.read = AsyncMock(side_effect=[b"%PDF-1.4 content", b""])
+
+        result = asyncio.run(
+            service.upload_student_file(
+                student_id=uuid.uuid4(),
+                file=upload_file,
+                activity_type="activity",
+                session=mock_session,
+            )
+        )
+
+        self.assertEqual(result, "storage_error")
+        mock_session.add.assert_not_called()
+        mock_session.commit.assert_not_called()
+        mock_session.rollback.assert_awaited_once()
 
 
 class TestCanAccessNonUuidRequester(unittest.TestCase):
