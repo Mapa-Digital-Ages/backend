@@ -42,5 +42,4 @@ class Settings(BaseSettings):
 
     # Cloudfront
     CLOUDFRONT_URL: str | None = None
-    
 settings = Settings()  # type: ignore
