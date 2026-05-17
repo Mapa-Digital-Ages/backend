@@ -44,6 +44,9 @@ async def setup(
             content={"detail": "Setup already completed"},
             status_code=status.HTTP_409_CONFLICT,
         )
+
+    await seed_default_subjects(session)
+    await session.commit()
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
 

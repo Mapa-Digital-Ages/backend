@@ -277,9 +277,7 @@ class UpdateUploadRequest(BaseModel):
     """Request body for updating an upload's activity type, status, and/or subject."""
 
     activity_type: str | None = Field(default=None, pattern=r"^(exercise|essay|activity)$")
-    status: str | None = Field(
-        default=None, pattern=r"^(pending|in_review|corrected|rejected)$"
-    )
+    status: str | None = Field(default=None, pattern=r"^(pending|in_review|corrected|rejected)$")
     subject_id: int | None = None
 
 

@@ -27,9 +27,7 @@ async def seed_default_subjects(session: AsyncSession) -> int:
     for data in DEFAULT_SUBJECTS:
         if data["name"].casefold() in existing_lower:
             continue
-        session.add(
-            Subject(name=data["name"], slug=data["slug"], color=data["color"])
-        )
+        session.add(Subject(name=data["name"], slug=data["slug"], color=data["color"]))
         created += 1
     return created
 
@@ -151,15 +149,11 @@ class SubjectService:
             )
         ).scalar() or 0
         task_refs = (
-            await session.execute(
-                select(func.count(Task.id)).where(Task.subject_id == subject_id)
-            )
+            await session.execute(select(func.count(Task.id)).where(Task.subject_id == subject_id))
         ).scalar() or 0
         upload_refs = (
             await session.execute(
-                select(func.count(StudentUpload.id)).where(
-                    StudentUpload.subject_id == subject_id
-                )
+                select(func.count(StudentUpload.id)).where(StudentUpload.subject_id == subject_id)
             )
         ).scalar() or 0
         if content_refs + task_refs + upload_refs > 0:

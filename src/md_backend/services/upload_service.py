@@ -167,14 +167,18 @@ class UploadService:
             return None
 
         uploads = (
-            await session.execute(
-                select(StudentUpload)
-                .where(StudentUpload.student_id == student_id)
-                .order_by(StudentUpload.created_at.desc())
-                .offset((page - 1) * size)
-                .limit(size)
+            (
+                await session.execute(
+                    select(StudentUpload)
+                    .where(StudentUpload.student_id == student_id)
+                    .order_by(StudentUpload.created_at.desc())
+                    .offset((page - 1) * size)
+                    .limit(size)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         return [self._upload_to_dict(u) for u in uploads]
 
     async def get_upload_by_id(
@@ -231,9 +235,7 @@ class UploadService:
             return None
         if not await self._can_access(upload, requester_id, session, is_superadmin):
             return "forbidden"
-        content = await self.storage.read_file(
-            upload_id=upload.id, storage_key=upload.storage_key
-        )
+        content = await self.storage.read_file(upload_id=upload.id, storage_key=upload.storage_key)
         if content is None:
             return None
         return upload, content
@@ -284,14 +286,10 @@ class UploadService:
             )
         ).all()
 
-        items = [
-            self._to_admin_dict(upload, user, subject) for upload, user, subject in rows
-        ]
+        items = [self._to_admin_dict(upload, user, subject) for upload, user, subject in rows]
         return self._page_response(items, page, page_size, total)
 
-    async def get_admin_upload(
-        self, session: AsyncSession, upload_id: uuid.UUID
-    ) -> dict | None:
+    async def get_admin_upload(self, session: AsyncSession, upload_id: uuid.UUID) -> dict | None:
         """Get a single upload with student info for the admin correction view."""
         row = await self._load_admin_row(session, upload_id)
         if row is None:

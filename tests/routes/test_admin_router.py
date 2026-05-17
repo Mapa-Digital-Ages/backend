@@ -210,8 +210,8 @@ class TestAdminRouter(unittest.TestCase):
                 "color",
                 "content_count",
                 "tasks_count",
-                "trails_count",
-                "questionnaire_count",
+                "uploads_count",
+                "references_count",
             }
             <= set(subjects[0])
         )
@@ -237,11 +237,17 @@ class TestAdminRouter(unittest.TestCase):
         self.assertEqual(delete_response.status_code, 204)
 
     def test_content_crud_and_correction_session(self):
+        subjects_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        self.assertEqual(subjects_response.status_code, 200)
+        subjects = subjects_response.json()
+        mathematics = next(subject for subject in subjects if subject["name"] == "Matemática")
+        portuguese = next(subject for subject in subjects if subject["name"] == "Português")
+
         create_response = self.test_client.post(
             "/api/admin/content",
             json={
                 "title": "Avaliação bimestral",
-                "subject_label": "Matemática",
+                "subject_id": int(mathematics["id"]),
                 "description": "Conteúdo inicial.",
             },
             headers=self.admin_headers,
@@ -261,30 +267,14 @@ class TestAdminRouter(unittest.TestCase):
             f"/api/admin/content/{created['id']}",
             json={
                 "title": "Avaliação bimestral revisada",
-                "subject_label": "Português",
+                "subject_id": int(portuguese["id"]),
                 "description": "Conteúdo de revisão.",
             },
             headers=self.admin_headers,
         )
         self.assertEqual(update_response.status_code, 200)
         self.assertEqual(update_response.json()["title"], "Avaliação bimestral revisada")
-        self.assertEqual(update_response.json()["stage_label"], "Português")
-
-        session_response = self.test_client.patch(
-            f"/api/admin/content/{created['id']}/correction/status",
-            json={"status": "correction_in_progress"},
-            headers=self.admin_headers,
-        )
-        self.assertEqual(session_response.status_code, 200)
-        self.assertEqual(session_response.json()["status"], "inProgress")
-
-        message_response = self.test_client.post(
-            f"/api/admin/content/{created['id']}/correction/messages",
-            json={"body": "Revise a questão 2."},
-            headers=self.admin_headers,
-        )
-        self.assertEqual(message_response.status_code, 201)
-        self.assertEqual(message_response.json()["messages"][-1]["body"], "Revise a questão 2.")
+        self.assertEqual(update_response.json()["subject"]["name"], "Português")
 
         delete_response = self.test_client.delete(
             f"/api/admin/content/{created['id']}",

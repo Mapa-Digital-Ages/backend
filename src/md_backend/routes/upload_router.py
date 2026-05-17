@@ -225,6 +225,7 @@ async def download_upload_content(
         },
     )
 
+
 @admin_upload_router.get("")
 async def list_uploads(
     session: AsyncSession = Depends(get_db_session),
