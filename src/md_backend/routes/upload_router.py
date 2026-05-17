@@ -13,7 +13,7 @@ from md_backend.services.storage_service import (
     S3StorageService,
     StorageService,
 )
-from md_backend.services.upload_service import UploadService
+from md_backend.services.upload_service import UPLOAD_STORAGE_ERROR, UploadService
 from md_backend.utils.access_control import can_access_student
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
@@ -30,11 +30,17 @@ async def _iter_bytes(data: bytes, chunk_size: int = _STREAM_CHUNK):
         yield data[i : i + chunk_size]
 
 
+def _has_s3_storage_config() -> bool:
+    """Return whether the minimum S3 settings needed for uploads are configured."""
+    return bool(settings.AWS_S3_BUCKET and settings.AWS_S3_REGION)
+
+
 def get_storage_service(
     session: AsyncSession = Depends(get_db_session),
 ) -> StorageService:
     """Resolve the storage backend based on settings."""
-    if settings.STORAGE_BACKEND == "s3":
+    should_use_s3 = settings.STORAGE_BACKEND != "postgres" and _has_s3_storage_config()
+    if should_use_s3:
         return S3StorageService(
             bucket=settings.AWS_S3_BUCKET or "",
             region=settings.AWS_S3_REGION or "",
@@ -82,6 +88,11 @@ async def upload_student_file(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     if isinstance(result, str):
+        if result == UPLOAD_STORAGE_ERROR:
+            return JSONResponse(
+                content={"detail": "Upload storage failed"},
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
         return JSONResponse(
             content={"detail": result},
             status_code=status.HTTP_400_BAD_REQUEST,

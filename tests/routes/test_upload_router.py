@@ -8,6 +8,8 @@ from fastapi.testclient import TestClient
 
 import tests.keys_test  # noqa: F401
 from md_backend.main import app
+from md_backend.routes.upload_router import get_storage_service
+from md_backend.services.storage_service import StorageService
 from tests.helpers import get_admin_headers
 
 
@@ -29,9 +31,20 @@ def _make_upload(test_client, admin_headers, student_id, content=b"%PDF-1.4 fake
     """Helper: upload a file for a student and return the response."""
     return test_client.post(
         f"/api/student/{student_id}/uploads",
+        data={"activity_type": "activity"},
         files={"file": ("test.pdf", io.BytesIO(content), "application/pdf")},
         headers=admin_headers,
     )
+
+
+class FailingUploadStorage(StorageService):
+    """Storage fake that fails when persisting upload bytes."""
+
+    async def upload_file(self, upload_id, storage_key, file_bytes, content_type):
+        raise RuntimeError("s3 unavailable")
+
+    async def read_file(self, upload_id, storage_key):
+        return None
 
 
 class TestStudentUploadPost(unittest.TestCase):
@@ -64,6 +77,7 @@ class TestStudentUploadPost(unittest.TestCase):
         large_content = b"x" * (10 * 1024 * 1024 + 1)
         response = self.test_client.post(
             f"/api/student/{self.student_id}/uploads",
+            data={"activity_type": "activity"},
             files={"file": ("big.pdf", io.BytesIO(large_content), "application/pdf")},
             headers=self.admin_headers,
         )
@@ -72,6 +86,7 @@ class TestStudentUploadPost(unittest.TestCase):
     def test_upload_invalid_type_returns_400(self):
         response = self.test_client.post(
             f"/api/student/{self.student_id}/uploads",
+            data={"activity_type": "activity"},
             files={"file": ("malware.exe", io.BytesIO(b"bad"), "application/exe")},
             headers=self.admin_headers,
         )
@@ -80,9 +95,39 @@ class TestStudentUploadPost(unittest.TestCase):
     def test_upload_unauthenticated_returns_401(self):
         response = self.test_client.post(
             f"/api/student/{self.student_id}/uploads",
+            data={"activity_type": "activity"},
             files={"file": ("test.pdf", io.BytesIO(b"content"), "application/pdf")},
         )
         self.assertEqual(response.status_code, 401)
+
+    def test_storage_failure_returns_503_and_does_not_create_admin_upload(self):
+        app.dependency_overrides[get_storage_service] = lambda: FailingUploadStorage()
+        try:
+            response = self.test_client.post(
+                f"/api/student/{self.student_id}/uploads",
+                data={"activity_type": "activity"},
+                files={
+                    "file": (
+                        "storage-fail.pdf",
+                        io.BytesIO(b"%PDF-1.4 storage failure"),
+                        "application/pdf",
+                    )
+                },
+                headers=self.admin_headers,
+            )
+        finally:
+            app.dependency_overrides.pop(get_storage_service, None)
+
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json()["detail"], "Upload storage failed")
+
+        list_response = self.test_client.get(
+            "/api/admin/uploads",
+            params={"query": "storage-fail.pdf"},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(list_response.status_code, 200)
+        self.assertEqual(list_response.json()["total_items"], 0)
 
 
 class TestStudentUploadGet(unittest.TestCase):
@@ -237,6 +282,7 @@ class TestStudentUploadAccessDenied(unittest.TestCase):
     def test_post_upload_returns_403_for_unauthorized_caller(self):
         response = self.test_client.post(
             f"/api/student/{self.target_student_id}/uploads",
+            data={"activity_type": "activity"},
             files={"file": ("x.pdf", io.BytesIO(b"%PDF-1.4 hi"), "application/pdf")},
             headers=self.outsider_headers,
         )
@@ -271,7 +317,7 @@ class TestStudentUploadAccessDenied(unittest.TestCase):
 class TestGetStorageServiceFactory(unittest.TestCase):
     """Cover the S3 branch in upload_router.get_storage_service."""
 
-    def test_returns_s3_storage_when_backend_is_s3(self):
+    def test_returns_s3_storage_when_s3_config_exists(self):
         from unittest.mock import patch
 
         from md_backend.routes import upload_router as upload_router_module
@@ -279,7 +325,7 @@ class TestGetStorageServiceFactory(unittest.TestCase):
 
         fake_settings = upload_router_module.settings
         with (
-            patch.object(fake_settings, "STORAGE_BACKEND", "s3"),
+            patch.object(fake_settings, "STORAGE_BACKEND", "auto"),
             patch.object(fake_settings, "AWS_S3_BUCKET", "bucket-x"),
             patch.object(fake_settings, "AWS_S3_REGION", "us-east-1"),
             patch.object(fake_settings, "AWS_ACCESS_KEY_ID", "ak"),
@@ -291,3 +337,33 @@ class TestGetStorageServiceFactory(unittest.TestCase):
         assert isinstance(storage, S3StorageService)
         self.assertEqual(storage.bucket, "bucket-x")
         self.assertEqual(storage.region, "us-east-1")
+
+    def test_returns_postgres_storage_when_s3_config_is_missing(self):
+        from unittest.mock import patch
+
+        from md_backend.routes import upload_router as upload_router_module
+        from md_backend.services.storage_service import PostgresBlobStorageService
+
+        fake_settings = upload_router_module.settings
+        with (
+            patch.object(fake_settings, "STORAGE_BACKEND", "auto"),
+            patch.object(fake_settings, "AWS_S3_BUCKET", None),
+            patch.object(fake_settings, "AWS_S3_REGION", None),
+        ):
+            storage = upload_router_module.get_storage_service(session=object())  # type: ignore[arg-type]
+        self.assertIsInstance(storage, PostgresBlobStorageService)
+
+    def test_explicit_postgres_storage_overrides_s3_config(self):
+        from unittest.mock import patch
+
+        from md_backend.routes import upload_router as upload_router_module
+        from md_backend.services.storage_service import PostgresBlobStorageService
+
+        fake_settings = upload_router_module.settings
+        with (
+            patch.object(fake_settings, "STORAGE_BACKEND", "postgres"),
+            patch.object(fake_settings, "AWS_S3_BUCKET", "bucket-x"),
+            patch.object(fake_settings, "AWS_S3_REGION", "us-east-1"),
+        ):
+            storage = upload_router_module.get_storage_service(session=object())  # type: ignore[arg-type]
+        self.assertIsInstance(storage, PostgresBlobStorageService)

@@ -29,6 +29,7 @@ def _make_upload(test_client, admin_headers, student_id):
     """Upload a small PDF and return its metadata."""
     response = test_client.post(
         f"/api/student/{student_id}/uploads",
+        data={"activity_type": "activity"},
         files={"file": ("atividade.pdf", io.BytesIO(b"%PDF-1.4 content"), "application/pdf")},
         headers=admin_headers,
     )
@@ -322,15 +323,15 @@ class TestAdminRouter(unittest.TestCase):
         self.assertGreaterEqual(activity_filter_response.json()["total_items"], 1)
 
         session_response = self.test_client.patch(
-            f"/api/admin/uploads/{upload['id']}/correction/status",
-            json={"status": "correction_in_progress"},
+            f"/api/admin/uploads/{upload['id']}",
+            json={"status": "in_review"},
             headers=self.admin_headers,
         )
         self.assertEqual(session_response.status_code, 200)
-        self.assertEqual(session_response.json()["status"], "inProgress")
+        self.assertEqual(session_response.json()["status"], "in_review")
 
         status_response = self.test_client.patch(
-            f"/api/admin/uploads/{upload['id']}/status",
+            f"/api/admin/uploads/{upload['id']}",
             json={"status": "corrected"},
             headers=self.admin_headers,
         )

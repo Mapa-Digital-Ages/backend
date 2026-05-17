@@ -17,6 +17,7 @@ from md_backend.utils.access_control import guardian_owns_student
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _UPLOAD_CHUNK = 65536  # 64 KB read chunks
+UPLOAD_STORAGE_ERROR = "storage_error"
 
 ALLOWED_TYPES = frozenset(
     {
@@ -119,6 +120,17 @@ class UploadService:
         upload_id = uuid.uuid4()
         storage_key = f"students/{student_id}/{upload_id}.{extension}"
 
+        try:
+            await self.storage.upload_file(
+                upload_id=upload_id,
+                storage_key=storage_key,
+                file_bytes=file_bytes,
+                content_type=detected_mime,
+            )
+        except Exception:
+            await session.rollback()
+            return UPLOAD_STORAGE_ERROR
+
         upload = StudentUpload(
             id=upload_id,
             student_id=student_id,
@@ -131,14 +143,12 @@ class UploadService:
         )
         session.add(upload)
 
-        await self.storage.upload_file(
-            upload_id=upload_id,
-            storage_key=storage_key,
-            file_bytes=file_bytes,
-            content_type=detected_mime,
-        )
-
-        await session.commit()
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            await self.storage.delete_file(upload_id=upload_id, storage_key=storage_key)
+            raise
         await session.refresh(upload)
         return self._upload_to_dict(upload)
 

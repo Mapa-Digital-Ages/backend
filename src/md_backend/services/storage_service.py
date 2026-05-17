@@ -46,6 +46,14 @@ class StorageService(ABC):
         """Return a temporary download URL, or None to fall back to streaming the bytes."""
         return None
 
+    async def delete_file(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+    ) -> None:
+        """Best-effort delete for files already written to storage."""
+        return None
+
 
 class PostgresBlobStorageService(StorageService):
     """Stores file bytes in a dedicated Postgres BYTEA table.
@@ -157,5 +165,17 @@ class S3StorageService(StorageService):
                     Params={"Bucket": self.bucket, "Key": storage_key},
                     ExpiresIn=expires_in,
                 )
+            except Exception:
+                return None
+
+    async def delete_file(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+    ) -> None:
+        """Delete an object from S3. Best-effort cleanup ignores storage errors."""
+        async with self._client() as s3:  # type: ignore[attr-defined]
+            try:
+                await s3.delete_object(Bucket=self.bucket, Key=storage_key)
             except Exception:
                 return None

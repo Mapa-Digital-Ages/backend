@@ -3,10 +3,12 @@
 import datetime
 import secrets
 
+from fastapi import BackgroundTasks
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import PasswordResetCode, UserProfile
+from md_backend.utils.email_sender import EmailSender
 from md_backend.utils.security import hash_password, verify_password
 
 RESET_CODE_TTL_MINUTES = 15
@@ -32,8 +34,22 @@ def _generate_reset_code() -> str:
 class PasswordResetService:
     """Business logic for password reset code lifecycle."""
 
-    async def request_reset(self, email: str, session: AsyncSession) -> dict:
-        """Create a reset code for an existing user. Invalidates any prior active codes."""
+    def __init__(self, email_sender: EmailSender | None = None) -> None:
+        """Initialize with an optional sender override (defaults to the real EmailSender)."""
+        self._email_sender = email_sender or EmailSender()
+
+    async def request_reset(
+        self,
+        email: str,
+        session: AsyncSession,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> dict:
+        """Create a reset code for an existing user. Invalidates any prior active codes.
+
+        When ``background_tasks`` is provided, the email is dispatched after the HTTP
+        response is sent so the endpoint returns quickly. Without it, the email is
+        awaited inline (used in tests and scripts).
+        """
         user = await self._get_user_by_email(email=email, session=session)
         reset_code = _generate_reset_code()
 
@@ -59,6 +75,13 @@ class PasswordResetService:
         )
         session.add(reset_entry)
         await session.commit()
+
+        if background_tasks is not None:
+            background_tasks.add_task(
+                self._email_sender.send_password_reset, to_email=email, code=reset_code
+            )
+        else:
+            await self._email_sender.send_password_reset(to_email=email, code=reset_code)
 
         return {"detail": "Password reset code generated"}
 
