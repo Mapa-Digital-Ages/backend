@@ -29,6 +29,12 @@ jobs:
           echo "JWT_SECRET_KEY=${{ secrets.JWT_SECRET_KEY }}" >> .env
           echo "PASSWORD_PEPPER=${{ secrets.PASSWORD_PEPPER }}" >> .env
 
+          echo "STORAGE_BACKEND=s3" >> .env
+          echo "AWS_S3_BUCKET=${{ secrets.AWS_S3_BUCKET_NAME }}" >> .env
+          echo "AWS_S3_REGION=${{ secrets.AWS_DEFAULT_REGION }}" >> .env
+          echo "AWS_ACCESS_KEY_ID=${{ secrets.BACKEND_AWS_ACCESS_KEY_ID }}" >> .env
+          echo "AWS_SECRET_ACCESS_KEY=${{ secrets.BACKEND_AWS_SECRET_ACCESS_KEY }}" >> .env
+
       - name: Subir containers de produção
         run: |
           docker compose -f docker-compose-prod.yml down
