@@ -1190,6 +1190,7 @@ class TestWellBeingAuthorizationAndHistory(unittest.TestCase):
             )
             self.assertEqual(response.status_code, 403)
 
+
 class TestStudentRouter(unittest.TestCase):
     def setUp(self):
         self.ctx = TestClient(app, raise_server_exceptions=False)
@@ -1204,7 +1205,6 @@ class TestStudentRouter(unittest.TestCase):
 
         from md_backend.models.db_models import Subject
         from md_backend.utils.database import AsyncSessionLocal
-
 
         async def create_subject():
             async with AsyncSessionLocal() as session:

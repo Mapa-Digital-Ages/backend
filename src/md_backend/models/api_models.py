@@ -314,13 +314,16 @@ class CompanyResponse(BaseModel):
     status: str
     created_at: str
 
+
 class CalendarTaskSubjectPayload(BaseModel):
     """Payload for the subject field in a calendar task sync request."""
+
     id: int
 
 
 class CalendarTaskSyncItemRequest(BaseModel):
     """Request schema for a single calendar task in a sync operation."""
+
     id: int | str
     title: str
     task_status: TaskStatusEnum
@@ -349,6 +352,7 @@ class CalendarTaskSyncItemRequest(BaseModel):
 
 class CalendarTaskSyncResponse(BaseModel):
     """Response schema for a synced calendar task."""
+
     id: int
     title: str
     task_status: str | None

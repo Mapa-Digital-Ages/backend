@@ -242,8 +242,8 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         self.assertIsNone(result["date"])
         self.assertEqual(result["status"], "pending")
 
-class TestCalendarTaskDTO(unittest.TestCase):
 
+class TestCalendarTaskDTO(unittest.TestCase):
     def test_extract_nested_subject_id(self):
         payload = CalendarTaskSyncItemRequest(
             id="tmp-123",
