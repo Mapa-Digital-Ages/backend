@@ -421,7 +421,6 @@ class StudentService:
         tasks_payload: list[dict],
     ) -> list[dict]:
         """Atomic upsert for daily calendar tasks."""
-
         persisted_tasks = []
 
         async with session.begin_nested():

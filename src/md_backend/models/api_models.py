@@ -4,8 +4,7 @@ import datetime
 import uuid
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Any
-import datetime
+
 from md_backend.models.db_models import ClassEnum, TaskStatusEnum
 
 
@@ -316,10 +315,12 @@ class CompanyResponse(BaseModel):
     created_at: str
 
 class CalendarTaskSubjectPayload(BaseModel):
+    """Payload for the subject field in a calendar task sync request."""
     id: int
 
 
 class CalendarTaskSyncItemRequest(BaseModel):
+    """Request schema for a single calendar task in a sync operation."""
     id: int | str
     title: str
     task_status: TaskStatusEnum
@@ -329,21 +330,25 @@ class CalendarTaskSyncItemRequest(BaseModel):
     @field_validator("date", mode="before")
     @classmethod
     def parse_date(cls, v):
+        """Coerce ISO-8601 strings (including Z suffix) to datetime."""
         if isinstance(v, str):
             return datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
         return v
 
     @property
     def subject_id(self) -> int:
+        """Return the nested subject id."""
         return self.subject.id
 
     @field_validator("task_status")
     @classmethod
     def validate_task_status(cls, value):
+        """Pass through the task_status value unchanged."""
         return value
 
 
 class CalendarTaskSyncResponse(BaseModel):
+    """Response schema for a synced calendar task."""
     id: int
     title: str
     task_status: str | None

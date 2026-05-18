@@ -1198,13 +1198,14 @@ class TestStudentRouter(unittest.TestCase):
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
-    
+
     def test_sync_calendar_tasks_create_and_update(self):
-        from md_backend.models.db_models import Subject
-        from md_backend.utils.database import AsyncSessionLocal
         import asyncio
 
-    
+        from md_backend.models.db_models import Subject
+        from md_backend.utils.database import AsyncSessionLocal
+
+
         async def create_subject():
             async with AsyncSessionLocal() as session:
                 subject = Subject(id=1, name="Matemática")

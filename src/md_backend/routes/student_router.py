@@ -8,14 +8,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    CalendarTaskSyncItemRequest,
     StudentRequest,
     StudentResponse,
     StudentUpdateRequest,
     WellBeingRequest,
     WellBeingResponse,
-    CalendarTaskSyncItemRequest
 )
-
 from md_backend.models.db_models import HumorEnum
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
@@ -442,7 +441,6 @@ async def sync_calendar_tasks(
     current_user: dict = Depends(get_current_approved_user),
 ):
     """Sync tasks (create/update) atomically."""
-
     token_student_id = current_user["user_id"]
 
     if str(student_id) != str(token_student_id):

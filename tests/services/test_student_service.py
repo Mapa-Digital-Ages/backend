@@ -9,9 +9,9 @@ from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
+from md_backend.models.api_models import CalendarTaskSyncItemRequest, WellBeingResponse
 from md_backend.models.db_models import ClassEnum
 from md_backend.services.student_service import StudentService
-from md_backend.models.api_models import CalendarTaskSyncItemRequest, WellBeingResponse
 
 
 class TestStudentServiceCreate(unittest.TestCase):
