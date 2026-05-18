@@ -1241,7 +1241,7 @@ class TestStudentRouter(unittest.TestCase):
 
         self.assertEqual(create_response.status_code, 200)
         created = create_response.json()[0]
-        self.assertIsInstance(int(created["id"]), int)  # _task_to_dict retorna str
+        self.assertIsInstance(int(created["id"]), int)
 
         update_response = self.client.put(
             f"/api/student/{student_id}/calendar/tasks",
@@ -1259,4 +1259,4 @@ class TestStudentRouter(unittest.TestCase):
 
         self.assertEqual(update_response.status_code, 200)
         self.assertEqual(update_response.json()[0]["title"], "Updated Task")
-        self.assertEqual(update_response.json()[0]["task_status"], "done")
+        self.assertEqual(update_response.json()[0]["status"], "done")
