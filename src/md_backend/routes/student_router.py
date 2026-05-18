@@ -13,7 +13,9 @@ from md_backend.models.api_models import (
     StudentUpdateRequest,
     WellBeingRequest,
     WellBeingResponse,
+    CalendarTaskSyncItemRequest
 )
+
 from md_backend.models.db_models import HumorEnum
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
@@ -428,3 +430,38 @@ async def upsert_student_well_being(
     )
 
     return JSONResponse(content=record, status_code=status.HTTP_200_OK)
+
+@student_router.put(
+    "/{student_id}/calendar/tasks",
+    summary="Sync calendar tasks",
+)
+async def sync_calendar_tasks(
+    student_id: uuid.UUID,
+    request: list[CalendarTaskSyncItemRequest],
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Sync tasks (create/update) atomically."""
+
+    token_student_id = current_user["user_id"]
+
+    if str(student_id) != str(token_student_id):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        result = await student_service.sync_calendar_tasks(
+            session=session,
+            student_id=student_id,
+            tasks_payload=[item.model_dump() for item in request],
+        )
+
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+    except ValueError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )

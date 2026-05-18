@@ -3,9 +3,10 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel, EmailStr, Field
-
-from md_backend.models.db_models import ClassEnum
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Any
+import datetime
+from md_backend.models.db_models import ClassEnum, TaskStatusEnum
 
 
 class RegisterRequest(BaseModel):
@@ -313,3 +314,38 @@ class CompanyResponse(BaseModel):
     available_spots: int
     status: str
     created_at: str
+
+class CalendarTaskSubjectPayload(BaseModel):
+    id: int
+
+
+class CalendarTaskSyncItemRequest(BaseModel):
+    id: int | str
+    title: str
+    task_status: TaskStatusEnum
+    subject: CalendarTaskSubjectPayload
+    date: datetime.datetime
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        if isinstance(v, str):
+            return datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return v
+
+    @property
+    def subject_id(self) -> int:
+        return self.subject.id
+
+    @field_validator("task_status")
+    @classmethod
+    def validate_task_status(cls, value):
+        return value
+
+
+class CalendarTaskSyncResponse(BaseModel):
+    id: int
+    title: str
+    task_status: str | None
+    subject_id: int
+    date: datetime.datetime

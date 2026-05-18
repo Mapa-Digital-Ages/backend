@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError
 import tests.keys_test  # noqa: F401
 from md_backend.models.db_models import ClassEnum
 from md_backend.services.student_service import StudentService
+from md_backend.models.api_models import CalendarTaskSyncItemRequest, WellBeingResponse
 
 
 class TestStudentServiceCreate(unittest.TestCase):
@@ -240,3 +241,27 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
 
         self.assertIsNone(result["date"])
         self.assertEqual(result["status"], "pending")
+
+class TestCalendarTaskDTO(unittest.TestCase):
+
+    def test_extract_nested_subject_id(self):
+        payload = CalendarTaskSyncItemRequest(
+            id="tmp-123",
+            title="Math",
+            task_status="adjust",
+            subject={"id": 5},
+            date=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.assertEqual(payload.subject_id, 5)
+
+    def test_accept_adjust_status(self):
+        payload = CalendarTaskSyncItemRequest(
+            id="tmp-1",
+            title="Task",
+            task_status="adjust",
+            subject={"id": 1},
+            date=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.assertEqual(payload.task_status, "adjust")
