@@ -240,3 +240,78 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
 
         self.assertIsNone(result["date"])
         self.assertEqual(result["status"], "pending")
+
+    class TestGetWeekBounds(unittest.TestCase):
+        """Unit tests for the get_week_bounds helper function."""
+
+    def test_sunday_is_start_of_week(self):
+        """A Sunday should be the start of its own week."""
+        from md_backend.services.student_service import get_week_bounds
+
+        sunday = datetime.date(2026, 5, 17)  # Known Sunday
+        start, end = get_week_bounds(sunday)
+
+        self.assertEqual(start.date(), sunday)
+        self.assertEqual(end.date(), sunday + datetime.timedelta(days=6))
+
+    def test_saturday_is_end_of_week(self):
+        """A Saturday should map to the Saturday of its own week."""
+        from md_backend.services.student_service import get_week_bounds
+
+        saturday = datetime.date(2026, 5, 23)  # Known Saturday
+        start, end = get_week_bounds(saturday)
+
+        self.assertEqual(end.date(), saturday)
+        self.assertEqual(start.date(), saturday - datetime.timedelta(days=6))
+
+    def test_midweek_day_maps_to_correct_bounds(self):
+        """A Wednesday should produce the Sunday before and Saturday after."""
+        from md_backend.services.student_service import get_week_bounds
+
+        wednesday = datetime.date(2026, 5, 20)
+        start, end = get_week_bounds(wednesday)
+
+        self.assertEqual(start.date(), datetime.date(2026, 5, 17))  # Sunday
+        self.assertEqual(end.date(), datetime.date(2026, 5, 23))    # Saturday
+
+    def test_week_span_is_always_7_days(self):
+        """End minus start should always be exactly 6 days (7-day window)."""
+        from md_backend.services.student_service import get_week_bounds
+
+        for day_offset in range(7):
+            reference = datetime.date(2026, 5, 17) + datetime.timedelta(days=day_offset)
+            start, end = get_week_bounds(reference)
+            delta = end.date() - start.date()
+            self.assertEqual(delta.days, 6, msg=f"Failed for reference={reference}")
+
+    def test_start_is_midnight_utc(self):
+        """Week start should be at 00:00:00 UTC."""
+        from md_backend.services.student_service import get_week_bounds
+
+        start, _ = get_week_bounds(datetime.date(2026, 5, 20))
+
+        self.assertEqual(start.hour, 0)
+        self.assertEqual(start.minute, 0)
+        self.assertEqual(start.second, 0)
+        self.assertEqual(start.tzinfo, datetime.UTC)
+
+    def test_end_is_end_of_day_utc(self):
+        """Week end should be at 23:59:59 UTC."""
+        from md_backend.services.student_service import get_week_bounds
+
+        _, end = get_week_bounds(datetime.date(2026, 5, 20))
+
+        self.assertEqual(end.hour, 23)
+        self.assertEqual(end.minute, 59)
+        self.assertEqual(end.second, 59)
+        self.assertEqual(end.tzinfo, datetime.UTC)
+
+    def test_no_reference_uses_today(self):
+        """Calling without reference should not raise and return a valid range."""
+        from md_backend.services.student_service import get_week_bounds
+
+        start, end = get_week_bounds()
+
+        self.assertIsInstance(start, datetime.datetime)
+        self.assertIsInstance(end, datetime.datetime)
+        self.assertEqual((end.date() - start.date()).days, 6)
