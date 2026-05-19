@@ -27,6 +27,49 @@ _TASK_STATUS_TO_FRONTEND = {
     TaskStatusEnum.PENDING: "pending",
 }
 
+def get_week_bounds(
+    reference: datetime.date | None = None,
+) -> tuple[datetime.datetime, datetime.datetime]:
+    """Return (week_start, week_end) as UTC-aware datetimes for the current week.
+
+    The week runs from Sunday 00:00:00 UTC to Saturday 23:59:59.999999 UTC,
+    matching the calendar convention expected by the frontend.
+    """
+    if reference is None:
+        reference = datetime.datetime.now(datetime.UTC).date()
+
+    # weekday(): Monday=0 … Sunday=6  →  days_since_sunday = (weekday + 1) % 7
+    days_since_sunday = (reference.weekday() + 1) % 7
+    sunday = reference - datetime.timedelta(days=days_since_sunday)
+    saturday = sunday + datetime.timedelta(days=6)
+
+    week_start = datetime.datetime(
+        sunday.year, sunday.month, sunday.day, 0, 0, 0, tzinfo=datetime.UTC
+    )
+    week_end = datetime.datetime(
+        saturday.year, saturday.month, saturday.day, 23, 59, 59, 999999, tzinfo=datetime.UTC
+    )
+    return week_start, week_end
+
+
+def _task_with_subject_to_dict(task, subject) -> dict:
+    """Serialize a (Task, Subject) row to the calendar contract dict."""
+    _STATUS_MAP = {
+        TaskStatusEnum.DONE: "done",
+        TaskStatusEnum.PENDING: "pending",
+        TaskStatusEnum.ADJUST: "adjust",
+    }
+    return {
+        "id": task.id,
+        "date": task.date.isoformat() if task.date else None,
+        "title": task.title,
+        "status": _STATUS_MAP.get(task.task_status, "pending") if task.task_status else "pending",
+        "subject": {
+            "id": subject.id,
+            "label": subject.name,
+        },
+    }
+
 
 class StudentService:
     """Service for student operations."""
@@ -257,6 +300,28 @@ class StudentService:
         )
         tasks = (await session.execute(query)).scalars().all()
         return [self._task_to_dict(task) for task in tasks]
+    
+    async def get_weekly_tasks(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
+        """Return non-deactivated tasks for the current week, joined with subject.
+
+        Week boundaries are computed server-side (Sunday → Saturday, UTC).
+        """
+        week_start, week_end = get_week_bounds()
+
+        query = (
+            select(Task, Subject)
+            .join(Subject, Subject.id == Task.subject_id)
+            .where(
+                Task.student_id == student_id,
+                Task.deactivated_at.is_(None),
+                Task.date >= week_start,
+                Task.date <= week_end,
+            )
+            .order_by(Task.date.asc())
+        )
+
+        rows = (await session.execute(query)).all()
+        return [_task_with_subject_to_dict(task, subject) for task, subject in rows]
 
     async def upsert_well_being(
         self,
