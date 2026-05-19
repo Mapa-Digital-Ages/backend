@@ -300,7 +300,7 @@ class StudentService:
         )
         tasks = (await session.execute(query)).scalars().all()
         return [self._task_to_dict(task) for task in tasks]
-    
+
     async def get_weekly_tasks(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
         """Return non-deactivated tasks for the current week, joined with subject.
 
