@@ -27,6 +27,7 @@ _TASK_STATUS_TO_FRONTEND = {
     TaskStatusEnum.PENDING: "pending",
 }
 
+
 def get_week_bounds(
     reference: datetime.date | None = None,
 ) -> tuple[datetime.datetime, datetime.datetime]:

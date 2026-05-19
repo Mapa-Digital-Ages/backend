@@ -272,7 +272,7 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         start, end = get_week_bounds(wednesday)
 
         self.assertEqual(start.date(), datetime.date(2026, 5, 17))  # Sunday
-        self.assertEqual(end.date(), datetime.date(2026, 5, 23))    # Saturday
+        self.assertEqual(end.date(), datetime.date(2026, 5, 23))  # Saturday
 
     def test_week_span_is_always_7_days(self):
         """End minus start should always be exactly 6 days (7-day window)."""

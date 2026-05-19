@@ -278,6 +278,7 @@ async def get_student_tasks(
     tasks = await student_service.get_tasks(session=session, student_id=student_id)
     return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
 
+
 @student_router.get(
     "/{student_id}/calendar",
     summary="Weekly task calendar for a student",
@@ -302,7 +303,6 @@ async def get_student_tasks(
         404: {"description": "Student not found."},
     },
 )
-
 async def get_student_calendar(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
