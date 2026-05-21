@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from md_backend.models.db_models import StudentProfile, StudentUpload, Subject, UserProfile
 from md_backend.services.storage_service import StorageService
 from md_backend.utils.access_control import guardian_owns_student
+from md_backend.utils.settings import settings
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 _UPLOAD_CHUNK = 65536  # 64 KB read chunks
@@ -120,16 +121,11 @@ class UploadService:
         upload_id = uuid.uuid4()
         storage_key = f"students/{student_id}/{upload_id}.{extension}"
 
-        try:
-            await self.storage.upload_file(
-                upload_id=upload_id,
-                storage_key=storage_key,
-                file_bytes=file_bytes,
-                content_type=detected_mime,
-            )
-        except Exception:
-            await session.rollback()
-            return UPLOAD_STORAGE_ERROR
+        if settings.STORAGE_BACKEND == "s3":
+            base_url = settings.CLOUDFRONT_URL or ""
+            file_url = f"{base_url}/{storage_key}"
+        else:
+            file_url = f"/api/uploads/{upload_id}/content"
 
         upload = StudentUpload(
             id=upload_id,
@@ -140,6 +136,7 @@ class UploadService:
             file_type=detected_mime,
             activity_type=activity_type,
             file_size_bytes=len(file_bytes),
+            file_url=file_url,
         )
         session.add(upload)
 

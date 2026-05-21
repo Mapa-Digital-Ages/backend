@@ -558,6 +558,7 @@ class StudentUpload(Base):
     activity_type: Mapped[str] = mapped_column(String(32), nullable=False, default="activity")
     correction_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
