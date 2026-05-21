@@ -25,6 +25,7 @@ from md_backend.utils.security import hash_password
 _TASK_STATUS_TO_FRONTEND = {
     TaskStatusEnum.DONE: "done",
     TaskStatusEnum.PENDING: "pending",
+    TaskStatusEnum.ADJUST: "adjust",
 }
 
 
@@ -412,3 +413,59 @@ class StudentService:
             ),
             "subject": {"label": ""},
         }
+
+    async def sync_calendar_tasks(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        tasks_payload: list[dict],
+    ) -> list[dict]:
+        """Atomic upsert for daily calendar tasks."""
+        persisted_tasks = []
+
+        async with session.begin_nested():
+            for item in tasks_payload:
+                subject_id = item["subject"]["id"]
+
+                subject_exists = await session.execute(
+                    select(Subject).where(Subject.id == subject_id)
+                )
+
+                if subject_exists.scalar_one_or_none() is None:
+                    raise ValueError(f"Invalid subject_id: {subject_id}")
+
+                incoming_id = item["id"]
+
+                if isinstance(incoming_id, int):
+                    result = await session.execute(
+                        select(Task).where(
+                            Task.id == incoming_id,
+                            Task.student_id == student_id,
+                            Task.deactivated_at.is_(None),
+                        )
+                    )
+
+                    task = result.scalar_one_or_none()
+
+                    if task is None:
+                        raise ValueError(f"Task not found: {incoming_id}")
+
+                    task.title = item["title"]
+                    task.task_status = item["task_status"]
+                    task.subject_id = subject_id
+                    task.date = item["date"]
+
+                else:
+                    task = Task(
+                        student_id=student_id,
+                        title=item["title"],
+                        task_status=item["task_status"],
+                        subject_id=subject_id,
+                        date=item["date"],
+                    )
+                    session.add(task)
+                    await session.flush()
+
+                persisted_tasks.append(task)
+
+        return [self._task_to_dict(task) for task in persisted_tasks]
