@@ -358,3 +358,29 @@ class CalendarTaskSyncResponse(BaseModel):
     task_status: str | None
     subject_id: int
     date: datetime.datetime
+
+class TaskResponse(BaseModel):
+    """Response model for a single task."""
+
+    id: int
+    title: str
+    task_status: str | None
+    subject_id: int
+    date: datetime.datetime
+    deactivated_at: str | None = None
+
+
+class CalendarTaskUpsertItem(BaseModel):
+    """A single task item within a CalendarUpsertRequest."""
+
+    id: int | None = None
+    title: str
+    task_status: TaskStatusEnum
+    subject_id: int
+    date: datetime.datetime
+
+
+class CalendarUpsertRequest(BaseModel):
+    """Request body for upserting a student's full task list for a given date."""
+
+    tasks: list[CalendarTaskUpsertItem]
