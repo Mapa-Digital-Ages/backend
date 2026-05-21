@@ -40,5 +40,8 @@ class Settings(BaseSettings):
         None  # overrides default AWS endpoint; use for MinIO/localstack
     )
 
+    # Cloudfront
+    CLOUDFRONT_URL: str | None = None
+
 
 settings = Settings()  # type: ignore

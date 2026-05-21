@@ -3,9 +3,9 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from md_backend.models.db_models import ClassEnum
+from md_backend.models.db_models import ClassEnum, TaskStatusEnum
 
 
 class RegisterRequest(BaseModel):
@@ -315,38 +315,46 @@ class CompanyResponse(BaseModel):
     created_at: str
 
 
-class TaskItemRequest(BaseModel):
-    """A single task item within a calendar upsert payload."""
+class CalendarTaskSubjectPayload(BaseModel):
+    """Payload for the subject field in a calendar task sync request."""
 
-    id: int | None = Field(
-        default=None,
-        description="Task ID for existing tasks. Omit or set to null for new tasks.",
-    )
-    title: str = Field(min_length=1)
-    subject_id: int
-    task_status: str | None = Field(
-        default=None,
-        description="Task status: 'pending', 'done', or 'adjust'.",
-    )
+    id: int
 
 
-class CalendarUpsertRequest(BaseModel):
-    """Request body for PUT /student/{student_id}/calendar/{date}.
+class CalendarTaskSyncItemRequest(BaseModel):
+    """Request schema for a single calendar task in a sync operation."""
 
-    The array represents the **complete** state of the student's day.
-    Any task already stored for this student/date that is **absent** from
-    this array will be automatically soft-deleted (deactivated_at filled in).
-    """
+    id: int | str
+    title: str
+    task_status: TaskStatusEnum
+    subject: CalendarTaskSubjectPayload
+    date: datetime.datetime
 
-    tasks: list[TaskItemRequest]
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        """Coerce ISO-8601 strings (including Z suffix) to datetime."""
+        if isinstance(v, str):
+            return datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return v
+
+    @property
+    def subject_id(self) -> int:
+        """Return the nested subject id."""
+        return self.subject.id
+
+    @field_validator("task_status")
+    @classmethod
+    def validate_task_status(cls, value):
+        """Pass through the task_status value unchanged."""
+        return value
 
 
-class TaskResponse(BaseModel):
-    """Response model for a single task."""
+class CalendarTaskSyncResponse(BaseModel):
+    """Response schema for a synced calendar task."""
 
     id: int
     title: str
-    subject_id: int
     task_status: str | None
-    date: str
-    student_id: str
+    subject_id: int
+    date: datetime.datetime

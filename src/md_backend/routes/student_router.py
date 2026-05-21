@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    CalendarTaskSyncItemRequest,
     CalendarUpsertRequest,
     StudentRequest,
     StudentResponse,
@@ -282,6 +283,60 @@ async def get_student_tasks(
 
 
 @student_router.get(
+    "/{student_id}/calendar",
+    summary="Weekly task calendar for a student",
+    responses={
+        200: {
+            "description": "List of tasks for the current week (Sunday → Saturday, server UTC).",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": 42,
+                            "date": "2026-05-19T14:00:00+00:00",
+                            "title": "Resolver exercícios de álgebra",
+                            "status": "pending",
+                            "subject": {"id": 3, "label": "Matemática"},
+                        }
+                    ]
+                }
+            },
+        },
+        403: {"description": "Access denied — caller is not allowed to view this student."},
+        404: {"description": "Student not found."},
+    },
+)
+async def get_student_calendar(
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the current week's non-deactivated tasks for *student_id*.
+
+    The week is computed server-side (Sunday 00:00 UTC → Saturday 23:59 UTC).
+    Each task includes the joined subject object ``{ id, label }`` so the
+    frontend can populate the calendar without extra processing.
+
+    - **200 OK** – list (possibly empty) of tasks in the current week.
+    - **403 Forbidden** – caller lacks permission to access this student.
+    - **404 Not Found** – no active student with the given ID exists.
+    """
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    student = await student_service.get_student_by_id(session=session, student_id=student_id)
+    if student is None:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    tasks = await student_service.get_weekly_tasks(session=session, student_id=student_id)
+    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+
+
+@student_router.get(
     "/{student_id}/well-being",
     summary="Get student well-being for a specific date",
     responses={
@@ -501,3 +556,38 @@ async def upsert_calendar_day(
         tasks=tasks_data,
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@student_router.put(
+    "/{student_id}/calendar/tasks",
+    summary="Sync calendar tasks",
+)
+async def sync_calendar_tasks(
+    student_id: uuid.UUID,
+    request: list[CalendarTaskSyncItemRequest],
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Sync tasks (create/update) atomically."""
+    token_student_id = current_user["user_id"]
+
+    if str(student_id) != str(token_student_id):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        result = await student_service.sync_calendar_tasks(
+            session=session,
+            student_id=student_id,
+            tasks_payload=[item.model_dump() for item in request],
+        )
+
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+    except ValueError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
