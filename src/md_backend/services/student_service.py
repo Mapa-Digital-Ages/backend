@@ -360,7 +360,7 @@ class StudentService:
             .order_by(WellBeing.date.asc())
         )
         return [self._well_being_to_dict(record) for record in result.scalars()]
-    
+
     def get_ids_to_deactivate(
         self,
         db_ids: list[int],
@@ -388,8 +388,8 @@ class StudentService:
         3. For each task in the payload: insert (no id) or update (with id).
         4. Return the resulting active task list.
         """
-        date_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.timezone.utc)
-        date_end = datetime.datetime.combine(date, datetime.time.max, tzinfo=datetime.timezone.utc)
+        date_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.UTC)
+        date_end = datetime.datetime.combine(date, datetime.time.max, tzinfo=datetime.UTC)
 
         existing_result = await session.execute(
             select(Task).where(
@@ -406,14 +406,14 @@ class StudentService:
         ids_to_deactivate = self.get_ids_to_deactivate(db_ids, payload_ids)
 
         if ids_to_deactivate:
-            now = datetime.datetime.now(datetime.timezone.utc)
+            now = datetime.datetime.now(datetime.UTC)
             await session.execute(
                 update(Task)
                 .where(Task.id.in_(ids_to_deactivate))
                 .values(deactivated_at=now)
             )
 
-        task_date = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.timezone.utc)
+        task_date = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.UTC)
 
         for task_data in tasks:
             task_id = task_data.get("id")
@@ -456,8 +456,8 @@ class StudentService:
         date: datetime.date,
     ) -> list[dict]:
         """Return all active tasks for a student on a given date."""
-        date_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.timezone.utc)
-        date_end = datetime.datetime.combine(date, datetime.time.max, tzinfo=datetime.timezone.utc)
+        date_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.UTC)
+        date_end = datetime.datetime.combine(date, datetime.time.max, tzinfo=datetime.UTC)
 
         result = await session.execute(
             select(Task).where(

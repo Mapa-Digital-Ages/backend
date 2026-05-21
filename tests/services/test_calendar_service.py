@@ -72,7 +72,7 @@ class TestUpsertCalendarDaySoftDelete(unittest.TestCase):
         task.title = f"Task {task_id}"
         task.subject_id = 1
         task.task_status = None
-        task.date = datetime.datetime(2024, 9, 1, tzinfo=datetime.timezone.utc)
+        task.date = datetime.datetime(2024, 9, 1, tzinfo=datetime.UTC)
         task.deactivated_at = None
         task.student_id = self.student_id
         return task
