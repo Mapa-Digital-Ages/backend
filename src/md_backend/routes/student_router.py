@@ -486,6 +486,7 @@ async def upsert_student_well_being(
 
     return JSONResponse(content=record, status_code=status.HTTP_200_OK)
 
+
 @student_router.put(
     "/{student_id}/calendar/tasks",
     summary="Sync calendar tasks",
@@ -520,6 +521,7 @@ async def sync_calendar_tasks(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
+
 @student_router.get(
     "/{student_id}/calendar/{date}",
     response_model=list[TaskResponse],
@@ -546,6 +548,7 @@ async def get_calendar_day(
         date=date,
     )
     return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+
 
 @student_router.put(
     "/{student_id}/calendar/{date}",
