@@ -408,9 +408,7 @@ class StudentService:
         if ids_to_deactivate:
             now = datetime.datetime.now(datetime.UTC)
             await session.execute(
-                update(Task)
-                .where(Task.id.in_(ids_to_deactivate))
-                .values(deactivated_at=now)
+                update(Task).where(Task.id.in_(ids_to_deactivate)).values(deactivated_at=now)
             )
 
         task_date = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.UTC)

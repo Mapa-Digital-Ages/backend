@@ -314,6 +314,7 @@ class CompanyResponse(BaseModel):
     status: str
     created_at: str
 
+
 class TaskItemRequest(BaseModel):
     """A single task item within a calendar upsert payload."""
 

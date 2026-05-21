@@ -431,6 +431,7 @@ async def upsert_student_well_being(
 
     return JSONResponse(content=record, status_code=status.HTTP_200_OK)
 
+
 @student_router.get(
     "/{student_id}/calendar/{date}",
     response_model=list[TaskResponse],
