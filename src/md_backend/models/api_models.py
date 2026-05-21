@@ -359,6 +359,7 @@ class CalendarTaskSyncResponse(BaseModel):
     subject_id: int
     date: datetime.datetime
 
+
 class TaskResponse(BaseModel):
     """Response model for a single task."""
 
