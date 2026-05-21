@@ -326,7 +326,7 @@ class CalendarTaskSyncItemRequest(BaseModel):
 
     id: int | str
     title: str
-    task_status: TaskStatusEnum
+    task_status: TaskStatusEnum | None = None
     subject: CalendarTaskSubjectPayload
     date: datetime.datetime
 
@@ -376,9 +376,9 @@ class CalendarTaskUpsertItem(BaseModel):
 
     id: int | None = None
     title: str
-    task_status: TaskStatusEnum
+    task_status: TaskStatusEnum | None = None
     subject_id: int
-    date: datetime.datetime
+    date: datetime.datetime | None = None
 
 
 class CalendarUpsertRequest(BaseModel):
