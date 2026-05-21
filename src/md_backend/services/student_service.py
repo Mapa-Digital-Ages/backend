@@ -360,6 +360,114 @@ class StudentService:
             .order_by(WellBeing.date.asc())
         )
         return [self._well_being_to_dict(record) for record in result.scalars()]
+    
+    def get_ids_to_deactivate(
+        self,
+        db_ids: list[int],
+        payload_ids: list[int],
+    ) -> list[int]:
+        """Return IDs present in the database but absent from the payload (array diff).
+
+        These are the tasks that must be soft-deleted.
+        """
+        payload_set = set(payload_ids)
+        return [task_id for task_id in db_ids if task_id not in payload_set]
+
+    async def upsert_calendar_day(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        date: datetime.date,
+        tasks: list[dict],
+    ) -> list[dict]:
+        """Sync the full task list for a student/date using upsert + soft delete.
+
+        Steps:
+        1. Load all active task IDs for this student/date from the DB.
+        2. Compute which IDs are missing from the payload → soft-delete them.
+        3. For each task in the payload: insert (no id) or update (with id).
+        4. Return the resulting active task list.
+        """
+        date_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.timezone.utc)
+        date_end = datetime.datetime.combine(date, datetime.time.max, tzinfo=datetime.timezone.utc)
+
+        existing_result = await session.execute(
+            select(Task).where(
+                Task.student_id == student_id,
+                Task.date >= date_start,
+                Task.date <= date_end,
+                Task.deactivated_at.is_(None),
+            )
+        )
+        existing_tasks = existing_result.scalars().all()
+        db_ids = [t.id for t in existing_tasks]
+
+        payload_ids = [t["id"] for t in tasks if t.get("id") is not None]
+        ids_to_deactivate = self.get_ids_to_deactivate(db_ids, payload_ids)
+
+        if ids_to_deactivate:
+            now = datetime.datetime.now(datetime.timezone.utc)
+            await session.execute(
+                update(Task)
+                .where(Task.id.in_(ids_to_deactivate))
+                .values(deactivated_at=now)
+            )
+
+        task_date = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.timezone.utc)
+
+        for task_data in tasks:
+            task_id = task_data.get("id")
+            if task_id is not None:
+                await session.execute(
+                    update(Task)
+                    .where(Task.id == task_id, Task.student_id == student_id)
+                    .values(
+                        title=task_data["title"],
+                        subject_id=task_data["subject_id"],
+                        task_status=task_data.get("task_status"),
+                    )
+                )
+            else:
+                new_task = Task(
+                    student_id=student_id,
+                    title=task_data["title"],
+                    subject_id=task_data["subject_id"],
+                    task_status=task_data.get("task_status"),
+                    date=task_date,
+                )
+                session.add(new_task)
+
+        await session.commit()
+
+        refreshed_result = await session.execute(
+            select(Task).where(
+                Task.student_id == student_id,
+                Task.date >= date_start,
+                Task.date <= date_end,
+                Task.deactivated_at.is_(None),
+            )
+        )
+        return [self._task_to_dict(t) for t in refreshed_result.scalars().all()]
+
+    async def get_calendar_day(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        date: datetime.date,
+    ) -> list[dict]:
+        """Return all active tasks for a student on a given date."""
+        date_start = datetime.datetime.combine(date, datetime.time.min, tzinfo=datetime.timezone.utc)
+        date_end = datetime.datetime.combine(date, datetime.time.max, tzinfo=datetime.timezone.utc)
+
+        result = await session.execute(
+            select(Task).where(
+                Task.student_id == student_id,
+                Task.date >= date_start,
+                Task.date <= date_end,
+                Task.deactivated_at.is_(None),
+            )
+        )
+        return [self._task_to_dict(t) for t in result.scalars().all()]
 
     def _well_being_to_dict(self, record: WellBeing) -> dict:
         """Map a WellBeing ORM object to a serialisable dict."""

@@ -313,3 +313,39 @@ class CompanyResponse(BaseModel):
     available_spots: int
     status: str
     created_at: str
+
+class TaskItemRequest(BaseModel):
+    """A single task item within a calendar upsert payload."""
+
+    id: int | None = Field(
+        default=None,
+        description="Task ID for existing tasks. Omit or set to null for new tasks.",
+    )
+    title: str = Field(min_length=1)
+    subject_id: int
+    task_status: str | None = Field(
+        default=None,
+        description="Task status: 'pending', 'done', or 'adjust'.",
+    )
+
+
+class CalendarUpsertRequest(BaseModel):
+    """Request body for PUT /student/{student_id}/calendar/{date}.
+
+    The array represents the **complete** state of the student's day.
+    Any task already stored for this student/date that is **absent** from
+    this array will be automatically soft-deleted (deactivated_at filled in).
+    """
+
+    tasks: list[TaskItemRequest]
+
+
+class TaskResponse(BaseModel):
+    """Response model for a single task."""
+
+    id: int
+    title: str
+    subject_id: int
+    task_status: str | None
+    date: str
+    student_id: str
