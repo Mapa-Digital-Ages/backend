@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Mapa Digital"
-    
+
     # Cloudfront
     CLOUDFRONT_URL: str | None = None
 
