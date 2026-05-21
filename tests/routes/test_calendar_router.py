@@ -96,14 +96,14 @@ class TestCalendarSoftDelete(unittest.TestCase):
         id_b = next(t["id"] for t in tasks_after_insert if t["title"] == "Tarefa B")
 
         payload_with_two = [
-            {"id": id_a, 
-             "title": "Tarefa A", 
-             "subject_id": self.subject_id, 
+            {"id": id_a,
+             "title": "Tarefa A",
+             "subject_id": self.subject_id,
              "task_status": "pending"},
-            
-            {"id": id_b, 
-             "title": "Tarefa B", 
-             "subject_id": self.subject_id, 
+
+            {"id": id_b,
+             "title": "Tarefa B",
+             "subject_id": self.subject_id,
              "task_status": "pending"},
         ]
         resp2 = self._upsert(student_id, date_str, payload_with_two, self.admin_headers)
@@ -170,9 +170,9 @@ class TestCalendarSoftDelete(unittest.TestCase):
         self._upsert(
             student_id,
             date_str,
-            [{"id": active_id, 
-              "title": "Active", 
-              "subject_id": self.subject_id, 
+            [{"id": active_id,
+              "title": "Active",
+              "subject_id": self.subject_id,
               "task_status": None}],
             self.admin_headers,
         )
