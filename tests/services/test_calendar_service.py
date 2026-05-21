@@ -100,7 +100,8 @@ class TestUpsertCalendarDaySoftDelete(unittest.TestCase):
             MagicMock(),
             MagicMock(),
             MagicMock(),
-            refreshed_result]
+            refreshed_result,
+        ]
         mock_session.add = MagicMock()
 
         payload = [
