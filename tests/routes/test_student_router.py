@@ -1191,6 +1191,77 @@ class TestWellBeingAuthorizationAndHistory(unittest.TestCase):
             self.assertEqual(response.status_code, 403)
 
 
+class TestStudentRouter(unittest.TestCase):
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_sync_calendar_tasks_create_and_update(self):
+        import asyncio
+
+        from md_backend.models.db_models import Subject
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def create_subject():
+            async with AsyncSessionLocal() as session:
+                subject = Subject(id=1, name="Matemática")
+                session.add(subject)
+                try:
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+
+        asyncio.run(create_subject())
+
+        student_id, _, token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"calendar_{uuid.uuid4().hex[:6]}@example.com",
+        )
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        create_response = self.client.put(
+            f"/api/student/{student_id}/calendar/tasks",
+            headers=headers,
+            json=[
+                {
+                    "id": "temp-1",
+                    "title": "New Task",
+                    "task_status": "pending",
+                    "subject": {"id": 1},
+                    "date": "2026-05-18T10:00:00+00:00",
+                }
+            ],
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        created = create_response.json()[0]
+        self.assertIsInstance(int(created["id"]), int)
+
+        update_response = self.client.put(
+            f"/api/student/{student_id}/calendar/tasks",
+            headers=headers,
+            json=[
+                {
+                    "id": int(created["id"]),  # precisa ser int para o branch de update
+                    "title": "Updated Task",
+                    "task_status": "done",
+                    "subject": {"id": 1},
+                    "date": "2026-05-18T10:00:00+00:00",
+                }
+            ],
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.json()[0]["title"], "Updated Task")
+        self.assertEqual(update_response.json()[0]["status"], "done")
+
+
 class TestStudentCalendar(unittest.TestCase):
     """Integration tests for GET /student/{id}/calendar."""
 
