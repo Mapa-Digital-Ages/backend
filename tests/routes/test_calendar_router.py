@@ -60,9 +60,14 @@ class TestCalendarSoftDelete(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.client = TestClient(app)
+        cls.ctx = TestClient(app)
+        cls.client = cls.ctx.__enter__()
         cls.admin_headers = get_admin_headers(cls.client)
         cls.subject_id = _ensure_subject(get_db_session)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.ctx.__exit__(None, None, None)
 
     def _upsert(self, student_id, date_str, tasks, headers):
         return self.client.put(

@@ -95,7 +95,12 @@ class TestUpsertCalendarDaySoftDelete(unittest.TestCase):
         ]
 
         mock_session = AsyncMock()
-        mock_session.execute.side_effect = [first_result, MagicMock(), refreshed_result]
+        mock_session.execute.side_effect = [
+            first_result,
+            MagicMock(),
+            MagicMock(),
+            MagicMock(),
+            refreshed_result]
         mock_session.add = MagicMock()
 
         payload = [
