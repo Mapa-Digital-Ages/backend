@@ -1,4 +1,4 @@
-"""Subject routes — mounted under /admin via admin_router."""
+"""Subject routes — mounted at /subjects and reused under /admin via admin_router."""
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
@@ -8,7 +8,7 @@ from md_backend.models.api_models import SubjectRequest, SubjectUpdateRequest
 from md_backend.services.subject_service import SubjectService
 from md_backend.utils.database import get_db_session
 
-subject_router = APIRouter()
+subject_router = APIRouter(prefix="/subjects")
 subject_service = SubjectService()
 
 

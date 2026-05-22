@@ -138,6 +138,17 @@ class UploadService:
             file_size_bytes=len(file_bytes),
             file_url=file_url,
         )
+        try:
+            await self.storage.upload_file(
+                upload_id=upload_id,
+                storage_key=storage_key,
+                file_bytes=file_bytes,
+                content_type=detected_mime,
+            )
+        except Exception:
+            await session.rollback()
+            return UPLOAD_STORAGE_ERROR
+
         session.add(upload)
 
         try:
