@@ -73,6 +73,6 @@ async def update_user_status(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-admin_router.include_router(subject_router, prefix="/subjects")
+admin_router.include_router(subject_router)
 admin_router.include_router(content_router, prefix="/content")
 admin_router.include_router(admin_upload_router, prefix="/uploads")
