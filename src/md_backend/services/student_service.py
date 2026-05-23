@@ -127,31 +127,69 @@ class StudentService:
         email: str | None = None,
         page: int = 1,
         size: int = 10,
-    ) -> list[dict]:
+    ) -> dict:
         """List active students with optional filters and pagination."""
-        query = (
-            select(UserProfile, StudentProfile)
-            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(
-                UserProfile.is_active.is_(True),
-                StudentProfile.deactivated_at.is_(None),
-            )
-        )
+        base_conditions = [
+            UserProfile.is_active.is_(True),
+            StudentProfile.deactivated_at.is_(None),
+        ]
 
+        extra_filters = []
         if name:
-            query = query.where(
+            extra_filters.append(
                 UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
-
         if email:
-            query = query.where(UserProfile.email.ilike(f"%{email}%"))
+            extra_filters.append(UserProfile.email.ilike(f"%{email}%"))
 
-        query = query.offset((page - 1) * size).limit(size)
+        count_q = (
+            select(func.count(UserProfile.id))
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(*base_conditions, *extra_filters)
+        )
+        total: int = (await session.execute(count_q)).scalar() or 0
 
-        result = await session.execute(query)
-        rows = result.all()
+        items_q = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(*base_conditions, *extra_filters)
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+        rows = (await session.execute(items_q)).all()
+        items = [self._to_dict(user, student) for user, student in rows]
 
-        return [self._to_dict(user, student) for user, student in rows]
+        total_pages = (total + size - 1) // size if size > 0 else 0
+
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": size,
+            "total_pages": total_pages,
+        }
+
+    async def count_students(
+        self,
+        session: AsyncSession,
+        name: str | None = None,
+    ) -> int:
+        """Return the total count of active students, optionally filtered by name."""
+        conditions = [
+            UserProfile.is_active.is_(True),
+            StudentProfile.deactivated_at.is_(None),
+        ]
+        if name:
+            conditions.append(
+                UserProfile.first_name.ilike(f"%{name}%")
+                | UserProfile.last_name.ilike(f"%{name}%")
+            )
+        q = (
+            select(func.count(UserProfile.id))
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(*conditions)
+        )
+        return (await session.execute(q)).scalar() or 0
 
     async def get_student_by_id(self, session: AsyncSession, student_id: uuid.UUID) -> dict | None:
         """Get a student by user_id."""

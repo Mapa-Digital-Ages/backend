@@ -138,6 +138,19 @@ async def list_students(
     return JSONResponse(content=students, status_code=status.HTTP_200_OK)
 
 
+@student_router.get(
+    "/count",
+    dependencies=[Depends(get_current_approved_user)],
+)
+async def count_students(
+    session: AsyncSession = Depends(get_db_session),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+):
+    """Return the total number of active students, optionally filtered by name."""
+    total = await student_service.count_students(session=session, name=name)
+    return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
+
+
 async def _ensure_can_access_student(
     session: AsyncSession,
     current_user: dict,
