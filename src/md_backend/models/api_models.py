@@ -136,6 +136,7 @@ class StudentUpdateRequest(BaseModel):
     birth_date: datetime.date | None = None
     student_class: ClassEnum | None = None
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
 class GuardianStudentResponse(BaseModel):
