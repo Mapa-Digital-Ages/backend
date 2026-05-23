@@ -4,9 +4,9 @@ import datetime
 import uuid
 
 from sqlalchemy import func, select, update
-from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from md_backend.models.db_models import (
     Attempt,
