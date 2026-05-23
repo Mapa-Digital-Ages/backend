@@ -232,6 +232,7 @@ async def delete_student(
 
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
 
+
 @student_router.patch(
     "/{student_id}/status",
     dependencies=[Depends(get_current_superadmin)],
@@ -258,6 +259,7 @@ async def update_student_status(
         content={"detail": f"Student {'activated' if is_active else 'deactivated'} successfully"},
         status_code=status.HTTP_200_OK,
     )
+
 
 @student_router.get("/{student_id}/summary")
 async def get_student_summary(
