@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
     CalendarTaskSyncItemRequest,
+    StudentListResponse,
     StudentRequest,
     StudentResponse,
     StudentUpdateRequest,
@@ -122,6 +123,7 @@ async def create_student(
 
 @student_router.get(
     "",
+    response_model=StudentListResponse,
     dependencies=[Depends(get_current_approved_user)],
 )
 async def list_students(
