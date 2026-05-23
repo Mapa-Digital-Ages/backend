@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
     CalendarTaskSyncItemRequest,
+    StudentListResponse,
     StudentRequest,
     StudentResponse,
     StudentUpdateRequest,
@@ -122,6 +123,7 @@ async def create_student(
 
 @student_router.get(
     "",
+    response_model=StudentListResponse,
     dependencies=[Depends(get_current_approved_user)],
 )
 async def list_students(
@@ -136,6 +138,19 @@ async def list_students(
         session=session, name=name, email=email, page=page, size=size
     )
     return JSONResponse(content=students, status_code=status.HTTP_200_OK)
+
+
+@student_router.get(
+    "/count",
+    dependencies=[Depends(get_current_approved_user)],
+)
+async def count_students(
+    session: AsyncSession = Depends(get_db_session),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+):
+    """Return the total number of active students, optionally filtered by name."""
+    total = await student_service.count_students(session=session, name=name)
+    return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
 
 
 async def _ensure_can_access_student(

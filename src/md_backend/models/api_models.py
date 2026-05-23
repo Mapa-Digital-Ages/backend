@@ -111,8 +111,8 @@ class StudentRequest(BaseModel):
     school_id: uuid.UUID | None = None
 
 
-class StudentListResponse(BaseModel):
-    """Response model for student listing."""
+class StudentListItemResponse(BaseModel):
+    """Student item returned by the paginated listing."""
 
     id: uuid.UUID
     user_id: uuid.UUID
@@ -122,9 +122,22 @@ class StudentListResponse(BaseModel):
     phone_number: str
     birth_date: str
     student_class: str
-    school_id: str
+    school_id: str | None
+    school_name: str | None
+    guardian_id: str | None
+    guardian_name: str | None
     is_active: bool
     created_at: str | None
+
+
+class StudentListResponse(BaseModel):
+    """Paginated list of students."""
+
+    items: list[StudentListItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class StudentUpdateRequest(BaseModel):
@@ -136,6 +149,7 @@ class StudentUpdateRequest(BaseModel):
     birth_date: datetime.date | None = None
     student_class: ClassEnum | None = None
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
 class GuardianStudentResponse(BaseModel):
