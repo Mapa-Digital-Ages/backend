@@ -252,8 +252,7 @@ class StudentService:
         ]
         if name:
             conditions.append(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
         q = (
             select(func.count(UserProfile.id))
