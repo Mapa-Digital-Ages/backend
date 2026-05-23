@@ -4,6 +4,7 @@ import datetime
 import uuid
 
 from sqlalchemy import func, select, update
+from sqlalchemy.sql.elements import ColumnElement
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -246,7 +247,7 @@ class StudentService:
         name: str | None = None,
     ) -> int:
         """Return the total count of active students, optionally filtered by name."""
-        conditions = [
+        conditions: list[ColumnElement[bool]] = [
             UserProfile.is_active.is_(True),
             StudentProfile.deactivated_at.is_(None),
         ]
