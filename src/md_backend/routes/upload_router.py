@@ -1,10 +1,11 @@
 """Upload router."""
 
+import logging
 import uuid
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.services.storage_service import (
@@ -17,6 +18,8 @@ from md_backend.utils.access_control import can_access_student
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 from md_backend.utils.settings import settings
+
+logger = logging.getLogger(__name__)
 
 upload_router = APIRouter()
 
@@ -32,7 +35,7 @@ async def _iter_bytes(data: bytes, chunk_size: int = _STREAM_CHUNK):
 def get_storage_service(
     session: AsyncSession = Depends(get_db_session),
 ) -> StorageService:
-    """Resolve the storage backend based on settings. Swap requires no caller changes."""
+    """Resolve the storage backend based on settings."""
     if settings.STORAGE_BACKEND == "s3":
         return S3StorageService(
             bucket=settings.AWS_S3_BUCKET or "",
@@ -44,6 +47,19 @@ def get_storage_service(
     return PostgresBlobStorageService(session)
 
 
+async def _check_student_access(
+    session: AsyncSession,
+    current_user: dict,
+    student_id: uuid.UUID,
+) -> bool:
+    """Return whether the current user can access the student."""
+    return await can_access_student(
+        session=session,
+        current_user=current_user,
+        student_id=student_id,
+    )
+
+
 @upload_router.post("/student/{student_id}/uploads")
 async def upload_student_file(
     student_id: uuid.UUID,
@@ -52,16 +68,12 @@ async def upload_student_file(
     current_user: dict = Depends(get_current_approved_user),
     storage: StorageService = Depends(get_storage_service),
 ):
-    """Upload a file for a student. Requires ownership (admin or linked guardian)."""
-    if not await can_access_student(
-        session=session, current_user=current_user, student_id=student_id
-    ):
-        return JSONResponse(
-            content={"detail": "Access denied"},
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
+    """Upload a file for a student."""
+    if not await _check_student_access(session, current_user, student_id):
+        return {"detail": "Access denied"}, 403
 
     service = UploadService(storage=storage)
+
     result = await service.upload_student_file(
         student_id=student_id,
         file=file,
@@ -69,18 +81,12 @@ async def upload_student_file(
     )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Student not found"},
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
+        return {"detail": "Student not found"}, 404
 
     if isinstance(result, str):
-        return JSONResponse(
-            content={"detail": result},
-            status_code=status.HTTP_400_BAD_REQUEST,
-        )
+        return {"detail": result}, 400
 
-    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+    return result
 
 
 @upload_router.get("/student/{student_id}/uploads")
@@ -89,19 +95,15 @@ async def list_student_uploads(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
     storage: StorageService = Depends(get_storage_service),
-    page: int = Query(default=1, ge=1, description="Page number"),
-    size: int = Query(default=10, ge=1, le=100, description="Page size"),
+    page: int = Query(default=1, ge=1),
+    size: int = Query(default=10, ge=1, le=100),
 ):
-    """List all uploads for a student. Requires ownership (admin or linked guardian)."""
-    if not await can_access_student(
-        session=session, current_user=current_user, student_id=student_id
-    ):
-        return JSONResponse(
-            content={"detail": "Access denied"},
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
+    """List uploads for a student."""
+    if not await _check_student_access(session, current_user, student_id):
+        return {"detail": "Access denied"}, 403
 
     service = UploadService(storage=storage)
+
     result = await service.get_student_uploads(
         student_id=student_id,
         session=session,
@@ -110,12 +112,9 @@ async def list_student_uploads(
     )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Student not found"},
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
+        return {"detail": "Student not found"}, 404
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return result
 
 
 @upload_router.get("/uploads/{upload_id}")
@@ -125,8 +124,9 @@ async def get_upload(
     current_user: dict = Depends(get_current_approved_user),
     storage: StorageService = Depends(get_storage_service),
 ):
-    """Get a single upload's metadata by ID."""
+    """Get upload metadata."""
     service = UploadService(storage=storage)
+
     result = await service.get_upload_by_id(
         upload_id=upload_id,
         requester_id=current_user["user_id"],
@@ -135,18 +135,12 @@ async def get_upload(
     )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Upload not found"},
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
+        return {"detail": "Upload not found"}, 404
 
     if result == "forbidden":
-        return JSONResponse(
-            content={"detail": "Access denied"},
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
+        return {"detail": "Access denied"}, 403
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return result
 
 
 @upload_router.get("/uploads/{upload_id}/content")
@@ -156,8 +150,9 @@ async def download_upload_content(
     current_user: dict = Depends(get_current_approved_user),
     storage: StorageService = Depends(get_storage_service),
 ):
-    """Stream the raw file bytes for an upload."""
+    """Download upload content."""
     service = UploadService(storage=storage)
+
     result = await service.get_upload_content(
         upload_id=upload_id,
         requester_id=current_user["user_id"],
@@ -166,26 +161,27 @@ async def download_upload_content(
     )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Upload not found"},
-            status_code=status.HTTP_404_NOT_FOUND,
-        )
+        return {"detail": "Upload not found"}, 404
 
     if isinstance(result, str):
-        return JSONResponse(
-            content={"detail": "Access denied"},
-            status_code=status.HTTP_403_FORBIDDEN,
-        )
+        return {"detail": "Access denied"}, 403
 
     upload, content = result
+
     safe_name = quote(upload.file_name)
-    ascii_name = upload.file_name.encode("ascii", errors="replace").decode("ascii")
+    ascii_name = upload.file_name.encode(
+        "ascii",
+        errors="replace",
+    ).decode("ascii")
+
     return StreamingResponse(
         _iter_bytes(content),
         media_type=upload.file_type,
         headers={
             "Content-Disposition": (
-                f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{safe_name}"
+                f"attachment; "
+                f'filename="{ascii_name}"; '
+                f"filename*=UTF-8''{safe_name}"
             )
         },
     )

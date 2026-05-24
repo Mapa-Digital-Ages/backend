@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     ClassEnum,
     GuardianProfile,
@@ -15,6 +16,9 @@ from md_backend.models.db_models import (
     UserProfile,
 )
 from md_backend.utils.security import hash_password
+
+logger = get_logger(__name__)
+_logger_extra = {"component_name": "register_service","component_version": "v1",}
 
 
 class RegisterService:
@@ -29,12 +33,33 @@ class RegisterService:
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
-        """Register a new guardian. Returns success dict or None if email already exists."""
-        result = await session.execute(select(UserProfile).where(UserProfile.email == email))
+        """Register a new guardian."""
+
+        logger.info(
+            "Registering guardian",
+            extra={
+                **_logger_extra,
+                "email": email,
+            },
+        )
+
+        result = await session.execute(
+            select(UserProfile).where(UserProfile.email == email)
+        )
+
         if result.scalar_one_or_none() is not None:
+            logger.warning(
+                "Guardian registration failed: email already exists",
+                extra={
+                    **_logger_extra,
+                    "email": email,
+                },
+            )
+
             return None
 
         hashed = await hash_password(password)
+
         user = UserProfile(
             email=email,
             password=hashed,
@@ -42,17 +67,44 @@ class RegisterService:
             last_name=last_name,
             phone_number=phone_number,
         )
-        guardian = GuardianProfile(user=user, guardian_status=GuardianStatusEnum.WAITING)
+
+        guardian = GuardianProfile(
+            user=user,
+            guardian_status=GuardianStatusEnum.WAITING,
+        )
+
         session.add(user)
         session.add(guardian)
 
         try:
             await session.commit()
+
         except IntegrityError:
+            logger.error(
+                "Guardian registration failed due to integrity error",
+                extra={
+                    **_logger_extra,
+                    "email": email,
+                },
+            )
+
             await session.rollback()
+
             return None
 
-        return {"id": str(user.id), "detail": "Registration completed. Awaiting approval."}
+        logger.info(
+            "Guardian registered successfully",
+            extra={
+                **_logger_extra,
+                "user_id": str(user.id),
+                "email": email,
+            },
+        )
+
+        return {
+            "id": str(user.id),
+            "detail": "Registration completed. Awaiting approval.",
+        }
 
     async def register_student(
         self,
@@ -66,12 +118,34 @@ class RegisterService:
         phone_number: str | None = None,
         school_id: uuid.UUID | None = None,
     ) -> dict | None:
-        """Register a new student. Returns success dict or None if email already exists."""
-        result = await session.execute(select(UserProfile).where(UserProfile.email == email))
+        """Register a new student."""
+
+        logger.info(
+            "Registering student",
+            extra={
+                **_logger_extra,
+                "email": email,
+                "student_class": student_class.value,
+            },
+        )
+
+        result = await session.execute(
+            select(UserProfile).where(UserProfile.email == email)
+        )
+
         if result.scalar_one_or_none() is not None:
+            logger.warning(
+                "Student registration failed: email already exists",
+                extra={
+                    **_logger_extra,
+                    "email": email,
+                },
+            )
+
             return None
 
         hashed = await hash_password(password)
+
         user = UserProfile(
             email=email,
             password=hashed,
@@ -79,19 +153,44 @@ class RegisterService:
             last_name=last_name,
             phone_number=phone_number,
         )
+
         student = StudentProfile(
             user=user,
             birth_date=birth_date,
             student_class=student_class,
             school_id=school_id,
         )
+
         session.add(user)
         session.add(student)
 
         try:
             await session.commit()
+
         except IntegrityError:
+            logger.error(
+                "Student registration failed due to integrity error",
+                extra={
+                    **_logger_extra,
+                    "email": email,
+                },
+            )
+
             await session.rollback()
+
             return None
 
-        return {"id": str(user.id), "detail": "Registration completed."}
+        logger.info(
+            "Student registered successfully",
+            extra={
+                **_logger_extra,
+                "user_id": str(user.id),
+                "email": email,
+                "student_class": student_class.value,
+            },
+        )
+
+        return {
+            "id": str(user.id),
+            "detail": "Registration completed.",
+        }

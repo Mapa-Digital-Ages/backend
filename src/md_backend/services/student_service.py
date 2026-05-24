@@ -7,6 +7,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     Attempt,
     ClassEnum,
@@ -21,6 +22,9 @@ from md_backend.models.db_models import (
     WellBeing,
 )
 from md_backend.utils.security import hash_password
+
+logger = get_logger(__name__)
+_logger_extra = {"component_name": "student_service","component_version": "v1",}
 
 _TASK_STATUS_TO_FRONTEND = {
     TaskStatusEnum.DONE: "done",
@@ -43,9 +47,30 @@ class StudentService:
         phone_number: str | None = None,
         school_id: uuid.UUID | None = None,
     ) -> dict | None:
-        """Create a student atomically across user_profile and student_profile."""
-        existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
+        """Create a student atomically."""
+
+        logger.info(
+            "Creating student",
+            extra={
+                **_logger_extra,
+                "email": email,
+                "student_class": student_class.value,
+            },
+        )
+
+        existing = await session.execute(
+            select(UserProfile).where(UserProfile.email == email)
+        )
+
         if existing.scalar_one_or_none() is not None:
+            logger.warning(
+                "Student creation failed: email already exists",
+                extra={
+                    **_logger_extra,
+                    "email": email,
+                },
+            )
+
             return None
 
         hashed = await hash_password(password)
@@ -58,19 +83,42 @@ class StudentService:
                 password=hashed,
                 phone_number=phone_number,
             )
+
             student_profile = StudentProfile(
                 user=user_profile,
                 birth_date=birth_date,
                 student_class=student_class,
                 school_id=school_id,
             )
+
             session.add(user_profile)
             session.add(student_profile)
+
             await session.commit()
+
             await session.refresh(user_profile)
             await session.refresh(student_profile)
+
+            logger.info(
+                "Student created successfully",
+                extra={
+                    **_logger_extra,
+                    "student_id": str(student_profile.user_id),
+                    "email": email,
+                },
+            )
+
         except IntegrityError:
             await session.rollback()
+
+            logger.exception(
+                "Student creation failed due to integrity error",
+                extra={
+                    **_logger_extra,
+                    "email": email,
+                },
+            )
+
             return None
 
         return self._to_dict(user_profile, student_profile)
@@ -83,7 +131,19 @@ class StudentService:
         page: int = 1,
         size: int = 10,
     ) -> list[dict]:
-        """List active students with optional filters and pagination."""
+        """List active students with pagination."""
+
+        logger.info(
+            "Listing students",
+            extra={
+                **_logger_extra,
+                "page": page,
+                "size": size,
+                "name_filter": name,
+                "email_filter": email,
+            },
+        )
+
         query = (
             select(UserProfile, StudentProfile)
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
@@ -95,320 +155,77 @@ class StudentService:
 
         if name:
             query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%")
+                | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         if email:
-            query = query.where(UserProfile.email.ilike(f"%{email}%"))
+            query = query.where(
+                UserProfile.email.ilike(f"%{email}%")
+            )
 
         query = query.offset((page - 1) * size).limit(size)
 
         result = await session.execute(query)
+
         rows = result.all()
 
-        return [self._to_dict(user, student) for user, student in rows]
-
-    async def get_student_by_id(self, session: AsyncSession, student_id: uuid.UUID) -> dict | None:
-        """Get a student by user_id."""
-        query = (
-            select(UserProfile, StudentProfile)
-            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(
-                StudentProfile.user_id == student_id,
-                UserProfile.is_active.is_(True),
-                StudentProfile.deactivated_at.is_(None),
-            )
+        logger.info(
+            "Students listed successfully",
+            extra={
+                **_logger_extra,
+                "students_count": len(rows),
+            },
         )
-
-        result = await session.execute(query)
-        row = result.one_or_none()
-
-        if row is None:
-            return None
-
-        user_profile, student_profile = row
-        return self._to_dict(user_profile, student_profile)
-
-    async def update_student(
-        self,
-        session: AsyncSession,
-        student_id: uuid.UUID,
-        data: dict,
-    ) -> dict | None:
-        """Update a student's data. Returns None if not found."""
-        query = (
-            select(UserProfile, StudentProfile)
-            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(
-                StudentProfile.user_id == student_id,
-                UserProfile.is_active.is_(True),
-                StudentProfile.deactivated_at.is_(None),
-            )
-        )
-        result = await session.execute(query)
-        row = result.one_or_none()
-
-        if row is None:
-            return None
-
-        user_profile, student_profile = row
-
-        user_fields = {"first_name", "last_name", "phone_number"}
-        student_fields = {"birth_date", "student_class", "school_id"}
-
-        for field, value in data.items():
-            if value is None:
-                continue
-            if field in user_fields:
-                setattr(user_profile, field, value)
-            elif field in student_fields:
-                setattr(student_profile, field, value)
-
-        try:
-            await session.commit()
-            await session.refresh(user_profile)
-            await session.refresh(student_profile)
-        except Exception:
-            await session.rollback()
-            raise
-
-        return self._to_dict(user_profile, student_profile)
-
-    async def deactivate_student(self, session: AsyncSession, student_id: uuid.UUID) -> bool:
-        """Soft delete a student by setting is_active to False."""
-        query = (
-            select(UserProfile, StudentProfile)
-            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
-            .where(StudentProfile.user_id == student_id)
-        )
-        result = await session.execute(query)
-        row = result.one_or_none()
-
-        if row is None:
-            return False
-
-        user_profile, student_profile = row
-        now = datetime.datetime.now(datetime.UTC)
-        user_profile.is_active = False
-        user_profile.deactivated_at = now
-        student_profile.deactivated_at = now
-
-        await session.execute(
-            update(StudentGuardian)
-            .where(
-                StudentGuardian.student_id == student_id,
-                StudentGuardian.deactivated_at.is_(None),
-            )
-            .values(deactivated_at=now)
-        )
-
-        await session.commit()
-        return True
-
-    async def get_summary_metrics(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
-        """Headline metrics for the student dashboard."""
-        completed_tasks_q = select(func.count(Task.id)).where(
-            Task.student_id == student_id,
-            Task.task_status == TaskStatusEnum.DONE,
-            Task.deactivated_at.is_(None),
-        )
-        attempts_q = select(func.count(Attempt.id)).where(Attempt.student_id == student_id)
-        mood_days_q = select(func.count(WellBeing.date)).where(WellBeing.student_id == student_id)
-
-        completed_tasks = (await session.execute(completed_tasks_q)).scalar() or 0
-        attempts = (await session.execute(attempts_q)).scalar() or 0
-        mood_days = (await session.execute(mood_days_q)).scalar() or 0
 
         return [
-            {"id": "completed-tasks", "title": "Tarefas Concluídas", "value": completed_tasks},
-            {"id": "activities", "title": "Atividades Feitas", "value": attempts},
-            {"id": "mood-days", "title": "Dias Registrados", "value": mood_days},
+            self._to_dict(user, student)
+            for user, student in rows
         ]
 
-    async def get_disciplines_progress(
-        self, session: AsyncSession, student_id: uuid.UUID
-    ) -> list[dict]:
-        """Average mastery (0-100) per subject for the given student."""
-        query = (
-            select(
-                Subject.id,
-                Subject.name,
-                func.avg(StudentContentProgress.mastery_level).label("avg_mastery"),
-            )
-            .join(Content, Content.subject_id == Subject.id)
-            .join(StudentContentProgress, StudentContentProgress.content_id == Content.id)
-            .where(
-                StudentContentProgress.student_id == student_id,
-                StudentContentProgress.deactivated_at.is_(None),
-            )
-            .group_by(Subject.id, Subject.name)
-            .order_by(Subject.name)
-        )
-
-        rows = (await session.execute(query)).all()
-        return [self._discipline_to_dict(row) for row in rows]
-
-    async def get_tasks(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
-        """All non-deactivated tasks for the student, newest first."""
-        query = (
-            select(Task)
-            .where(Task.student_id == student_id, Task.deactivated_at.is_(None))
-            .order_by(Task.date.desc())
-        )
-        tasks = (await session.execute(query)).scalars().all()
-        return [self._task_to_dict(task) for task in tasks]
-
-    async def upsert_well_being(
+    async def get_student_by_id(
         self,
         session: AsyncSession,
         student_id: uuid.UUID,
-        date: datetime.date,
-        humor: str | None,
-        online_activity_minutes: int | None,
-        sleep_hours: float | None,
-    ) -> dict:
-        """Atomically insert or update a well-being record (upsert).
-
-        Uses a single database command with ON CONFLICT to avoid a prior SELECT.
-        Compatible with both SQLite (tests) and PostgreSQL (production).
-        """
-        dialect_name = session.bind.dialect.name if session.bind else "sqlite"  # type: ignore[union-attr]
-
-        if dialect_name == "postgresql":
-            from sqlalchemy.dialects.postgresql import insert as pg_insert
-
-            stmt = pg_insert(WellBeing).values(
-                student_id=student_id,
-                date=date,
-                humor=humor,
-                online_activity_minutes=online_activity_minutes,
-                sleep_hours=sleep_hours,
-            )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["student_id", "date"],
-                set_={
-                    "humor": stmt.excluded.humor,
-                    "online_activity_minutes": stmt.excluded.online_activity_minutes,
-                    "sleep_hours": stmt.excluded.sleep_hours,
-                },
-            )
-        else:
-            # SQLite (used in tests) — INSERT OR REPLACE handles the composite PK conflict
-            from sqlalchemy.dialects.sqlite import insert as sqlite_insert
-
-            stmt = sqlite_insert(WellBeing).values(
-                student_id=student_id,
-                date=date,
-                humor=humor,
-                online_activity_minutes=online_activity_minutes,
-                sleep_hours=sleep_hours,
-            )
-            stmt = stmt.on_conflict_do_update(
-                index_elements=["student_id", "date"],
-                set_={
-                    "humor": stmt.excluded.humor,
-                    "online_activity_minutes": stmt.excluded.online_activity_minutes,
-                    "sleep_hours": stmt.excluded.sleep_hours,
-                },
-            )
-
-        await session.execute(stmt)
-        await session.commit()
-
-        result = await session.execute(
-            select(WellBeing).where(
-                WellBeing.student_id == student_id,
-                WellBeing.date == date,
-            )
-        )
-        record = result.scalar_one()
-        return self._well_being_to_dict(record)
-
-    async def get_well_being(
-        self,
-        session: AsyncSession,
-        student_id: uuid.UUID,
-        date: datetime.date,
     ) -> dict | None:
-        """Return a student's well-being record for a given date, or None if not found."""
-        result = await session.execute(
-            select(WellBeing).where(
-                WellBeing.student_id == student_id,
-                WellBeing.date == date,
-            )
-        )
-        record = result.scalar_one_or_none()
-        if record is None:
-            return None
-        return self._well_being_to_dict(record)
+        """Get a student by user_id."""
 
-    async def get_well_being_range(
-        self,
-        session: AsyncSession,
-        student_id: uuid.UUID,
-        from_date: datetime.date,
-        to_date: datetime.date,
-    ) -> list[dict]:
-        """Return a student's well-being records in date order for a date range."""
-        result = await session.execute(
-            select(WellBeing)
+        logger.info(
+            "Getting student by id",
+            extra={
+                **_logger_extra,
+                "student_id": str(student_id),
+            },
+        )
+
+        query = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
             .where(
-                WellBeing.student_id == student_id,
-                WellBeing.date >= from_date,
-                WellBeing.date <= to_date,
+                StudentProfile.user_id == student_id,
+                UserProfile.is_active.is_(True),
+                StudentProfile.deactivated_at.is_(None),
             )
-            .order_by(WellBeing.date.asc())
         )
-        return [self._well_being_to_dict(record) for record in result.scalars()]
 
-    def _well_being_to_dict(self, record: WellBeing) -> dict:
-        """Map a WellBeing ORM object to a serialisable dict."""
-        return {
-            "student_id": str(record.student_id),
-            "date": record.date.isoformat(),
-            "humor": record.humor.value if record.humor else None,
-            "online_activity_minutes": record.online_activity_minutes,
-            "sleep_hours": float(record.sleep_hours) if record.sleep_hours is not None else None,
-        }
+        result = await session.execute(query)
 
-    def _to_dict(self, user_profile: UserProfile, student_profile: StudentProfile) -> dict:
-        """Map user_profile and student_profile to a full response dict."""
-        return {
-            "id": str(student_profile.user_id),
-            "user_id": str(user_profile.id),
-            "first_name": user_profile.first_name,
-            "last_name": user_profile.last_name,
-            "email": user_profile.email,
-            "phone_number": user_profile.phone_number or "",
-            "birth_date": (
-                student_profile.birth_date.isoformat() if student_profile.birth_date else ""
-            ),
-            "student_class": student_profile.student_class.value,
-            "school_id": str(student_profile.school_id) if student_profile.school_id else "",
-            "is_active": user_profile.is_active,
-            "created_at": user_profile.created_at.isoformat() if user_profile.created_at else None,
-        }
+        row = result.one_or_none()
 
-    def _discipline_to_dict(self, row) -> dict:
-        """Map a (subject_id, name, avg_mastery) row to a discipline progress dict."""
-        subject_id, name, avg_mastery = row
-        return {
-            "subjectId": str(subject_id),
-            "subjectLabel": name,
-            "progress": int(round(float(avg_mastery or 0) * 100)),
-        }
+        if row is None:
+            logger.warning(
+                "Student not found",
+                extra={
+                    **_logger_extra,
+                    "student_id": str(student_id),
+                },
+            )
 
-    def _task_to_dict(self, task: Task) -> dict:
-        """Map a Task row to the response dict expected by the dashboard."""
-        task_status = task.task_status
-        return {
-            "id": str(task.id),
-            "title": task.title,
-            "date": task.date.isoformat() if task.date else None,
-            "status": (
-                _TASK_STATUS_TO_FRONTEND.get(task_status, "pending")
-                if task_status is not None
-                else "pending"
-            ),
-            "subject": {"label": ""},
-        }
+            return None
+
+        user_profile, student_profile = row
+
+        return self._to_dict(
+            user_profile,
+            student_profile,
+        )

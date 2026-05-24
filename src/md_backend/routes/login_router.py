@@ -1,4 +1,6 @@
-"""Login Router."""
+"""Login router."""
+
+import logging
 
 from fastapi import APIRouter, Depends, Request, status
 from fastapi.responses import JSONResponse
@@ -9,9 +11,11 @@ from md_backend.services.login_service import LoginService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.limiter import limiter
 
+logger = logging.getLogger(__name__)
+
 login_service = LoginService()
 
-login_router = APIRouter(prefix="/login")
+login_router = APIRouter(prefix="/login", tags=["Login"])
 
 
 @login_router.post("")
@@ -21,10 +25,28 @@ async def login(
     body: LoginRequest,
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Authenticate user and return JWT token."""
+    """Authenticate a user and return a JWT token.
+
+    Args:
+        request: FastAPI request object used to extract client IP.
+        body: Login credentials payload.
+        session: Database session.
+
+    Returns:
+        HTTP 200 with authentication payload on success.
+
+        HTTP 401 when credentials are invalid.
+
+        HTTP 403 when the account is inactive, waiting approval,
+        or rejected.
+    """
     ip = request.client.host if request.client else None
+
     result = await login_service.login(
-        email=body.email, password=body.password, session=session, ip=ip
+        email=body.email,
+        password=body.password,
+        session=session,
+        ip=ip,
     )
 
     if result.get("error") == "invalid_credentials":
@@ -39,4 +61,7 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_200_OK,
+    )

@@ -1,5 +1,6 @@
 """School router - endpoints for managing school units."""
 
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
@@ -15,10 +16,19 @@ from md_backend.models.api_models import (
 )
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_approved_user, get_current_superadmin
+from md_backend.utils.security import (
+    get_current_approved_user,
+    get_current_superadmin,
+)
+
+logger = logging.getLogger(__name__)
 
 school_service = SchoolService()
-school_router = APIRouter(prefix="/school", tags=["School"])
+
+school_router = APIRouter(
+    prefix="/school",
+    tags=["School"],
+)
 
 
 @school_router.post(
@@ -31,7 +41,18 @@ async def create_school(
     request: CreateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Create a new school unit."""
+    """Create a new school account.
+
+    Args:
+        request: School creation payload.
+        session: Database session.
+
+    Returns:
+        HTTP 201 with the created school data.
+
+        HTTP 409 if the email already exists or an
+        integrity error occurs.
+    """
     try:
         result = await school_service.create_school(
             first_name=request.first_name,
@@ -45,6 +66,7 @@ async def create_school(
         )
     except IntegrityError:
         await session.rollback()
+
         return JSONResponse(
             content={"detail": "Integrity error while saving school."},
             status_code=status.HTTP_409_CONFLICT,
@@ -56,7 +78,10 @@ async def create_school(
             status_code=status.HTTP_409_CONFLICT,
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_201_CREATED,
+    )
 
 
 @school_router.get(
@@ -69,16 +94,33 @@ async def list_schools(
     session: AsyncSession = Depends(get_db_session),
     page: int = Query(default=1, ge=1, description="Page number (starts at 1)"),
     size: int = Query(default=20, ge=1, le=100, description="Items per page"),
-    name: str | None = Query(default=None, description="Partial filter by name (case-insensitive)"),
+    name: str | None = Query(
+        default=None,
+        description="Partial filter by name (case-insensitive)",
+    ),
 ) -> JSONResponse:
-    """List paginated active schools with optional filters."""
+    """List active schools with pagination and optional filtering.
+
+    Args:
+        session: Database session.
+        page: Page number starting at 1.
+        size: Number of items per page.
+        name: Optional partial name filter.
+
+    Returns:
+        HTTP 200 with paginated school data.
+    """
     result = await school_service.list_schools(
         session=session,
         page=page,
         size=size,
         name=name,
     )
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @school_router.get(
@@ -91,8 +133,21 @@ async def get_school(
     school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Return a single school by ID or 404."""
-    result = await school_service.get_school_by_id(school_id=school_id, session=session)
+    """Retrieve a school by its ID.
+
+    Args:
+        school_id: School user ID.
+        session: Database session.
+
+    Returns:
+        HTTP 200 with school data.
+
+        HTTP 404 if the school does not exist.
+    """
+    result = await school_service.get_school_by_id(
+        school_id=school_id,
+        session=session,
+    )
 
     if result is None:
         return JSONResponse(
@@ -100,7 +155,10 @@ async def get_school(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @school_router.patch(
@@ -114,7 +172,20 @@ async def update_school(
     request: UpdateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Partially update school fields."""
+    """Partially update school information.
+
+    Args:
+        school_id: School user ID.
+        request: Partial update payload.
+        session: Database session.
+
+    Returns:
+        HTTP 200 with updated school data.
+
+        HTTP 404 if the school does not exist.
+
+        HTTP 409 if the email already belongs to another user.
+    """
     result = await school_service.update_school(
         school_id=school_id,
         first_name=request.first_name,
@@ -137,7 +208,10 @@ async def update_school(
             status_code=status.HTTP_409_CONFLICT,
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @school_router.delete(
@@ -150,8 +224,21 @@ async def deactivate_school(
     school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Soft delete: deactivate school without removing data."""
-    success = await school_service.deactivate_school(school_id=school_id, session=session)
+    """Soft delete a school account.
+
+    Args:
+        school_id: School user ID.
+        session: Database session.
+
+    Returns:
+        HTTP 204 when the school is successfully deactivated.
+
+        HTTP 404 if the school does not exist.
+    """
+    success = await school_service.deactivate_school(
+        school_id=school_id,
+        session=session,
+    )
 
     if not success:
         return JSONResponse(
@@ -159,4 +246,7 @@ async def deactivate_school(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return JSONResponse(
+        content=None,
+        status_code=status.HTTP_204_NO_CONTENT,
+    )

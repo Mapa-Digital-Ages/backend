@@ -1,5 +1,8 @@
 """Router file."""
 
+
+import logging 
+
 from fastapi import APIRouter
 
 from md_backend.routes.admin_router import admin_router
@@ -13,6 +16,9 @@ from md_backend.routes.setup_router import setup_router
 from md_backend.routes.student_router import student_router
 from md_backend.routes.upload_router import upload_router
 
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 router.include_router(login_router)
@@ -25,3 +31,4 @@ router.include_router(school_router)
 router.include_router(guardian_router)
 router.include_router(company_router)
 router.include_router(upload_router)
+

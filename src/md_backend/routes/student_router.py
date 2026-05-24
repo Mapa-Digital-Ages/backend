@@ -1,10 +1,10 @@
 """Student router for student registration endpoints."""
 
+import logging
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
@@ -24,6 +24,8 @@ from md_backend.utils.access_control import (
 )
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
+
+logger = logging.getLogger(__name__)
 
 student_service = StudentService()
 guardian_service = GuardianService()
@@ -80,15 +82,15 @@ async def create_student(
     request: StudentRequest,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> dict:
     """Create a new student. Restricted to superadmin or approved guardian users."""
     is_superadmin = current_user.get("is_superadmin")
     is_guardian = current_user.get("is_guardian")
 
     if not is_superadmin and not is_guardian:
-        return JSONResponse(
-            content={"detail": "Access denied"},
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
         )
 
     result = await student_service.create_student(
@@ -104,9 +106,9 @@ async def create_student(
     )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Email already registered"},
+        raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
+            detail="Email already registered",
         )
 
     if is_guardian:
@@ -116,7 +118,7 @@ async def create_student(
             student_id=uuid.UUID(result["user_id"]),
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+    return result
 
 
 @student_router.get(
@@ -129,29 +131,34 @@ async def list_students(
     email: str | None = Query(default=None, description="Filter by email"),
     page: int = Query(default=1, ge=1, description="Page number"),
     size: int = Query(default=10, ge=1, le=100, description="Page size"),
-):
+) -> list[dict]:
     """List active students with optional filters and pagination."""
-    students = await student_service.get_students(
-        session=session, name=name, email=email, page=page, size=size
+    return await student_service.get_students(
+        session=session,
+        name=name,
+        email=email,
+        page=page,
+        size=size,
     )
-    return JSONResponse(content=students, status_code=status.HTTP_200_OK)
 
 
 async def _ensure_can_access_student(
     session: AsyncSession,
     current_user: dict,
     student_id: uuid.UUID,
-) -> JSONResponse | None:
+) -> None:
     """Authorize access to a student. Admins pass; guardians must own the student."""
     allowed = await can_access_student(
-        session=session, current_user=current_user, student_id=student_id
+        session=session,
+        current_user=current_user,
+        student_id=student_id,
     )
-    if allowed:
-        return None
-    return JSONResponse(
-        content={"detail": "Access denied"},
-        status_code=status.HTTP_403_FORBIDDEN,
-    )
+
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
+        )
 
 
 @student_router.get("/{student_id}")
@@ -159,21 +166,22 @@ async def get_student(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> dict:
     """Get a student by ID. Guardian-owners and admins only."""
-    denied = await _ensure_can_access_student(session, current_user, student_id)
-    if denied is not None:
-        return denied
+    await _ensure_can_access_student(session, current_user, student_id)
 
-    result = await student_service.get_student_by_id(session=session, student_id=student_id)
+    result = await student_service.get_student_by_id(
+        session=session,
+        student_id=student_id,
+    )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Student not found"},
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return result
 
 
 @student_router.put(
@@ -185,11 +193,9 @@ async def update_student(
     request: StudentUpdateRequest,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> dict:
     """Update a student by ID. Guardian-owners and admins only."""
-    denied = await _ensure_can_access_student(session, current_user, student_id)
-    if denied is not None:
-        return denied
+    await _ensure_can_access_student(session, current_user, student_id)
 
     result = await student_service.update_student(
         session=session,
@@ -198,12 +204,12 @@ async def update_student(
     )
 
     if result is None:
-        return JSONResponse(
-            content={"detail": "Student not found"},
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
         )
 
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return result
 
 
 @student_router.delete(
@@ -215,21 +221,20 @@ async def delete_student(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> None:
     """Soft delete a student by ID. Guardian-owners and admins only."""
-    denied = await _ensure_can_access_student(session, current_user, student_id)
-    if denied is not None:
-        return denied
+    await _ensure_can_access_student(session, current_user, student_id)
 
-    success = await student_service.deactivate_student(session=session, student_id=student_id)
+    success = await student_service.deactivate_student(
+        session=session,
+        student_id=student_id,
+    )
 
     if not success:
-        return JSONResponse(
-            content={"detail": "Student not found"},
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail="Student not found",
         )
-
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
 
 
 @student_router.get("/{student_id}/summary")
@@ -237,14 +242,14 @@ async def get_student_summary(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> list[dict]:
     """Headline metrics for the student's dashboard."""
-    denied = await _ensure_can_access_student(session, current_user, student_id)
-    if denied is not None:
-        return denied
+    await _ensure_can_access_student(session, current_user, student_id)
 
-    metrics = await student_service.get_summary_metrics(session=session, student_id=student_id)
-    return JSONResponse(content=metrics, status_code=status.HTTP_200_OK)
+    return await student_service.get_summary_metrics(
+        session=session,
+        student_id=student_id,
+    )
 
 
 @student_router.get("/{student_id}/disciplines")
@@ -252,16 +257,14 @@ async def get_student_disciplines(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> list[dict]:
     """Mastery progress per subject for the student."""
-    denied = await _ensure_can_access_student(session, current_user, student_id)
-    if denied is not None:
-        return denied
+    await _ensure_can_access_student(session, current_user, student_id)
 
-    disciplines = await student_service.get_disciplines_progress(
-        session=session, student_id=student_id
+    return await student_service.get_disciplines_progress(
+        session=session,
+        student_id=student_id,
     )
-    return JSONResponse(content=disciplines, status_code=status.HTTP_200_OK)
 
 
 @student_router.get("/{student_id}/tasks")
@@ -269,14 +272,14 @@ async def get_student_tasks(
     student_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> list[dict]:
     """Tasks assigned to the student."""
-    denied = await _ensure_can_access_student(session, current_user, student_id)
-    if denied is not None:
-        return denied
+    await _ensure_can_access_student(session, current_user, student_id)
 
-    tasks = await student_service.get_tasks(session=session, student_id=student_id)
-    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+    return await student_service.get_tasks(
+        session=session,
+        student_id=student_id,
+    )
 
 
 @student_router.get(
@@ -289,12 +292,10 @@ async def get_student_tasks(
         },
         404: {
             "description": (
-                "No well-being record exists for this student on the requested date. "
-                "This is an expected response when the student has not yet filled in "
-                "their state for that day."
+                "No well-being record exists for this student on the requested date."
             ),
         },
-        422: {"description": "Validation error — invalid student_id UUID or date format."},
+        422: {"description": "Validation error."},
     },
 )
 async def get_student_well_being(
@@ -306,16 +307,17 @@ async def get_student_well_being(
     ),
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
-    """Return a student's well-being record for a specific date.
-
-    A **404** response is expected and intentional when the student has not yet registered
-    their state for that day — the frontend should treat it as an empty/initial state.
-    """
-    if not await _can_read_daily_well_being(session, current_user, student_id, date):
-        return JSONResponse(
-            content={"detail": "Access denied"},
+) -> dict:
+    """Return a student's well-being record for a specific date."""
+    if not await _can_read_daily_well_being(
+        session,
+        current_user,
+        student_id,
+        date,
+    ):
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
         )
 
     record = await student_service.get_well_being(
@@ -325,12 +327,12 @@ async def get_student_well_being(
     )
 
     if record is None:
-        return JSONResponse(
-            content={"detail": "Well-being record not found for the given date."},
+        raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail="Well-being record not found for the given date.",
         )
 
-    return JSONResponse(content=record, status_code=status.HTTP_200_OK)
+    return record
 
 
 @student_router.get(
@@ -344,27 +346,30 @@ async def get_student_well_being_history(
     to_date: datetime.date = Query(..., alias="to"),
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
+) -> list[dict]:
     """Return well-being records in ascending date order for a student."""
     if from_date > to_date:
-        return JSONResponse(
-            content={"detail": "'from' must be before or equal to 'to'."},
+        raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="'from' must be before or equal to 'to'.",
         )
 
-    if not await _can_read_well_being_history(session, current_user, student_id):
-        return JSONResponse(
-            content={"detail": "Access denied"},
+    if not await _can_read_well_being_history(
+        session,
+        current_user,
+        student_id,
+    ):
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
         )
 
-    records = await student_service.get_well_being_range(
+    return await student_service.get_well_being_range(
         session=session,
         student_id=student_id,
         from_date=from_date,
         to_date=to_date,
     )
-    return JSONResponse(content=records, status_code=status.HTTP_200_OK)
 
 
 @student_router.put(
@@ -375,13 +380,8 @@ async def get_student_well_being_history(
             "description": "Well-being record created or updated.",
             "model": WellBeingResponse,
         },
-        400: {"description": "Invalid humor value (must be 'bad', 'regular', or 'good')."},
-        422: {
-            "description": (
-                "Validation error — invalid student_id UUID, out-of-range numeric fields, "
-                "or malformed request body."
-            )
-        },
+        400: {"description": "Invalid humor value."},
+        422: {"description": "Validation error."},
     },
 )
 async def upsert_student_well_being(
@@ -389,36 +389,33 @@ async def upsert_student_well_being(
     request: WellBeingRequest,
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
-):
-    """Atomically create or update the student's well-being state for today.
-
-    Uses a single upsert on the composite primary key (student_id, date).
-    Always returns **200 OK** regardless of whether the row was inserted or updated.
-    """
-    if not await _can_write_well_being(session, current_user, student_id):
-        return JSONResponse(
-            content={"detail": "Access denied"},
+) -> dict:
+    """Atomically create or update the student's well-being state for today."""
+    if not await _can_write_well_being(
+        session,
+        current_user,
+        student_id,
+    ):
+        raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied",
         )
 
-    # Validate humor enum before hitting the database
     if request.humor is not None:
         try:
             HumorEnum(request.humor)
-        except ValueError:
-            return JSONResponse(
-                content={
-                    "detail": (
-                        f"Invalid humor value '{request.humor}'. "
-                        "Accepted values are: 'bad', 'regular', 'good'."
-                    )
-                },
+        except ValueError as exc:
+            raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-            )
+                detail=(
+                    f"Invalid humor value '{request.humor}'. "
+                    "Accepted values are: 'bad', 'regular', 'good'."
+                ),
+            ) from exc
 
     today = datetime.date.today()
 
-    record = await student_service.upsert_well_being(
+    return await student_service.upsert_well_being(
         session=session,
         student_id=student_id,
         date=today,
@@ -426,5 +423,3 @@ async def upsert_student_well_being(
         online_activity_minutes=request.online_activity_minutes,
         sleep_hours=request.sleep_hours,
     )
-
-    return JSONResponse(content=record, status_code=status.HTTP_200_OK)
