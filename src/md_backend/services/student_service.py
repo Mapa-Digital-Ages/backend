@@ -36,6 +36,7 @@ _TASK_STATUS_TO_FRONTEND = {
     TaskStatusEnum.ADJUST: "adjust",
 }
 
+
 def get_week_bounds(
     reference: datetime.date | None = None,
 ) -> tuple[datetime.datetime, datetime.datetime]:
@@ -88,6 +89,7 @@ def _task_with_subject_to_dict(task: Task, subject: Subject) -> dict:
             "label": subject.name,
         },
     }
+
 
 class StudentService:
     """Service for student operations."""
@@ -925,9 +927,7 @@ class StudentService:
         date: datetime.date,
     ) -> list[dict]:
         """Return all active tasks for a student on a given date."""
-        day_start = datetime.datetime(
-            date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC
-        )
+        day_start = datetime.datetime(date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC)
         day_end = datetime.datetime(
             date.year, date.month, date.day, 23, 59, 59, 999999, tzinfo=datetime.UTC
         )
@@ -957,9 +957,7 @@ class StudentService:
     ) -> list[dict]:
         """Sync the full task state for a student/date (upsert + soft delete omitted tasks)."""
         now = datetime.datetime.now(datetime.UTC)
-        day_start = datetime.datetime(
-            date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC
-        )
+        day_start = datetime.datetime(date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC)
         day_end = datetime.datetime(
             date.year, date.month, date.day, 23, 59, 59, 999999, tzinfo=datetime.UTC
         )
