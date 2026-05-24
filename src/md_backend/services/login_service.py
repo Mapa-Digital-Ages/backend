@@ -10,6 +10,10 @@ from md_backend.models.db_models import (
     LoginHistory,
     UserProfile,
 )
+
+from md_backend.utils.names import build_full_name
+from md_backend.utils.security import _hash_sync, create_access_token, verify_password
+
 from md_backend.utils.security import (
     _hash_sync,
     create_access_token,
@@ -28,7 +32,8 @@ def _derive_role(user: UserProfile) -> str:
 
     if user.student_profile is not None:
         return "student"
-
+    if user.company_profile is not None:
+        return "company"
     return "guardian"
 
 
@@ -58,6 +63,7 @@ class LoginService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .where(UserProfile.email == email)
         )

@@ -16,6 +16,7 @@ from md_backend.models.api_models import (
 )
 from md_backend.services.company_service import CompanyService
 from md_backend.utils.database import get_db_session
+from md_backend.utils.security import get_current_approved_user
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,19 @@ async def list_companies(
     )
 
 
+@company_router.get(
+    "/count",
+    dependencies=[Depends(get_current_approved_user)],
+)
+async def count_companies(
+    session: AsyncSession = Depends(get_db_session),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+):
+    """Return the total number of active companies, optionally filtered by name."""
+    total = await company_service.count_companies(session=session, name=name)
+    return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
+
+
 @company_router.get("/{user_id}", response_model=CompanyResponse)
 async def get_company(
     user_id: uuid.UUID,
@@ -170,16 +184,19 @@ async def update_company(
 
         HTTP 409 if the email already belongs to another record.
     """
+    """PATCH /company/{user_id} — update company data with business rules."""
+    payload = request.model_dump(exclude_unset=True)
     try:
         result = await company_service.update_company(
             user_id=user_id,
             session=session,
-            first_name=request.first_name,
-            last_name=request.last_name,
-            email=str(request.email) if request.email else None,
-            phone_number=request.phone_number,
-            spots=request.spots,
-            is_active=request.is_active,
+            first_name=payload.get("first_name"),
+            last_name=payload.get("last_name"),
+            email=str(payload["email"]) if payload.get("email") else None,
+            phone_number=payload.get("phone_number"),
+            spots=payload.get("spots"),
+            is_active=payload.get("is_active"),
+            last_name_provided="last_name" in payload,
         )
     except IntegrityError:
         await session.rollback()

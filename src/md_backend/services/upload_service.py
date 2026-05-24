@@ -20,6 +20,7 @@ from md_backend.models.db_models import (
 )
 from md_backend.services.storage_service import StorageService
 from md_backend.utils.access_control import guardian_owns_student
+from md_backend.utils.names import build_full_name
 from md_backend.utils.settings import settings
 
 logger = get_logger(__name__)
@@ -807,9 +808,9 @@ class UploadService:
     ) -> dict:
         """Serialize upload for admin views."""
         payload = self._upload_to_dict(upload)
-
-        payload["student_name"] = (
-            f"{user.first_name} {user.last_name}".strip()
+        payload["student_name"] = build_full_name(user.first_name, user.last_name)
+        payload["activity_label"] = UPLOAD_ACTIVITY_LABELS.get(
+            upload.activity_type, upload.activity_type
         )
 
         payload["activity_label"] = (

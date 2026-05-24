@@ -19,7 +19,7 @@ from md_backend.models.db_models import (
 from md_backend.utils.security import hash_password
 
 logger = get_logger(__name__)
-_logger_extra = {"component_name": "guardian_service", "component_version": "v1",}
+_logger_extra = {"component_name": "guardian_service", "component_version": "v1"}
 
 
 class GuardianService:
@@ -28,13 +28,26 @@ class GuardianService:
     async def create_guardian(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
-        """Create a new guardian user with WAITING status."""
+        """Create a new guardian user with ``WAITING`` status.
+
+        Args:
+            first_name: Guardian's first name.
+            last_name: Guardian's optional last name.
+            email: Guardian's email; must be unique.
+            password: Plain-text password to be hashed before storage.
+            session: Database session.
+            phone_number: Optional phone number.
+
+        Returns:
+            Guardian response dict on success, or ``None`` if the email is already
+            registered or the insert violates a database constraint.
+        """
         logger.info(
             "Creating guardian",
             extra={
@@ -46,7 +59,6 @@ class GuardianService:
         existing = await session.execute(
             select(UserProfile).where(UserProfile.email == email)
         )
-
         if existing.scalar_one_or_none() is not None:
             logger.warning(
                 "Guardian already exists",
@@ -131,7 +143,9 @@ class GuardianService:
         query = (
             select(UserProfile, GuardianProfile)
             .options(
-                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
+                selectinload(GuardianProfile.students).selectinload(
+                    StudentProfile.user
+                ),
             )
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
             .where(
@@ -210,9 +224,7 @@ class GuardianService:
                         }
                     )
 
-            items.append(
-                self._to_response_dict(user, guardian, students)
-            )
+            items.append(self._to_response_dict(user, guardian, students))
 
         logger.info(
             "Guardians listed successfully",
@@ -247,7 +259,9 @@ class GuardianService:
         query = (
             select(UserProfile, GuardianProfile)
             .options(
-                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
+                selectinload(GuardianProfile.students).selectinload(
+                    StudentProfile.user
+                ),
             )
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
             .where(
@@ -317,7 +331,9 @@ class GuardianService:
         query = (
             select(UserProfile, GuardianProfile)
             .options(
-                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
+                selectinload(GuardianProfile.students).selectinload(
+                    StudentProfile.user
+                ),
             )
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
             .where(
@@ -357,9 +373,7 @@ class GuardianService:
             and data["email"] != user_profile.email
         ):
             existing = await session.execute(
-                select(UserProfile).where(
-                    UserProfile.email == data["email"]
-                )
+                select(UserProfile).where(UserProfile.email == data["email"])
             )
 
             if existing.scalar_one_or_none() is not None:
@@ -375,7 +389,7 @@ class GuardianService:
                 return "email_conflict"
 
         for field, value in data.items():
-            if value is None:
+            if value is None and field != "last_name":
                 continue
 
             if field in user_fields:

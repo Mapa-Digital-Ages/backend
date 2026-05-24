@@ -12,10 +12,11 @@ from md_backend.models.db_models import (
     StudentProfile,
     UserProfile,
 )
+from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
 logger = get_logger(__name__)
-_logger_extra = {"component_name": "school_service","component_version": "v1",}
+_logger_extra = {"component_name": "school_service", "component_version": "v1"}
 
 
 class SchoolService:
@@ -24,7 +25,7 @@ class SchoolService:
     async def create_school(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         is_private: bool,
@@ -105,9 +106,8 @@ class SchoolService:
         school: SchoolProfile,
         student_count: int,
     ) -> dict:
-        """Build the school response dict."""
-        full_name = f"{user.first_name} {user.last_name}".strip()
-
+        """Build the response dict without exposing the password."""
+        full_name = build_full_name(user.first_name, user.last_name)
         return {
             "user_id": str(user.id),
             "email": user.email,
@@ -177,9 +177,7 @@ class SchoolService:
 
         offset = (page - 1) * size
 
-        result = await session.execute(
-            query.offset(offset).limit(size)
-        )
+        result = await session.execute(query.offset(offset).limit(size))
 
         rows = result.all()
 
@@ -262,6 +260,7 @@ class SchoolService:
         is_private: bool | None,
         requested_spots: int | None,
         session: AsyncSession,
+        last_name_provided: bool = False,
     ) -> dict | None | str:
         """Update school fields partially."""
         logger.info(
@@ -315,7 +314,7 @@ class SchoolService:
         if first_name is not None:
             user.first_name = first_name
 
-        if last_name is not None:
+        if last_name_provided:
             user.last_name = last_name
 
         if is_private is not None:
@@ -330,8 +329,9 @@ class SchoolService:
         await session.refresh(school)
 
         count_result = await session.execute(
-            select(func.count(StudentProfile.user_id))
-            .where(StudentProfile.school_id == school_id)
+            select(func.count(StudentProfile.user_id)).where(
+                StudentProfile.school_id == school_id
+            )
         )
 
         student_count = count_result.scalar_one()

@@ -12,7 +12,7 @@ class RegisterRequest(BaseModel):
     """Register request model."""
 
     first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -22,7 +22,7 @@ class StudentRegisterRequest(BaseModel):
     """Register request model for student (requires school-specific fields)."""
 
     first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -62,7 +62,7 @@ class SetupRequest(BaseModel):
     """Setup request model for creating the first superadmin."""
 
     first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -105,7 +105,7 @@ class StudentResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     birth_date: str
     student_class: str
@@ -116,7 +116,7 @@ class StudentRequest(BaseModel):
     """Request model for creating a new student."""
 
     first_name: str
-    last_name: str
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -131,7 +131,7 @@ class StudentListItemResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     phone_number: str
     birth_date: str
@@ -158,7 +158,7 @@ class StudentUpdateRequest(BaseModel):
     """Request model for updating a student."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     phone_number: str | None = None
     birth_date: datetime.date | None = None
     student_class: ClassEnum | None = None
@@ -171,7 +171,7 @@ class GuardianStudentResponse(BaseModel):
 
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     birth_date: str
     student_class: str
@@ -181,7 +181,7 @@ class GuardianCreateRequest(BaseModel):
     """Request body for creating a guardian."""
 
     first_name: str
-    last_name: str
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -191,7 +191,7 @@ class GuardianUpdateRequest(BaseModel):
     """Request body for partially updating a guardian."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     phone_number: str | None = None
 
@@ -201,7 +201,7 @@ class GuardianResponse(BaseModel):
 
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     phone_number: str | None = None
     guardian_status: str
@@ -224,7 +224,7 @@ class CreateSchoolRequest(BaseModel):
     """Request body for POST /school."""
 
     first_name: str = Field(min_length=1, description="First name")
-    last_name: str = Field(min_length=1, description="Last name")
+    last_name: str | None = Field(default=None, min_length=1, description="Last name")
     email: EmailStr = Field(description="Email")
     password: str = Field(min_length=8, description="Access password with at least 8 characters")
     phone_number: str | None = Field(default=None, description="Optional phone number")
@@ -238,7 +238,7 @@ class UpdateSchoolRequest(BaseModel):
     """Partial update body for PATCH /school/{id}."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     is_private: bool | None = None
     requested_spots: int | None = None
@@ -329,7 +329,7 @@ class CreateCompanyRequest(BaseModel):
     """Request body for POST /company."""
 
     first_name: str = Field(min_length=1, description="Primeiro nome")
-    last_name: str = Field(min_length=1, description="Sobrenome")
+    last_name: str | None = Field(default=None, min_length=1, description="Sobrenome")
     email: EmailStr = Field(description="E-mail")
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     spots: int = Field(ge=0, description="Quantidade total de vagas")
@@ -339,7 +339,7 @@ class UpdateCompanyRequest(BaseModel):
     """Partial update body for PATCH /company/{user_id}."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     phone_number: str | None = None
     spots: int | None = None

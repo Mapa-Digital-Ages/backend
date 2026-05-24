@@ -20,7 +20,7 @@ class SetupService:
         email: str,
         password: str,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:

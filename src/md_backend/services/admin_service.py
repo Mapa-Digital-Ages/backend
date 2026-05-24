@@ -9,11 +9,13 @@ from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import (
     AdminProfile,
+    CompanyProfile,
     GuardianProfile,
     GuardianStatusEnum,
     StudentProfile,
     UserProfile,
 )
+from md_backend.utils.names import build_full_name
 
 logger = get_logger(__name__)
 _logger_extra = {"component_name": "admin_service", "component_version": "v1",}
@@ -36,6 +38,8 @@ def _derive_role(user: UserProfile) -> str:
         return "admin"
     if user.student_profile is not None:
         return "student"
+    if user.company_profile is not None:
+        return "company"
     return "guardian"
 
 
@@ -45,7 +49,7 @@ def _serialize_user(user: UserProfile) -> dict:
     else:
         status_str = "approved"
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
-    name = f"{user.first_name} {user.last_name}".strip()
+    name = build_full_name(user.first_name, user.last_name)
     return {
         "id": str(user.id),
         "email": user.email,
@@ -78,6 +82,7 @@ class AdminService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .order_by(UserProfile.created_at.desc())
         )
@@ -108,6 +113,8 @@ class AdminService:
             )
 
             query = query.join(AdminProfile, UserProfile.admin_profile)
+        elif role == "company":
+            query = query.join(CompanyProfile, UserProfile.company_profile)
 
         if status_filter is not None:
             logger.debug(
@@ -154,6 +161,7 @@ class AdminService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .where(UserProfile.id == user_id)
         )
