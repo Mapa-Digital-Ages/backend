@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
 from md_backend.services.company_service import CompanyService
+from tests.helpers import get_admin_headers
 
 
 class TestCompanyServiceUnit(unittest.TestCase):
@@ -88,9 +89,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.post("/api/company", json=self._payload(email, spots=80))
         self.assertEqual(resp.status_code, 201)
 
-        login_resp = self.client.post(
-            "/api/login", json={"email": email, "password": "senha1234"}
-        )
+        login_resp = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
         self.assertEqual(login_resp.status_code, 200)
         self.assertEqual(login_resp.json()["role"], "company")
 
@@ -155,6 +154,46 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         items = resp.json()
         self.assertTrue(len(items) >= 1)
         self.assertTrue(any("Olimpo" in item["name"] for item in items))
+
+    def test_count_companies_filter_by_name_counts_active_only(self):
+        unique_name = f"CountCorp{uuid.uuid4().hex[:8]}"
+        lower_name = unique_name.lower()
+
+        active_resp = self.client.post(
+            "/api/company",
+            json={
+                "first_name": unique_name,
+                "last_name": "Active",
+                "email": f"{lower_name}.active@test.com",
+                "password": "senha1234",
+                "spots": 20,
+            },
+        )
+        inactive_resp = self.client.post(
+            "/api/company",
+            json={
+                "first_name": unique_name,
+                "last_name": "Inactive",
+                "email": f"{lower_name}.inactive@test.com",
+                "password": "senha1234",
+                "spots": 20,
+            },
+        )
+        self.assertEqual(active_resp.status_code, 201)
+        self.assertEqual(inactive_resp.status_code, 201)
+
+        inactive_id = inactive_resp.json()["user_id"]
+        self.client.delete(f"/api/company/{inactive_id}")
+
+        admin_headers = get_admin_headers(self.client)
+        resp = self.client.get(
+            "/api/company/count",
+            params={"name": lower_name},
+            headers=admin_headers,
+        )
+
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json(), {"total": 1})
 
     # ------------------------------------------------------------------
     # GET /company/{id}

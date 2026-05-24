@@ -3,9 +3,10 @@
 import datetime
 import uuid
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.sql.elements import ColumnElement
 
 from md_backend.models.db_models import CompanyProfile, UserProfile
 from md_backend.utils.security import hash_password
@@ -98,6 +99,28 @@ class CompanyService:
             }
             for c in companies
         ]
+
+    async def count_companies(
+        self,
+        session: AsyncSession,
+        name: str | None = None,
+    ) -> int:
+        """Return the total count of active companies, optionally filtered by name."""
+        conditions: list[ColumnElement[bool]] = [
+            UserProfile.is_active.is_(True),
+            CompanyProfile.deactivated_at.is_(None),
+        ]
+        if name:
+            conditions.append(
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
+            )
+
+        query = (
+            select(func.count(UserProfile.id))
+            .join(CompanyProfile, CompanyProfile.user_id == UserProfile.id)
+            .where(*conditions)
+        )
+        return (await session.execute(query)).scalar() or 0
 
     async def get_company_by_id(self, user_id: uuid.UUID, session: AsyncSession) -> dict | None:
         """Get a single active company by user_id."""
