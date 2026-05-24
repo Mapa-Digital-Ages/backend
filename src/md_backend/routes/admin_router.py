@@ -22,7 +22,7 @@ admin_router = APIRouter(
 )
 
 _ALLOWED_STATUSES = {"waiting", "approved", "rejected"}
-_ALLOWED_ROLES = {"student", "admin", "guardian"}
+_ALLOWED_ROLES = {"student", "admin", "guardian", "company"}
 
 
 @admin_router.get("/users")

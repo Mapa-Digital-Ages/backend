@@ -21,6 +21,7 @@ def _make_user(
     has_guardian=True,
     has_student=False,
     has_admin=False,
+    has_company=False,
     is_superadmin=False,
     created_at=None,
 ):
@@ -49,6 +50,11 @@ def _make_user(
         user.admin_profile = admin
     else:
         user.admin_profile = None
+
+    if has_company:
+        user.company_profile = MagicMock()
+    else:
+        user.company_profile = None
     return user
 
 
@@ -114,6 +120,20 @@ class TestAdminServiceListUsers(unittest.TestCase):
         self.assertEqual(result[0]["role"], "student")
         self.assertEqual(result[0]["status"], "approved")
 
+    def test_list_users_serializes_company_role(self):
+        service = AdminService()
+        user = _make_user(
+            email="company@test.com",
+            has_guardian=False,
+            has_company=True,
+        )
+        session = _session_with_users([user])
+
+        result = asyncio.run(service.list_users(session))
+
+        self.assertEqual(result[0]["role"], "company")
+        self.assertEqual(result[0]["status"], "approved")
+
     def test_list_users_status_approved_mapping(self):
         service = AdminService()
         user = _make_user(guardian_status=GuardianStatusEnum.APPROVED)
@@ -164,6 +184,15 @@ class TestAdminServiceListUsers(unittest.TestCase):
         session = _session_with_users([user])
 
         result = asyncio.run(service.list_users(session, role="admin"))
+
+        self.assertEqual(len(result), 1)
+
+    def test_list_users_filter_role_company(self):
+        service = AdminService()
+        user = _make_user(has_guardian=False, has_company=True)
+        session = _session_with_users([user])
+
+        result = asyncio.run(service.list_users(session, role="company"))
 
         self.assertEqual(len(result), 1)
 

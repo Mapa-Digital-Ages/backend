@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import SchoolProfile, StudentProfile, UserProfile
+from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
 
@@ -16,7 +17,7 @@ class SchoolService:
     async def create_school(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         is_private: bool,
@@ -60,7 +61,7 @@ class SchoolService:
         self, user: UserProfile, school: SchoolProfile, student_count: int
     ) -> dict:
         """Build the response dict without exposing the password."""
-        full_name = f"{user.first_name} {user.last_name}".strip()
+        full_name = build_full_name(user.first_name, user.last_name)
         return {
             "user_id": str(user.id),
             "email": user.email,
@@ -150,6 +151,7 @@ class SchoolService:
         is_private: bool | None,
         requested_spots: int | None,
         session: AsyncSession,
+        last_name_provided: bool = False,
     ) -> dict | None | str:
         """Update school fields partially. Returns dict, None (not found), or 'email_conflict'."""
         result = await session.execute(
@@ -172,7 +174,7 @@ class SchoolService:
 
         if first_name is not None:
             user.first_name = first_name
-        if last_name is not None:
+        if last_name_provided:
             user.last_name = last_name
 
         if is_private is not None:

@@ -128,11 +128,11 @@ class TestSetupRouter(unittest.TestCase):
         response = self.test_client.post("/api/setup", json=payload, headers=_SETUP_HEADERS)
         self.assertEqual(response.status_code, 422)
 
-    def test_setup_missing_last_name_returns_422(self):
+    def test_setup_without_last_name_is_accepted(self):
         payload = _setup_payload("sa_no_last@test.com")
         del payload["last_name"]
         response = self.test_client.post("/api/setup", json=payload, headers=_SETUP_HEADERS)
-        self.assertEqual(response.status_code, 422)
+        self.assertIn(response.status_code, (201, 409))
 
     def test_setup_without_token_returns_401(self):
         response = self.test_client.post("/api/setup", json=_setup_payload("sa_notoken@test.com"))

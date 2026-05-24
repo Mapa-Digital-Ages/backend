@@ -24,7 +24,7 @@ class GuardianService:
     async def create_guardian(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         session: AsyncSession,
@@ -34,7 +34,7 @@ class GuardianService:
 
         Args:
             first_name: Guardian's first name.
-            last_name: Guardian's last name.
+            last_name: Guardian's optional last name.
             email: Guardian's email; must be unique.
             password: Plain-text password to be hashed before storage.
             session: Database session.
@@ -276,7 +276,7 @@ class GuardianService:
                 return "email_conflict"
 
         for field, value in data.items():
-            if value is None:
+            if value is None and field != "last_name":
                 continue
             if field in user_fields:
                 setattr(user_profile, field, value)

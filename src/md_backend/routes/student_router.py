@@ -132,12 +132,13 @@ async def list_students(
     session: AsyncSession = Depends(get_db_session),
     name: str | None = Query(default=None, description="Filter by first or last name"),
     email: str | None = Query(default=None, description="Filter by email"),
+    school_id: uuid.UUID | None = Query(default=None, description="Filter by school ID"),
     page: int = Query(default=1, ge=1, description="Page number"),
     size: int = Query(default=10, ge=1, le=100, description="Page size"),
 ):
     """List active students with optional filters and pagination."""
     students = await student_service.get_students(
-        session=session, name=name, email=email, page=page, size=size
+        session=session, name=name, email=email, school_id=school_id, page=page, size=size
     )
     return JSONResponse(content=students, status_code=status.HTTP_200_OK)
 
@@ -149,9 +150,10 @@ async def list_students(
 async def count_students(
     session: AsyncSession = Depends(get_db_session),
     name: str | None = Query(default=None, description="Filter by first or last name"),
+    school_id: uuid.UUID | None = Query(default=None, description="Filter by school ID"),
 ):
     """Return the total number of active students, optionally filtered by name."""
-    total = await student_service.count_students(session=session, name=name)
+    total = await student_service.count_students(session=session, name=name, school_id=school_id)
     return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
 
 

@@ -99,6 +99,25 @@ class TestAdminRouter(unittest.TestCase):
         for user in response.json():
             self.assertEqual(user["role"], "guardian")
 
+    def test_list_users_filter_by_company_role(self):
+        self.test_client.post(
+            "/api/company",
+            json={
+                "email": "adm_company_role@test.com",
+                "password": "validpass123",
+                "first_name": "Company",
+                "last_name": "User",
+                "spots": 10,
+            },
+        )
+        response = self.test_client.get(
+            "/api/admin/users", params={"role": "company"}, headers=self.admin_headers
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(len(response.json()) >= 1)
+        for user in response.json():
+            self.assertEqual(user["role"], "company")
+
     def test_list_users_invalid_role_filter(self):
         response = self.test_client.get(
             "/api/admin/users", params={"role": "invalid"}, headers=self.admin_headers
