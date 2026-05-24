@@ -40,7 +40,6 @@ async def list_users(
     role: str | None = None,
 ):
     """List all users, optionally filtered by status."""
-
     logger.info(
         "Listing users",
         extra={
@@ -105,7 +104,6 @@ async def update_user_status(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Update a user's approval status."""
-
     result = await admin_service.update_user_status(
         session=session,
         user_id=user_id,

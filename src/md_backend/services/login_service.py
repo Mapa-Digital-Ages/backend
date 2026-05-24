@@ -1,10 +1,10 @@
 """Login service for user authentication."""
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     GuardianStatusEnum,
     LoginHistory,
@@ -43,7 +43,6 @@ class LoginService:
         ip: str | None = None,
     ) -> dict:
         """Authenticate user and return JWT token or error dict."""
-
         logger.info(
             "Login attempt",
             extra={

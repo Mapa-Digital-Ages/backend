@@ -1,7 +1,7 @@
 """Student router for student registration endpoints."""
 
-import logging
 import datetime
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status

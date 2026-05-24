@@ -4,6 +4,7 @@ import logging
 import os
 from logging import Logger
 
+
 def get_logger(logger_name: str) -> Logger:
     """Configures logging in the app."""
     # If Application Insights is enabled in app logging telemetry will be collected

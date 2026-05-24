@@ -1,16 +1,16 @@
 """Setup service for creating the first superadmin."""
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     AdminProfile,
     UserProfile,
 )
 from md_backend.utils.security import hash_password
 
-logger = get_logger(name)
+logger = get_logger(__name__)
 _logger_extra = {"component_name": "setup_service","component_version": "v1",}
 class SetupService:
     """Service for initial platform setup."""
@@ -25,18 +25,17 @@ class SetupService:
         phone_number: str | None = None,
     ) -> dict | None:
         """Create the first superadmin."""
-
         logger.info(
             "Creating superadmin",
             extra={
-                _logger_extra,
+                **_logger_extra,
                 "email": email,
             },
         )
 
         result = await session.execute(
             select(AdminProfile).where(
-                AdminProfile.issuperadmin.is(True)
+                AdminProfile.issuperadmin.is_(True)
             )
         )
 
@@ -44,7 +43,7 @@ class SetupService:
             logger.warning(
                 "Superadmin already exists",
                 extra={
-                    _logger_extra,
+                    **_logger_extra,
                     "email": email,
                 },
             )

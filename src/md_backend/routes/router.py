@@ -1,7 +1,7 @@
 """Router file."""
 
 
-import logging 
+import logging
 
 from fastapi import APIRouter
 
@@ -16,7 +16,6 @@ from md_backend.routes.setup_router import setup_router
 from md_backend.routes.student_router import student_router
 from md_backend.routes.subject_router import subject_router
 from md_backend.routes.upload_router import upload_router
-
 
 logger = logging.getLogger(__name__)
 

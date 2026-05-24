@@ -3,26 +3,20 @@
 import datetime
 import uuid
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
-    Attempt,
     ClassEnum,
-    Content,
     GuardianProfile,
     SchoolProfile,
-    StudentContentProgress,
     StudentGuardian,
     StudentProfile,
-    Subject,
-    Task,
     TaskStatusEnum,
     UserProfile,
-    WellBeing,
 )
 from md_backend.utils.security import hash_password
 
@@ -44,7 +38,6 @@ def get_week_bounds(
     reference: datetime.date | None = None,
 ) -> tuple[datetime.datetime, datetime.datetime]:
     """Return (week_start, week_end) as UTC-aware datetimes for the current week."""
-
     if reference is None:
         reference = datetime.datetime.now(datetime.UTC).date()
 
@@ -78,7 +71,6 @@ def get_week_bounds(
 
 def _task_with_subject_to_dict(task, subject) -> dict:
     """Serialize a (Task, Subject) row to the calendar contract dict."""
-
     return {
         "id": task.id,
         "date": task.date.isoformat() if task.date else None,
@@ -111,7 +103,6 @@ class StudentService:
         school_id: uuid.UUID | None = None,
     ) -> dict | None:
         """Create a student atomically."""
-
         logger.info(
             "Creating student",
             extra={
@@ -192,7 +183,6 @@ class StudentService:
         school_ids: set[uuid.UUID],
     ) -> dict[uuid.UUID, str]:
         """Fetch school names for a set of school_ids."""
-
         if not school_ids:
             return {}
 
@@ -224,7 +214,6 @@ class StudentService:
         student_ids: list[uuid.UUID],
     ) -> dict[uuid.UUID, tuple[uuid.UUID, str]]:
         """Fetch first active guardian (id, name) per student."""
-
         if not student_ids:
             return {}
 
@@ -272,7 +261,6 @@ class StudentService:
         size: int = 10,
     ) -> dict:
         """List active students with optional filters and pagination."""
-
         logger.info(
             "Listing students",
             extra={
@@ -409,7 +397,6 @@ class StudentService:
         name: str | None = None,
     ) -> int:
         """Return the total count of active students."""
-
         conditions: list[ColumnElement[bool]] = [
             UserProfile.is_active.is_(True),
             StudentProfile.deactivated_at.is_(None),
@@ -440,7 +427,6 @@ class StudentService:
         student_id: uuid.UUID,
     ) -> dict | None:
         """Get a student by user_id."""
-
         logger.info(
             "Getting student by id",
             extra={
@@ -524,7 +510,6 @@ class StudentService:
         data: dict,
     ) -> dict | None:
         """Update a student."""
-
         query = (
             select(UserProfile, StudentProfile)
             .join(

@@ -48,7 +48,6 @@ async def request_password_reset(
         HTTP 200 with a generic success message regardless
         of whether the email exists.
     """
-
     result = await password_reset_service.request_reset(
         email=body.email,
         session=session,
@@ -80,7 +79,6 @@ async def confirm_password_reset(
 
         HTTP 400 when the reset code is invalid or expired.
     """
-
     was_reset = await password_reset_service.confirm_reset(
         email=body.email,
         code=body.code,

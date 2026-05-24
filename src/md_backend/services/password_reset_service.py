@@ -4,18 +4,15 @@ import datetime
 import secrets
 
 from fastapi import BackgroundTasks
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from helper_backend.utils.logger import get_logger
 
 from md_backend.models.db_models import (
     PasswordResetCode,
     UserProfile,
 )
-
 from md_backend.utils.email_sender import EmailSender
-
 from md_backend.utils.security import (
     hash_password,
     verify_password,
@@ -68,7 +65,6 @@ class PasswordResetService:
         response is sent so the endpoint returns quickly. Without it, the email is
         awaited inline (used in tests and scripts).
         """
-
         logger.info(
             "Password reset requested",
             extra={
@@ -149,7 +145,6 @@ class PasswordResetService:
         session: AsyncSession,
     ) -> bool:
         """Update the user password using a valid reset code."""
-
         logger.info(
             "Password reset confirmation attempt",
             extra={
@@ -224,7 +219,6 @@ class PasswordResetService:
         session: AsyncSession,
     ) -> UserProfile | None:
         """Fetch a user by email."""
-
         result = await session.execute(
             select(UserProfile).where(UserProfile.email == email)
         )
@@ -238,7 +232,6 @@ class PasswordResetService:
         session: AsyncSession,
     ) -> PasswordResetCode | None:
         """Fetch the newest matching active reset code for a user."""
-
         now = _utc_now()
 
         result = await session.execute(

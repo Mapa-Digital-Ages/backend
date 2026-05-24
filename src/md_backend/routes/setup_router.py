@@ -17,7 +17,6 @@ setup_router = APIRouter(prefix="/setup")
 
 def _require_setup_token(x_setup_token: str | None) -> None:
     """Validate the setup token header."""
-
     if x_setup_token != settings.SETUP_TOKEN:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -35,7 +34,6 @@ async def setup(
     x_setup_token: str | None = Header(default=None, alias="X-Setup-Token"),
 ) -> dict:
     """Create the first superadmin. Only works once."""
-
     _require_setup_token(x_setup_token)
 
     result = await setup_service.create_superadmin(
@@ -68,7 +66,6 @@ async def setup_subjects(
     x_setup_token: str | None = Header(default=None, alias="X-Setup-Token"),
 ):
     """Seed the default subject catalog."""
-
     _require_setup_token(x_setup_token)
 
     created = await seed_default_subjects(session)

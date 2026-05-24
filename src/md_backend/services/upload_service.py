@@ -8,10 +8,9 @@ import zipfile
 from io import BytesIO
 
 from fastapi import UploadFile
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from helper_backend.utils.logger import get_logger
 
 from md_backend.models.db_models import (
     StudentProfile,
@@ -77,7 +76,6 @@ _MAGIC_MAP: list[tuple[bytes, str]] = [
 
 def _detect_mime(data: bytes) -> str | None:
     """Return MIME type from magic bytes."""
-
     for magic, mime in _MAGIC_MAP:
         if data[: len(magic)] == magic:
             if (
@@ -98,7 +96,6 @@ def _detect_mime(data: bytes) -> str | None:
 
 def _sanitize_filename(filename: str) -> str:
     """Strip path components and invalid characters."""
-
     name = os.path.basename(filename)
 
     name = re.sub(
@@ -115,7 +112,6 @@ class UploadService:
 
     def __init__(self, storage: StorageService) -> None:
         """Bind a storage backend to this service instance."""
-
         self.storage = storage
 
     async def upload_student_file(
@@ -127,7 +123,6 @@ class UploadService:
         subject_id: int | None = None,
     ) -> dict | None | str:
         """Upload file and save metadata."""
-
         logger.info(
             "Uploading student file",
             extra={
@@ -319,7 +314,6 @@ class UploadService:
         size: int = 10,
     ) -> list[dict] | None:
         """List uploads for a single student."""
-
         logger.info(
             "Listing student uploads",
             extra={
@@ -376,7 +370,6 @@ class UploadService:
         is_superadmin: bool = False,
     ) -> dict | None | str:
         """Get a single upload's metadata with access control."""
-
         logger.info(
             "Getting upload metadata",
             extra={
@@ -418,7 +411,6 @@ class UploadService:
         expires_in: int = 300,
     ) -> dict | None | str:
         """Return a presigned download URL or fallback stream URL."""
-
         upload = await session.get(StudentUpload, upload_id)
 
         if upload is None:
@@ -463,7 +455,6 @@ class UploadService:
         is_superadmin: bool = False,
     ) -> tuple[StudentUpload, bytes] | None | str:
         """Fetch upload metadata + bytes with access control."""
-
         logger.info(
             "Getting upload content",
             extra={
@@ -540,7 +531,6 @@ class UploadService:
         activity_type_filter: str | None = None,
     ) -> dict:
         """List all student uploads with filters."""
-
         if (
             status_filter
             and status_filter not in UPLOAD_CORRECTION_STATUSES
@@ -622,7 +612,6 @@ class UploadService:
         upload_id: uuid.UUID,
     ) -> dict | None:
         """Get a single upload for admin view."""
-
         row = await self._load_admin_row(
             session,
             upload_id,
@@ -648,7 +637,6 @@ class UploadService:
         subject_id: int | None = None,
     ) -> dict | None | str:
         """Update upload metadata."""
-
         if (
             activity_type is not None
             and activity_type not in UPLOAD_ACTIVITY_TYPES
@@ -705,7 +693,6 @@ class UploadService:
         upload_id: uuid.UUID,
     ) -> bool:
         """Delete a student upload."""
-
         upload = await session.get(
             StudentUpload,
             upload_id,
@@ -725,7 +712,6 @@ class UploadService:
         upload_id: uuid.UUID,
     ) -> tuple[StudentUpload, UserProfile, Subject | None] | None:
         """Load upload joined with student + subject."""
-
         row = (
             await session.execute(
                 select(
@@ -765,7 +751,6 @@ class UploadService:
         is_superadmin: bool,
     ) -> bool:
         """Return True if requester may access upload."""
-
         if is_superadmin:
             return True
 
@@ -797,7 +782,6 @@ class UploadService:
         upload: StudentUpload,
     ) -> dict:
         """Serialize upload."""
-
         return {
             "id": str(upload.id),
             "student_id": str(upload.student_id),
@@ -822,7 +806,6 @@ class UploadService:
         subject: Subject | None = None,
     ) -> dict:
         """Serialize upload for admin views."""
-
         payload = self._upload_to_dict(upload)
 
         payload["student_name"] = (
@@ -857,7 +840,6 @@ class UploadService:
         total_items: int,
     ) -> dict:
         """Build paginated response."""
-
         return {
             "items": items,
             "page": page,

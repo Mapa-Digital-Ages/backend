@@ -3,11 +3,11 @@
 import datetime
 import uuid
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import CompanyProfile, UserProfile
 from md_backend.utils.security import hash_password
 

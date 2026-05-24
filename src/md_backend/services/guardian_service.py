@@ -3,12 +3,12 @@
 import datetime
 import uuid
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     GuardianProfile,
     GuardianStatusEnum,
@@ -35,7 +35,6 @@ class GuardianService:
         phone_number: str | None = None,
     ) -> dict | None:
         """Create a new guardian user with WAITING status."""
-
         logger.info(
             "Creating guardian",
             extra={
@@ -117,7 +116,6 @@ class GuardianService:
         size: int = 10,
     ) -> dict:
         """List active guardians with optional filters and pagination."""
-
         logger.info(
             "Listing guardians",
             extra={
@@ -238,7 +236,6 @@ class GuardianService:
         guardian_id: uuid.UUID,
     ) -> dict | None:
         """Fetch a single active guardian by user ID."""
-
         logger.info(
             "Getting guardian by id",
             extra={
@@ -309,7 +306,6 @@ class GuardianService:
         data: dict,
     ) -> dict | None | str:
         """Update mutable fields on a guardian user profile."""
-
         logger.info(
             "Updating guardian",
             extra={
@@ -443,7 +439,6 @@ class GuardianService:
         guardian_id: uuid.UUID,
     ) -> bool:
         """Soft-delete a guardian."""
-
         logger.info(
             "Deactivating guardian",
             extra={
@@ -504,7 +499,6 @@ class GuardianService:
         student_id: uuid.UUID,
     ) -> bool:
         """Link a student to a guardian."""
-
         logger.info(
             "Linking student to guardian",
             extra={
@@ -614,7 +608,6 @@ class GuardianService:
         student_id: uuid.UUID,
     ) -> bool:
         """Unlink a student from a guardian."""
-
         logger.info(
             "Unlinking student from guardian",
             extra={

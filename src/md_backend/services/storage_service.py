@@ -4,10 +4,10 @@ import uuid
 from abc import ABC, abstractmethod
 
 import aioboto3
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import StudentUploadBlob
 
 logger = get_logger(__name__)
@@ -74,7 +74,6 @@ class PostgresBlobStorageService(StorageService):
         content_type: str,
     ) -> None:
         """Insert a blob row."""
-
         logger.info(
             "Uploading file to Postgres storage",
             extra={
@@ -99,7 +98,6 @@ class PostgresBlobStorageService(StorageService):
         storage_key: str,
     ) -> bytes | None:
         """Fetch blob bytes for the upload."""
-
         logger.info(
             "Reading file from Postgres storage",
             extra={
@@ -153,7 +151,6 @@ class S3StorageService(StorageService):
         endpoint_url: str | None = None,
     ) -> None:
         """Initialize S3 storage service."""
-
         self.bucket = bucket
         self.region = region
         self.access_key_id = access_key_id
@@ -162,7 +159,6 @@ class S3StorageService(StorageService):
 
     def _client(self):
         """Return configured aioboto3 S3 client."""
-
         session = aioboto3.Session(
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
@@ -182,7 +178,6 @@ class S3StorageService(StorageService):
         content_type: str,
     ) -> None:
         """Upload bytes to S3."""
-
         logger.info(
             "Uploading file to S3 storage",
             extra={
@@ -219,7 +214,6 @@ class S3StorageService(StorageService):
         storage_key: str,
     ) -> bytes | None:
         """Download bytes from S3."""
-
         logger.info(
             "Reading file from S3 storage",
             extra={
@@ -272,7 +266,6 @@ class S3StorageService(StorageService):
         expires_in: int = 300,
     ) -> str | None:
         """Return a presigned GET URL valid for ``expires_in`` seconds."""
-
         async with self._client() as s3:  # type: ignore[attr-defined]
             try:
                 return await s3.generate_presigned_url(
@@ -304,7 +297,6 @@ class S3StorageService(StorageService):
         storage_key: str,
     ) -> None:
         """Delete an object from S3. Best-effort cleanup ignores storage errors."""
-
         async with self._client() as s3:  # type: ignore[attr-defined]
             try:
                 await s3.delete_object(

@@ -3,11 +3,11 @@
 import datetime
 import uuid
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     ClassEnum,
     GuardianProfile,
@@ -34,7 +34,6 @@ class RegisterService:
         phone_number: str | None = None,
     ) -> dict | None:
         """Register a new guardian."""
-
         logger.info(
             "Registering guardian",
             extra={
@@ -119,7 +118,6 @@ class RegisterService:
         school_id: uuid.UUID | None = None,
     ) -> dict | None:
         """Register a new student."""
-
         logger.info(
             "Registering student",
             extra={

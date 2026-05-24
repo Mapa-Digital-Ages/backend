@@ -3,10 +3,10 @@
 import datetime
 import uuid
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     SchoolProfile,
     StudentProfile,
@@ -33,7 +33,6 @@ class SchoolService:
         requested_spots: int | None = None,
     ) -> dict | None:
         """Create a school atomically."""
-
         logger.info(
             "Creating school",
             extra={
@@ -107,7 +106,6 @@ class SchoolService:
         student_count: int,
     ) -> dict:
         """Build the school response dict."""
-
         full_name = f"{user.first_name} {user.last_name}".strip()
 
         return {
@@ -128,7 +126,6 @@ class SchoolService:
 
     def _student_count_subq(self):
         """Correlated subquery counting students per school."""
-
         return (
             select(func.count(StudentProfile.user_id))
             .where(StudentProfile.school_id == SchoolProfile.user_id)
@@ -144,7 +141,6 @@ class SchoolService:
         name: str | None = None,
     ) -> dict:
         """Return a paginated list of active schools."""
-
         logger.info(
             "Listing schools",
             extra={
@@ -214,7 +210,6 @@ class SchoolService:
         session: AsyncSession,
     ) -> dict | None:
         """Return a single school by its user_id."""
-
         logger.info(
             "Getting school by id",
             extra={
@@ -269,7 +264,6 @@ class SchoolService:
         session: AsyncSession,
     ) -> dict | None | str:
         """Update school fields partially."""
-
         logger.info(
             "Updating school",
             extra={
@@ -362,7 +356,6 @@ class SchoolService:
         session: AsyncSession,
     ) -> bool:
         """Soft delete a school."""
-
         logger.info(
             "Deactivating school",
             extra={

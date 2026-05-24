@@ -37,12 +37,12 @@ async def register_guardian(
         HTTP 409 if the email is already registered.
     """
     result = await register_service.register_guardian(
-        email=request.email,
-        password=request.password,
+        session=session,
         first_name=request.first_name,
         last_name=request.last_name,
+        email=request.email,
+        password=request.password,
         phone_number=request.phone_number,
-        session=session,
     )
 
     if result is None:
@@ -73,7 +73,8 @@ async def register_student(
 
         HTTP 409 if the email is already registered.
     """
-result = await register_service.register_student(
+    # CORRIGIDO: Esta linha e as seguintes receberam o recuo correto de 4 espaços
+    result = await register_service.register_student(
         email=request.email,
         password=request.password,
         first_name=request.first_name,

@@ -2,11 +2,11 @@
 
 import uuid
 
+from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import (
     AdminProfile,
     GuardianProfile,
@@ -67,7 +67,6 @@ class AdminService:
         role: str | None = None,
     ) -> list[dict]:
         """List all users, optionally filtered by status or role."""
-
         logger.info(
             "Listing users",
             extra={**_logger_extra, "status_filter": status_filter, "role": role},
@@ -140,7 +139,6 @@ class AdminService:
         new_status: str,
     ) -> dict | None:
         """Update a guardian's approval status. Returns None if user not found."""
-
         logger.info(
             "Updating user status",
             extra={
