@@ -57,6 +57,30 @@ class TestStudentServiceCreate(unittest.TestCase):
         mock_session.rollback.assert_called_once()
 
 
+class TestStudentServiceList(unittest.TestCase):
+    """Unit tests for StudentService.get_students."""
+
+    def test_get_students_orders_by_student_name_by_default(self):
+        service = StudentService()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        rows_result = MagicMock()
+        rows_result.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = [count_result, rows_result]
+
+        asyncio.run(service.get_students(session=mock_session))
+
+        items_query = mock_session.execute.call_args_list[1].args[0]
+        compiled = str(items_query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn(
+            "ORDER BY lower(user_profile.first_name), "
+            "lower(user_profile.last_name), user_profile.id",
+            compiled,
+        )
+
+
 class TestStudentServiceUpdateRollback(unittest.TestCase):
     """Unit test covering update_student's commit-failure rollback branch."""
 

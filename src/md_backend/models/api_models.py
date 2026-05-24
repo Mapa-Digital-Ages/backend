@@ -125,8 +125,8 @@ class StudentRequest(BaseModel):
     school_id: uuid.UUID | None = None
 
 
-class StudentListResponse(BaseModel):
-    """Response model for student listing."""
+class StudentListItemResponse(BaseModel):
+    """Student item returned by the paginated listing."""
 
     id: uuid.UUID
     user_id: uuid.UUID
@@ -136,9 +136,22 @@ class StudentListResponse(BaseModel):
     phone_number: str
     birth_date: str
     student_class: str
-    school_id: str
+    school_id: str | None
+    school_name: str | None
+    guardian_id: str | None
+    guardian_name: str | None
     is_active: bool
     created_at: str | None
+
+
+class StudentListResponse(BaseModel):
+    """Paginated list of students."""
+
+    items: list[StudentListItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class StudentUpdateRequest(BaseModel):
@@ -150,6 +163,7 @@ class StudentUpdateRequest(BaseModel):
     birth_date: datetime.date | None = None
     student_class: ClassEnum | None = None
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
 class GuardianStudentResponse(BaseModel):
@@ -356,7 +370,7 @@ class CalendarTaskSyncItemRequest(BaseModel):
 
     id: int | str
     title: str
-    task_status: TaskStatusEnum
+    task_status: TaskStatusEnum | None = None
     subject: CalendarTaskSubjectPayload
     date: datetime.datetime
 
@@ -388,3 +402,30 @@ class CalendarTaskSyncResponse(BaseModel):
     task_status: str | None
     subject_id: int
     date: datetime.datetime
+
+
+class TaskResponse(BaseModel):
+    """Response model for a single task."""
+
+    id: int
+    title: str
+    task_status: str | None
+    subject_id: int
+    date: datetime.datetime
+    deactivated_at: str | None = None
+
+
+class CalendarTaskUpsertItem(BaseModel):
+    """A single task item within a CalendarUpsertRequest."""
+
+    id: int | None = None
+    title: str
+    task_status: TaskStatusEnum | None = None
+    subject_id: int
+    date: datetime.datetime | None = None
+
+
+class CalendarUpsertRequest(BaseModel):
+    """Request body for upserting a student's full task list for a given date."""
+
+    tasks: list[CalendarTaskUpsertItem]
