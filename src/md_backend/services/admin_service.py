@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import (
     AdminProfile,
+    CompanyProfile,
     GuardianProfile,
     GuardianStatusEnum,
     StudentProfile,
@@ -32,6 +33,8 @@ def _derive_role(user: UserProfile) -> str:
         return "admin"
     if user.student_profile is not None:
         return "student"
+    if user.company_profile is not None:
+        return "company"
     return "guardian"
 
 
@@ -69,6 +72,7 @@ class AdminService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .order_by(UserProfile.created_at.desc())
         )
@@ -81,6 +85,8 @@ class AdminService:
             query = query.join(StudentProfile, UserProfile.student_profile)
         elif role == "admin":
             query = query.join(AdminProfile, UserProfile.admin_profile)
+        elif role == "company":
+            query = query.join(CompanyProfile, UserProfile.company_profile)
 
         if status_filter is not None:
             guardian_status = _STATUS_INPUT_MAP[status_filter]
@@ -102,6 +108,7 @@ class AdminService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .where(UserProfile.id == user_id)
         )

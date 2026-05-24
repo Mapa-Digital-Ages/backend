@@ -19,6 +19,8 @@ def _derive_role(user: UserProfile) -> str:
         return "admin"
     if user.student_profile is not None:
         return "student"
+    if user.company_profile is not None:
+        return "company"
     return "guardian"
 
 
@@ -35,6 +37,7 @@ class LoginService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .where(UserProfile.email == email)
         )

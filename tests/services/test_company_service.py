@@ -83,6 +83,17 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
+    def test_created_company_logs_in_with_company_role(self):
+        email = "company_role@test.com"
+        resp = self.client.post("/api/company", json=self._payload(email, spots=80))
+        self.assertEqual(resp.status_code, 201)
+
+        login_resp = self.client.post(
+            "/api/login", json={"email": email, "password": "senha1234"}
+        )
+        self.assertEqual(login_resp.status_code, 200)
+        self.assertEqual(login_resp.json()["role"], "company")
+
     def test_create_company_duplicate_email_returns_409(self):
         self.client.post("/api/company", json=self._payload("company_dup@test.com"))
         resp = self.client.post("/api/company", json=self._payload("company_dup@test.com"))
