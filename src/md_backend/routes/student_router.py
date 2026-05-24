@@ -146,6 +146,7 @@ async def list_students(
     students = await student_service.get_students(
         session=session, name=name, email=email, school_id=school_id, page=page, size=size
     )
+    return students
 
 
 @student_router.get(
@@ -280,11 +281,7 @@ async def update_student_status(
         )
 
     return JSONResponse(
-        content={
-            "detail": (
-                f"Student {'activated' if is_active else 'deactivated'} successfully"
-            )
-        },
+        content={"detail": (f"Student {'activated' if is_active else 'deactivated'} successfully")},
         status_code=status.HTTP_200_OK,
     )
 

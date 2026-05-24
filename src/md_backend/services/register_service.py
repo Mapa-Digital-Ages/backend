@@ -18,7 +18,10 @@ from md_backend.models.db_models import (
 from md_backend.utils.security import hash_password
 
 logger = get_logger(__name__)
-_logger_extra = {"component_name": "register_service","component_version": "v1",}
+_logger_extra = {
+    "component_name": "register_service",
+    "component_version": "v1",
+}
 
 
 class RegisterService:
@@ -29,7 +32,7 @@ class RegisterService:
         email: str,
         password: str,
         first_name: str,
-        last_name: str | None,
+        last_name: str,
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
@@ -42,9 +45,7 @@ class RegisterService:
             },
         )
 
-        result = await session.execute(
-            select(UserProfile).where(UserProfile.email == email)
-        )
+        result = await session.execute(select(UserProfile).where(UserProfile.email == email))
 
         if result.scalar_one_or_none() is not None:
             logger.warning(
@@ -110,7 +111,7 @@ class RegisterService:
         email: str,
         password: str,
         first_name: str,
-        last_name: str | None,
+        last_name: str,
         birth_date: datetime.date,
         student_class: ClassEnum,
         session: AsyncSession,
@@ -127,9 +128,7 @@ class RegisterService:
             },
         )
 
-        result = await session.execute(
-            select(UserProfile).where(UserProfile.email == email)
-        )
+        result = await session.execute(select(UserProfile).where(UserProfile.email == email))
 
         if result.scalar_one_or_none() is not None:
             logger.warning(

@@ -105,9 +105,7 @@ class PasswordResetService:
         reset_entry = PasswordResetCode(
             user_id=user.id,
             code_hash=await hash_password(reset_code),
-            expires_at=(
-                now + datetime.timedelta(minutes=RESET_CODE_TTL_MINUTES)
-            ),
+            expires_at=(now + datetime.timedelta(minutes=RESET_CODE_TTL_MINUTES)),
         )
 
         session.add(reset_entry)
@@ -219,9 +217,7 @@ class PasswordResetService:
         session: AsyncSession,
     ) -> UserProfile | None:
         """Fetch a user by email."""
-        result = await session.execute(
-            select(UserProfile).where(UserProfile.email == email)
-        )
+        result = await session.execute(select(UserProfile).where(UserProfile.email == email))
 
         return result.scalar_one_or_none()
 

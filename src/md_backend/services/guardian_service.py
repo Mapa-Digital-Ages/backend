@@ -19,7 +19,10 @@ from md_backend.models.db_models import (
 from md_backend.utils.security import hash_password
 
 logger = get_logger(__name__)
-_logger_extra = {"component_name": "guardian_service", "component_version": "v1"}
+_logger_extra = {
+    "component_name": "guardian_service",
+    "component_version": "v1",
+}
 
 
 class GuardianService:
@@ -28,26 +31,13 @@ class GuardianService:
     async def create_guardian(
         self,
         first_name: str,
-        last_name: str | None,
+        last_name: str,
         email: str,
         password: str,
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
-        """Create a new guardian user with ``WAITING`` status.
-
-        Args:
-            first_name: Guardian's first name.
-            last_name: Guardian's optional last name.
-            email: Guardian's email; must be unique.
-            password: Plain-text password to be hashed before storage.
-            session: Database session.
-            phone_number: Optional phone number.
-
-        Returns:
-            Guardian response dict on success, or ``None`` if the email is already
-            registered or the insert violates a database constraint.
-        """
+        """Create a new guardian user with WAITING status."""
         logger.info(
             "Creating guardian",
             extra={
@@ -56,9 +46,8 @@ class GuardianService:
             },
         )
 
-        existing = await session.execute(
-            select(UserProfile).where(UserProfile.email == email)
-        )
+        existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
+
         if existing.scalar_one_or_none() is not None:
             logger.warning(
                 "Guardian already exists",
@@ -143,9 +132,7 @@ class GuardianService:
         query = (
             select(UserProfile, GuardianProfile)
             .options(
-                selectinload(GuardianProfile.students).selectinload(
-                    StudentProfile.user
-                ),
+                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
             )
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
             .where(
@@ -156,8 +143,7 @@ class GuardianService:
 
         if name:
             query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         if email:
@@ -178,19 +164,14 @@ class GuardianService:
 
         if name:
             count_query = count_query.where(
-                UserProfile.first_name.ilike(f"%{name}%")
-                | UserProfile.last_name.ilike(f"%{name}%")
+                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
 
         if email:
-            count_query = count_query.where(
-                UserProfile.email.ilike(f"%{email}%")
-            )
+            count_query = count_query.where(UserProfile.email.ilike(f"%{email}%"))
 
         if status:
-            count_query = count_query.where(
-                GuardianProfile.guardian_status == status
-            )
+            count_query = count_query.where(GuardianProfile.guardian_status == status)
 
         total_result = await session.execute(count_query)
 
@@ -216,9 +197,7 @@ class GuardianService:
                             "last_name": student.user.last_name,
                             "email": student.user.email,
                             "birth_date": (
-                                student.birth_date.isoformat()
-                                if student.birth_date
-                                else ""
+                                student.birth_date.isoformat() if student.birth_date else ""
                             ),
                             "student_class": student.student_class.value,
                         }
@@ -259,9 +238,7 @@ class GuardianService:
         query = (
             select(UserProfile, GuardianProfile)
             .options(
-                selectinload(GuardianProfile.students).selectinload(
-                    StudentProfile.user
-                ),
+                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
             )
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
             .where(
@@ -299,9 +276,7 @@ class GuardianService:
                         "last_name": student.user.last_name,
                         "email": student.user.email,
                         "birth_date": (
-                            student.birth_date.isoformat()
-                            if student.birth_date
-                            else ""
+                            student.birth_date.isoformat() if student.birth_date else ""
                         ),
                         "student_class": student.student_class.value,
                     }
@@ -331,9 +306,7 @@ class GuardianService:
         query = (
             select(UserProfile, GuardianProfile)
             .options(
-                selectinload(GuardianProfile.students).selectinload(
-                    StudentProfile.user
-                ),
+                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
             )
             .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
             .where(
@@ -367,11 +340,7 @@ class GuardianService:
             "email",
         }
 
-        if (
-            "email" in data
-            and data["email"]
-            and data["email"] != user_profile.email
-        ):
+        if "email" in data and data["email"] and data["email"] != user_profile.email:
             existing = await session.execute(
                 select(UserProfile).where(UserProfile.email == data["email"])
             )
@@ -389,7 +358,7 @@ class GuardianService:
                 return "email_conflict"
 
         for field, value in data.items():
-            if value is None and field != "last_name":
+            if value is None:
                 continue
 
             if field in user_fields:
@@ -425,9 +394,7 @@ class GuardianService:
                         "last_name": student.user.last_name,
                         "email": student.user.email,
                         "birth_date": (
-                            student.birth_date.isoformat()
-                            if student.birth_date
-                            else ""
+                            student.birth_date.isoformat() if student.birth_date else ""
                         ),
                         "student_class": student.student_class.value,
                     }
@@ -685,14 +652,10 @@ class GuardianService:
             "guardian_status": guardian_profile.guardian_status.value,
             "is_active": user_profile.is_active,
             "created_at": (
-                user_profile.created_at.isoformat()
-                if user_profile.created_at
-                else None
+                user_profile.created_at.isoformat() if user_profile.created_at else None
             ),
             "deactivated_at": (
-                user_profile.deactivated_at.isoformat()
-                if user_profile.deactivated_at
-                else None
+                user_profile.deactivated_at.isoformat() if user_profile.deactivated_at else None
             ),
             "students": students,
         }

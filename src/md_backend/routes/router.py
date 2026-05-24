@@ -1,6 +1,5 @@
 """Router file."""
 
-
 import logging
 
 from fastapi import APIRouter

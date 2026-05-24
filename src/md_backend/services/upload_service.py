@@ -20,7 +20,6 @@ from md_backend.models.db_models import (
 )
 from md_backend.services.storage_service import StorageService
 from md_backend.utils.access_control import guardian_owns_student
-from md_backend.utils.names import build_full_name
 from md_backend.utils.settings import settings
 
 logger = get_logger(__name__)
@@ -79,10 +78,7 @@ def _detect_mime(data: bytes) -> str | None:
     """Return MIME type from magic bytes."""
     for magic, mime in _MAGIC_MAP:
         if data[: len(magic)] == magic:
-            if (
-                mime
-                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            ):
+            if mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
                 try:
                     with zipfile.ZipFile(BytesIO(data)) as zf:
                         if "[Content_Types].xml" not in zf.namelist():
@@ -137,9 +133,7 @@ class UploadService:
             return "invalid_activity_type"
 
         result = await session.execute(
-            select(StudentProfile).where(
-                StudentProfile.user_id == student_id
-            )
+            select(StudentProfile).where(StudentProfile.user_id == student_id)
         )
 
         if result.scalar_one_or_none() is None:
@@ -209,24 +203,15 @@ class UploadService:
                 },
             )
 
-            return (
-                f"File type not allowed. "
-                f"Detected: {detected_mime or 'unknown'}."
-            )
+            return f"File type not allowed. Detected: {detected_mime or 'unknown'}."
 
         safe_filename = _sanitize_filename(file.filename)
 
-        extension = (
-            safe_filename.rsplit(".", 1)[-1]
-            if "." in safe_filename
-            else ""
-        )
+        extension = safe_filename.rsplit(".", 1)[-1] if "." in safe_filename else ""
 
         upload_id = uuid.uuid4()
 
-        storage_key = (
-            f"students/{student_id}/{upload_id}.{extension}"
-        )
+        storage_key = f"students/{student_id}/{upload_id}.{extension}"
 
         if settings.STORAGE_BACKEND == "s3":
             base_url = settings.CLOUDFRONT_URL or ""
@@ -326,9 +311,7 @@ class UploadService:
         )
 
         result = await session.execute(
-            select(StudentProfile).where(
-                StudentProfile.user_id == student_id
-            )
+            select(StudentProfile).where(StudentProfile.user_id == student_id)
         )
 
         if result.scalar_one_or_none() is None:
@@ -532,16 +515,10 @@ class UploadService:
         activity_type_filter: str | None = None,
     ) -> dict:
         """List all student uploads with filters."""
-        if (
-            status_filter
-            and status_filter not in UPLOAD_CORRECTION_STATUSES
-        ):
+        if status_filter and status_filter not in UPLOAD_CORRECTION_STATUSES:
             return self._page_response([], page, page_size, 0)
 
-        if (
-            activity_type_filter
-            and activity_type_filter not in UPLOAD_ACTIVITY_TYPES
-        ):
+        if activity_type_filter and activity_type_filter not in UPLOAD_ACTIVITY_TYPES:
             return self._page_response([], page, page_size, 0)
 
         stmt = (
@@ -561,14 +538,10 @@ class UploadService:
         )
 
         if status_filter:
-            stmt = stmt.where(
-                StudentUpload.correction_status == status_filter
-            )
+            stmt = stmt.where(StudentUpload.correction_status == status_filter)
 
         if activity_type_filter:
-            stmt = stmt.where(
-                StudentUpload.activity_type == activity_type_filter
-            )
+            stmt = stmt.where(StudentUpload.activity_type == activity_type_filter)
 
         if query:
             pattern = f"%{query.strip().lower()}%"
@@ -582,9 +555,7 @@ class UploadService:
             )
 
         total = (
-            await session.execute(
-                select(func.count()).select_from(stmt.subquery())
-            )
+            await session.execute(select(func.count()).select_from(stmt.subquery()))
         ).scalar_one()
 
         rows = (
@@ -595,10 +566,7 @@ class UploadService:
             )
         ).all()
 
-        items = [
-            self._to_admin_dict(upload, user, subject)
-            for upload, user, subject in rows
-        ]
+        items = [self._to_admin_dict(upload, user, subject) for upload, user, subject in rows]
 
         return self._page_response(
             items,
@@ -638,17 +606,10 @@ class UploadService:
         subject_id: int | None = None,
     ) -> dict | None | str:
         """Update upload metadata."""
-        if (
-            activity_type is not None
-            and activity_type not in UPLOAD_ACTIVITY_TYPES
-        ):
+        if activity_type is not None and activity_type not in UPLOAD_ACTIVITY_TYPES:
             return "invalid_activity_type"
 
-        if (
-            correction_status is not None
-            and correction_status
-            not in UPLOAD_CORRECTION_STATUSES
-        ):
+        if correction_status is not None and correction_status not in UPLOAD_CORRECTION_STATUSES:
             return "invalid_status"
 
         row = await self._load_admin_row(
@@ -722,8 +683,7 @@ class UploadService:
                 )
                 .join(
                     StudentProfile,
-                    StudentUpload.student_id
-                    == StudentProfile.user_id,
+                    StudentUpload.student_id == StudentProfile.user_id,
                 )
                 .join(
                     UserProfile,
@@ -793,11 +753,7 @@ class UploadService:
             "activity_type": upload.activity_type,
             "status": upload.correction_status,
             "file_size_bytes": upload.file_size_bytes,
-            "created_at": (
-                upload.created_at.isoformat()
-                if upload.created_at
-                else None
-            ),
+            "created_at": (upload.created_at.isoformat() if upload.created_at else None),
         }
 
     def _to_admin_dict(
@@ -808,16 +764,12 @@ class UploadService:
     ) -> dict:
         """Serialize upload for admin views."""
         payload = self._upload_to_dict(upload)
-        payload["student_name"] = build_full_name(user.first_name, user.last_name)
-        payload["activity_label"] = UPLOAD_ACTIVITY_LABELS.get(
-            upload.activity_type, upload.activity_type
-        )
 
-        payload["activity_label"] = (
-            UPLOAD_ACTIVITY_LABELS.get(
-                upload.activity_type,
-                upload.activity_type,
-            )
+        payload["student_name"] = f"{user.first_name} {user.last_name}".strip()
+
+        payload["activity_label"] = UPLOAD_ACTIVITY_LABELS.get(
+            upload.activity_type,
+            upload.activity_type,
         )
 
         payload["subject"] = (
@@ -846,9 +798,5 @@ class UploadService:
             "page": page,
             "page_size": page_size,
             "total_items": total_items,
-            "total_pages": (
-                max(1, math.ceil(total_items / page_size))
-                if total_items
-                else 1
-            ),
+            "total_pages": (max(1, math.ceil(total_items / page_size)) if total_items else 1),
         }

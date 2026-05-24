@@ -108,9 +108,7 @@ class PostgresBlobStorageService(StorageService):
         )
 
         result = await self.session.execute(
-            select(StudentUploadBlob.content).where(
-                StudentUploadBlob.upload_id == upload_id
-            )
+            select(StudentUploadBlob.content).where(StudentUploadBlob.upload_id == upload_id)
         )
 
         blob = result.scalar_one_or_none()

@@ -274,9 +274,7 @@ async def download_upload_content(
         media_type=upload.file_type,
         headers={
             "Content-Disposition": (
-                f"attachment; "
-                f'filename="{ascii_name}"; '
-                f"filename*=UTF-8''{safe_name}"
+                f"attachment; filename=\"{ascii_name}\"; filename*=UTF-8''{safe_name}"
             )
         },
     )

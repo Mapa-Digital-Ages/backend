@@ -11,7 +11,12 @@ from md_backend.models.db_models import (
 from md_backend.utils.security import hash_password
 
 logger = get_logger(__name__)
-_logger_extra = {"component_name": "setup_service","component_version": "v1",}
+_logger_extra = {
+    "component_name": "setup_service",
+    "component_version": "v1",
+}
+
+
 class SetupService:
     """Service for initial platform setup."""
 
@@ -20,7 +25,7 @@ class SetupService:
         email: str,
         password: str,
         first_name: str,
-        last_name: str | None,
+        last_name: str,
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
@@ -34,9 +39,7 @@ class SetupService:
         )
 
         result = await session.execute(
-            select(AdminProfile).where(
-                AdminProfile.issuperadmin.is_(True)
-            )
+            select(AdminProfile).where(AdminProfile.issuperadmin.is_(True))
         )
 
         if result.scalar_one_or_none() is not None:
