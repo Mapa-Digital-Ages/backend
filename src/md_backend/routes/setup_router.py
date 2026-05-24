@@ -1,19 +1,28 @@
-"""Setup router for creating the first superadmin."""
+"""Setup router for one-time platform bootstrap (superadmin + default subjects)."""
 
-
-import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import SetupRequest
 from md_backend.services.setup_service import SetupService
+from md_backend.services.subject_service import seed_default_subjects
 from md_backend.utils.database import get_db_session
 from md_backend.utils.settings import settings
 
-logger = logging.getLogger(__name__)
-
 setup_service = SetupService()
+
 setup_router = APIRouter(prefix="/setup")
+
+
+def _require_setup_token(x_setup_token: str | None) -> None:
+    """Validate the setup token header."""
+
+    if x_setup_token != settings.SETUP_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing setup token",
+        )
 
 
 @setup_router.post(
@@ -25,12 +34,9 @@ async def setup(
     session: AsyncSession = Depends(get_db_session),
     x_setup_token: str | None = Header(default=None, alias="X-Setup-Token"),
 ) -> dict:
-    """Create the first superadmin. Only works once; requires X-Setup-Token header."""
-    if x_setup_token != settings.SETUP_TOKEN:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing setup token",
-        )
+    """Create the first superadmin. Only works once."""
+
+    _require_setup_token(x_setup_token)
 
     result = await setup_service.create_superadmin(
         email=request.email,
@@ -47,4 +53,29 @@ async def setup(
             detail="Setup already completed",
         )
 
-    return result
+    await seed_default_subjects(session)
+    await session.commit()
+
+    return JSONResponse(
+        content=result,
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@setup_router.post("/subjects")
+async def setup_subjects(
+    session: AsyncSession = Depends(get_db_session),
+    x_setup_token: str | None = Header(default=None, alias="X-Setup-Token"),
+):
+    """Seed the default subject catalog."""
+
+    _require_setup_token(x_setup_token)
+
+    created = await seed_default_subjects(session)
+
+    await session.commit()
+
+    return JSONResponse(
+        content={"subjects_created": created},
+        status_code=status.HTTP_201_CREATED,
+    )

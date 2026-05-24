@@ -11,7 +11,11 @@ from helper_backend.utils.logger import get_logger
 from md_backend.models.db_models import StudentUploadBlob
 
 logger = get_logger(__name__)
-_logger_extra = {"component_name": "storage_service","component_version": "v1",}
+
+_logger_extra = {
+    "component_name": "storage_service",
+    "component_version": "v1",
+}
 
 
 class StorageService(ABC):
@@ -37,13 +41,29 @@ class StorageService(ABC):
         """Retrieve file bytes for the given upload."""
         ...
 
+    async def generate_download_url(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+        expires_in: int = 300,
+    ) -> str | None:
+        """Return a temporary download URL, or None to fall back to streaming the bytes."""
+        return None
+
+    async def delete_file(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+    ) -> None:
+        """Best-effort delete for files already written to storage."""
+        return None
+
 
 class PostgresBlobStorageService(StorageService):
     """Stores file bytes in a dedicated Postgres BYTEA table."""
 
     def __init__(self, session: AsyncSession) -> None:
         """Initialize with an async DB session."""
-
         self.session = session
 
     async def upload_file(
@@ -244,3 +264,72 @@ class S3StorageService(StorageService):
                 )
 
                 return None
+
+    async def generate_download_url(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+        expires_in: int = 300,
+    ) -> str | None:
+        """Return a presigned GET URL valid for ``expires_in`` seconds."""
+
+        async with self._client() as s3:  # type: ignore[attr-defined]
+            try:
+                return await s3.generate_presigned_url(
+                    "get_object",
+                    Params={
+                        "Bucket": self.bucket,
+                        "Key": storage_key,
+                    },
+                    ExpiresIn=expires_in,
+                )
+
+            except Exception as error:
+                logger.exception(
+                    "Failed to generate S3 download URL",
+                    extra={
+                        **_logger_extra,
+                        "upload_id": str(upload_id),
+                        "storage_key": storage_key,
+                        "bucket": self.bucket,
+                        "error": str(error),
+                    },
+                )
+
+                return None
+
+    async def delete_file(
+        self,
+        upload_id: uuid.UUID,
+        storage_key: str,
+    ) -> None:
+        """Delete an object from S3. Best-effort cleanup ignores storage errors."""
+
+        async with self._client() as s3:  # type: ignore[attr-defined]
+            try:
+                await s3.delete_object(
+                    Bucket=self.bucket,
+                    Key=storage_key,
+                )
+
+                logger.info(
+                    "File deleted successfully from S3",
+                    extra={
+                        **_logger_extra,
+                        "upload_id": str(upload_id),
+                        "storage_key": storage_key,
+                        "bucket": self.bucket,
+                    },
+                )
+
+            except Exception as error:
+                logger.exception(
+                    "Failed to delete file from S3",
+                    extra={
+                        **_logger_extra,
+                        "upload_id": str(upload_id),
+                        "storage_key": storage_key,
+                        "bucket": self.bucket,
+                        "error": str(error),
+                    },
+                )

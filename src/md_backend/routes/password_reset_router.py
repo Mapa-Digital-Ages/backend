@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,7 @@ password_reset_router = APIRouter(
 async def request_password_reset(
     request: Request,
     body: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ):
     """Generate a password reset code for a user email.
@@ -40,15 +41,18 @@ async def request_password_reset(
     Args:
         request: FastAPI request object used for rate limiting.
         body: Password reset request payload.
+        background_tasks: Background task manager for async email sending.
         session: Database session.
 
     Returns:
         HTTP 200 with a generic success message regardless
         of whether the email exists.
     """
+
     result = await password_reset_service.request_reset(
         email=body.email,
         session=session,
+        background_tasks=background_tasks,
     )
 
     return JSONResponse(
@@ -65,7 +69,8 @@ async def confirm_password_reset(
     session: AsyncSession = Depends(get_db_session),
 ):
     """Validate a reset code and update the user password.
-Args:
+
+    Args:
         request: FastAPI request object used for rate limiting.
         body: Password reset confirmation payload.
         session: Database session.
@@ -75,6 +80,7 @@ Args:
 
         HTTP 400 when the reset code is invalid or expired.
     """
+
     was_reset = await password_reset_service.confirm_reset(
         email=body.email,
         code=body.code,

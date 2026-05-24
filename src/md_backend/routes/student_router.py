@@ -5,12 +5,17 @@ import datetime
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    CalendarTaskSyncItemRequest,
+    CalendarUpsertRequest,
+    StudentListResponse,
     StudentRequest,
     StudentResponse,
     StudentUpdateRequest,
+    TaskResponse,
     WellBeingRequest,
     WellBeingResponse,
 )
@@ -42,6 +47,7 @@ async def _can_read_daily_well_being(
         return True
 
     user_id = uuid.UUID(current_user["user_id"])
+
     if await guardian_owns_student(session, user_id, student_id):
         return True
 
@@ -61,6 +67,7 @@ async def _can_read_well_being_history(
         return True
 
     user_id = uuid.UUID(current_user["user_id"])
+
     return await guardian_owns_student(session, user_id, student_id)
 
 
@@ -70,6 +77,7 @@ async def _can_write_well_being(
     student_id: uuid.UUID,
 ) -> bool:
     user_id = uuid.UUID(current_user["user_id"])
+
     return user_id == student_id and await is_active_student(session, user_id)
 
 
@@ -123,6 +131,7 @@ async def create_student(
 
 @student_router.get(
     "",
+    response_model=StudentListResponse,
     dependencies=[Depends(get_current_approved_user)],
 )
 async def list_students(
@@ -139,6 +148,23 @@ async def list_students(
         email=email,
         page=page,
         size=size,
+    )
+
+
+@student_router.get(
+    "/count",
+    dependencies=[Depends(get_current_approved_user)],
+)
+async def count_students(
+    session: AsyncSession = Depends(get_db_session),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+):
+    """Return the total number of active students, optionally filtered by name."""
+    total = await student_service.count_students(session=session, name=name)
+
+    return JSONResponse(
+        content={"total": total},
+        status_code=status.HTTP_200_OK,
     )
 
 
@@ -237,6 +263,38 @@ async def delete_student(
         )
 
 
+@student_router.patch(
+    "/{student_id}/status",
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def update_student_status(
+    student_id: uuid.UUID,
+    is_active: bool = Query(..., description="Set student active status"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Activate or deactivate a student. Superadmin only."""
+    success = await student_service.set_student_active_status(
+        session=session,
+        student_id=student_id,
+        is_active=is_active,
+    )
+
+    if not success:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(
+        content={
+            "detail": (
+                f"Student {'activated' if is_active else 'deactivated'} successfully"
+            )
+        },
+        status_code=status.HTTP_200_OK,
+    )
+
+
 @student_router.get("/{student_id}/summary")
 async def get_student_summary(
     student_id: uuid.UUID,
@@ -283,28 +341,68 @@ async def get_student_tasks(
 
 
 @student_router.get(
-    "/{student_id}/well-being",
-    summary="Get student well-being for a specific date",
+    "/{student_id}/calendar",
+    summary="Weekly task calendar for a student",
     responses={
         200: {
-            "description": "Well-being record found for the given date.",
-            "model": WellBeingResponse,
+            "description": "List of tasks for the current week (Sunday → Saturday, server UTC).",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": 42,
+                            "date": "2026-05-19T14:00:00+00:00",
+                            "title": "Resolver exercícios de álgebra",
+                            "status": "pending",
+                            "subject": {"id": 3, "label": "Matemática"},
+                        }
+                    ]
+                }
+            },
         },
-        404: {
-            "description": (
-                "No well-being record exists for this student on the requested date."
-            ),
-        },
-        422: {"description": "Validation error."},
+        403: {"description": "Access denied — caller is not allowed to view this student."},
+        404: {"description": "Student not found."},
     },
+)
+async def get_student_calendar(
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the current week's non-deactivated tasks for *student_id*.
+
+    The week is computed server-side (Sunday 00:00 UTC → Saturday 23:59 UTC).
+    Each task includes the joined subject object ``{ id, label }`` so the
+    frontend can populate the calendar without extra processing.
+    """
+    await _ensure_can_access_student(session, current_user, student_id)
+
+    student = await student_service.get_student_by_id(
+        session=session,
+        student_id=student_id,
+    )
+
+    if student is None:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    tasks = await student_service.get_weekly_tasks(
+        session=session,
+        student_id=student_id,
+    )
+
+    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+
+
+@student_router.get(
+    "/{student_id}/well-being",
+    summary="Get student well-being for a specific date",
 )
 async def get_student_well_being(
     student_id: uuid.UUID,
-    date: datetime.date = Query(
-        ...,
-        description="Date to query in YYYY-MM-DD format.",
-        examples=["2024-09-01"],
-    ),
+    date: datetime.date = Query(...),
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ) -> dict:
@@ -338,7 +436,6 @@ async def get_student_well_being(
 @student_router.get(
     "/{student_id}/well-being/history",
     response_model=list[WellBeingResponse],
-    summary="Get student well-being history for a date range",
 )
 async def get_student_well_being_history(
     student_id: uuid.UUID,
@@ -375,14 +472,6 @@ async def get_student_well_being_history(
 @student_router.put(
     "/{student_id}/well-being",
     summary="Register or update student well-being (upsert)",
-    responses={
-        200: {
-            "description": "Well-being record created or updated.",
-            "model": WellBeingResponse,
-        },
-        400: {"description": "Invalid humor value."},
-        422: {"description": "Validation error."},
-    },
 )
 async def upsert_student_well_being(
     student_id: uuid.UUID,
@@ -423,3 +512,88 @@ async def upsert_student_well_being(
         online_activity_minutes=request.online_activity_minutes,
         sleep_hours=request.sleep_hours,
     )
+
+
+@student_router.put(
+    "/{student_id}/calendar/tasks",
+    summary="Sync calendar tasks",
+)
+async def sync_calendar_tasks(
+    student_id: uuid.UUID,
+    request: list[CalendarTaskSyncItemRequest],
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Sync tasks (create/update) atomically."""
+    token_student_id = current_user["user_id"]
+
+    if str(student_id) != str(token_student_id):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        result = await student_service.sync_calendar_tasks(
+            session=session,
+            student_id=student_id,
+            tasks_payload=[item.model_dump() for item in request],
+        )
+
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+    except ValueError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+@student_router.get(
+    "/{student_id}/calendar/{date}",
+    response_model=list[TaskResponse],
+    summary="Get student tasks for a specific date",
+)
+async def get_calendar_day(
+    student_id: uuid.UUID,
+    date: datetime.date,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return all active (non-soft-deleted) tasks for a student on a given date."""
+    await _ensure_can_access_student(session, current_user, student_id)
+
+    tasks = await student_service.get_calendar_day(
+        session=session,
+        student_id=student_id,
+        date=date,
+    )
+
+    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+
+
+@student_router.put(
+    "/{student_id}/calendar/{date}",
+    response_model=list[TaskResponse],
+    summary="Sync student tasks for a specific date (upsert + soft delete)",
+)
+async def upsert_calendar_day(
+    student_id: uuid.UUID,
+    date: datetime.date,
+    request: CalendarUpsertRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Sync the full task state for a student/date."""
+    await _ensure_can_access_student(session, current_user, student_id)
+
+    tasks_data = [t.model_dump() for t in request.tasks]
+
+    result = await student_service.upsert_calendar_day(
+        session=session,
+        student_id=student_id,
+        date=date,
+        tasks=tasks_data,
+    )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)

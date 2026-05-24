@@ -3,9 +3,9 @@
 import datetime
 import uuid
 
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
-from md_backend.models.db_models import ClassEnum
+from md_backend.models.db_models import ClassEnum, TaskStatusEnum
 
 
 class RegisterRequest(BaseModel):
@@ -85,6 +85,20 @@ class UpdateStatusRequest(BaseModel):
     status: str = Field(pattern=r"^(approved|rejected|waiting)$")
 
 
+class SubjectRequest(BaseModel):
+    """Request body for creating a subject."""
+
+    name: str = Field(min_length=1)
+    color: str | None = None
+
+
+class SubjectUpdateRequest(BaseModel):
+    """Request body for partially updating a subject."""
+
+    name: str | None = Field(default=None, min_length=1)
+    color: str | None = None
+
+
 class StudentResponse(BaseModel):
     """Response model for student creation."""
 
@@ -111,8 +125,8 @@ class StudentRequest(BaseModel):
     school_id: uuid.UUID | None = None
 
 
-class StudentListResponse(BaseModel):
-    """Response model for student listing."""
+class StudentListItemResponse(BaseModel):
+    """Student item returned by the paginated listing."""
 
     id: uuid.UUID
     user_id: uuid.UUID
@@ -122,9 +136,22 @@ class StudentListResponse(BaseModel):
     phone_number: str
     birth_date: str
     student_class: str
-    school_id: str
+    school_id: str | None
+    school_name: str | None
+    guardian_id: str | None
+    guardian_name: str | None
     is_active: bool
     created_at: str | None
+
+
+class StudentListResponse(BaseModel):
+    """Paginated list of students."""
+
+    items: list[StudentListItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class StudentUpdateRequest(BaseModel):
@@ -136,6 +163,7 @@ class StudentUpdateRequest(BaseModel):
     birth_date: datetime.date | None = None
     student_class: ClassEnum | None = None
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
 class GuardianStudentResponse(BaseModel):
@@ -251,6 +279,22 @@ class StudentUploadResponse(BaseModel):
     created_at: str
 
 
+class ContentUpsertRequest(BaseModel):
+    """Request body for creating or updating content."""
+
+    title: str = Field(min_length=1)
+    subject_id: int
+    description: str | None = None
+
+
+class UpdateUploadRequest(BaseModel):
+    """Request body for updating an upload's activity type, status, and/or subject."""
+
+    activity_type: str | None = Field(default=None, pattern=r"^(exercise|essay|activity)$")
+    status: str | None = Field(default=None, pattern=r"^(pending|in_review|corrected|rejected)$")
+    subject_id: int | None = None
+
+
 class WellBeingRequest(BaseModel):
     """Request body for upserting a student's well-being state."""
 
@@ -313,3 +357,75 @@ class CompanyResponse(BaseModel):
     available_spots: int
     status: str
     created_at: str
+
+
+class CalendarTaskSubjectPayload(BaseModel):
+    """Payload for the subject field in a calendar task sync request."""
+
+    id: int
+
+
+class CalendarTaskSyncItemRequest(BaseModel):
+    """Request schema for a single calendar task in a sync operation."""
+
+    id: int | str
+    title: str
+    task_status: TaskStatusEnum | None = None
+    subject: CalendarTaskSubjectPayload
+    date: datetime.datetime
+
+    @field_validator("date", mode="before")
+    @classmethod
+    def parse_date(cls, v):
+        """Coerce ISO-8601 strings (including Z suffix) to datetime."""
+        if isinstance(v, str):
+            return datetime.datetime.fromisoformat(v.replace("Z", "+00:00"))
+        return v
+
+    @property
+    def subject_id(self) -> int:
+        """Return the nested subject id."""
+        return self.subject.id
+
+    @field_validator("task_status")
+    @classmethod
+    def validate_task_status(cls, value):
+        """Pass through the task_status value unchanged."""
+        return value
+
+
+class CalendarTaskSyncResponse(BaseModel):
+    """Response schema for a synced calendar task."""
+
+    id: int
+    title: str
+    task_status: str | None
+    subject_id: int
+    date: datetime.datetime
+
+
+class TaskResponse(BaseModel):
+    """Response model for a single task."""
+
+    id: int
+    title: str
+    task_status: str | None
+    subject_id: int
+    date: datetime.datetime
+    deactivated_at: str | None = None
+
+
+class CalendarTaskUpsertItem(BaseModel):
+    """A single task item within a CalendarUpsertRequest."""
+
+    id: int | None = None
+    title: str
+    task_status: TaskStatusEnum | None = None
+    subject_id: int
+    date: datetime.datetime | None = None
+
+
+class CalendarUpsertRequest(BaseModel):
+    """Request body for upserting a student's full task list for a given date."""
+
+    tasks: list[CalendarTaskUpsertItem]

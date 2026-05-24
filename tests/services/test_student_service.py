@@ -9,6 +9,7 @@ from unittest.mock import AsyncMock, MagicMock
 from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
+from md_backend.models.api_models import CalendarTaskSyncItemRequest, WellBeingResponse
 from md_backend.models.db_models import ClassEnum
 from md_backend.services.student_service import StudentService
 
@@ -54,6 +55,30 @@ class TestStudentServiceCreate(unittest.TestCase):
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()
+
+
+class TestStudentServiceList(unittest.TestCase):
+    """Unit tests for StudentService.get_students."""
+
+    def test_get_students_orders_by_student_name_by_default(self):
+        service = StudentService()
+        count_result = MagicMock()
+        count_result.scalar.return_value = 0
+        rows_result = MagicMock()
+        rows_result.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = [count_result, rows_result]
+
+        asyncio.run(service.get_students(session=mock_session))
+
+        items_query = mock_session.execute.call_args_list[1].args[0]
+        compiled = str(items_query.compile(compile_kwargs={"literal_binds": True}))
+        self.assertIn(
+            "ORDER BY lower(user_profile.first_name), "
+            "lower(user_profile.last_name), user_profile.id",
+            compiled,
+        )
 
 
 class TestStudentServiceUpdateRollback(unittest.TestCase):
@@ -240,3 +265,102 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
 
         self.assertIsNone(result["date"])
         self.assertEqual(result["status"], "pending")
+
+
+class TestCalendarTaskDTO(unittest.TestCase):
+    def test_extract_nested_subject_id(self):
+        payload = CalendarTaskSyncItemRequest(
+            id="tmp-123",
+            title="Math",
+            task_status="adjust",
+            subject={"id": 5},
+            date=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.assertEqual(payload.subject_id, 5)
+
+    def test_accept_adjust_status(self):
+        payload = CalendarTaskSyncItemRequest(
+            id="tmp-1",
+            title="Task",
+            task_status="adjust",
+            subject={"id": 1},
+            date=datetime.datetime.now(datetime.UTC),
+        )
+
+        self.assertEqual(payload.task_status, "adjust")
+
+    class TestGetWeekBounds(unittest.TestCase):
+        """Unit tests for the get_week_bounds helper function."""
+
+    def test_sunday_is_start_of_week(self):
+        """A Sunday should be the start of its own week."""
+        from md_backend.services.student_service import get_week_bounds
+
+        sunday = datetime.date(2026, 5, 17)  # Known Sunday
+        start, end = get_week_bounds(sunday)
+
+        self.assertEqual(start.date(), sunday)
+        self.assertEqual(end.date(), sunday + datetime.timedelta(days=6))
+
+    def test_saturday_is_end_of_week(self):
+        """A Saturday should map to the Saturday of its own week."""
+        from md_backend.services.student_service import get_week_bounds
+
+        saturday = datetime.date(2026, 5, 23)  # Known Saturday
+        start, end = get_week_bounds(saturday)
+
+        self.assertEqual(end.date(), saturday)
+        self.assertEqual(start.date(), saturday - datetime.timedelta(days=6))
+
+    def test_midweek_day_maps_to_correct_bounds(self):
+        """A Wednesday should produce the Sunday before and Saturday after."""
+        from md_backend.services.student_service import get_week_bounds
+
+        wednesday = datetime.date(2026, 5, 20)
+        start, end = get_week_bounds(wednesday)
+
+        self.assertEqual(start.date(), datetime.date(2026, 5, 17))  # Sunday
+        self.assertEqual(end.date(), datetime.date(2026, 5, 23))  # Saturday
+
+    def test_week_span_is_always_7_days(self):
+        """End minus start should always be exactly 6 days (7-day window)."""
+        from md_backend.services.student_service import get_week_bounds
+
+        for day_offset in range(7):
+            reference = datetime.date(2026, 5, 17) + datetime.timedelta(days=day_offset)
+            start, end = get_week_bounds(reference)
+            delta = end.date() - start.date()
+            self.assertEqual(delta.days, 6, msg=f"Failed for reference={reference}")
+
+    def test_start_is_midnight_utc(self):
+        """Week start should be at 00:00:00 UTC."""
+        from md_backend.services.student_service import get_week_bounds
+
+        start, _ = get_week_bounds(datetime.date(2026, 5, 20))
+
+        self.assertEqual(start.hour, 0)
+        self.assertEqual(start.minute, 0)
+        self.assertEqual(start.second, 0)
+        self.assertEqual(start.tzinfo, datetime.UTC)
+
+    def test_end_is_end_of_day_utc(self):
+        """Week end should be at 23:59:59 UTC."""
+        from md_backend.services.student_service import get_week_bounds
+
+        _, end = get_week_bounds(datetime.date(2026, 5, 20))
+
+        self.assertEqual(end.hour, 23)
+        self.assertEqual(end.minute, 59)
+        self.assertEqual(end.second, 59)
+        self.assertEqual(end.tzinfo, datetime.UTC)
+
+    def test_no_reference_uses_today(self):
+        """Calling without reference should not raise and return a valid range."""
+        from md_backend.services.student_service import get_week_bounds
+
+        start, end = get_week_bounds()
+
+        self.assertIsInstance(start, datetime.datetime)
+        self.assertIsInstance(end, datetime.datetime)
+        self.assertEqual((end.date() - start.date()).days, 6)
