@@ -31,7 +31,7 @@ class Settings(BaseSettings):
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     # Storage
-    STORAGE_BACKEND: Literal["postgres", "s3"] = "postgres"
+    STORAGE_BACKEND: Literal["auto", "postgres", "s3"] = "auto"
     AWS_S3_BUCKET: str | None = None
     AWS_S3_REGION: str | None = None
     AWS_ACCESS_KEY_ID: str | None = None
@@ -39,6 +39,14 @@ class Settings(BaseSettings):
     AWS_S3_ENDPOINT_URL: str | None = (
         None  # overrides default AWS endpoint; use for MinIO/localstack
     )
+
+    # Email (SMTP) — sender activates automatically when USERNAME + PASSWORD are set.
+    # Without credentials, the sender logs the code locally instead of sending an email.
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "Mapa Digital"
 
     # Cloudfront
     CLOUDFRONT_URL: str | None = None

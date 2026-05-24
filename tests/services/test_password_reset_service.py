@@ -4,7 +4,7 @@ import asyncio
 import datetime
 import unittest
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import tests.keys_test  # noqa: F401
 from md_backend.services.password_reset_service import (
@@ -80,3 +80,57 @@ class TestGetValidResetEntryExpiredSkipped(unittest.TestCase):
             )
         )
         self.assertIsNone(result)
+
+
+class TestRequestResetEmailDispatch(unittest.TestCase):
+    """Cover the email dispatch wiring in request_reset."""
+
+    def _build_session_with_user(self, user):
+        user_result = MagicMock()
+        user_result.scalar_one_or_none.return_value = user
+        session = AsyncMock()
+        session.execute.return_value = user_result
+        # session.add is synchronous in real SQLAlchemy; override the AsyncMock default.
+        session.add = MagicMock()
+        return session
+
+    def test_sender_is_called_with_generated_code(self):
+        sender = AsyncMock()
+        service = PasswordResetService(email_sender=sender)
+
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        session = self._build_session_with_user(user)
+
+        with patch(
+            "md_backend.services.password_reset_service._generate_reset_code",
+            return_value="424242",
+        ):
+            asyncio.run(service.request_reset(email="user@test.com", session=session))
+
+        sender.send_password_reset.assert_awaited_once_with(to_email="user@test.com", code="424242")
+
+    def test_service_propagates_sender_exceptions(self):
+        # The service does not catch sender errors; the EmailSender itself swallows
+        # SMTP failures (see test_email_sender). This test pins that contract so the
+        # safety net stays in EmailSender, not silently in the service.
+        sender = AsyncMock()
+        sender.send_password_reset.side_effect = RuntimeError("smtp boom")
+        service = PasswordResetService(email_sender=sender)
+
+        user = MagicMock()
+        user.id = uuid.uuid4()
+        session = self._build_session_with_user(user)
+
+        with self.assertRaises(RuntimeError):
+            asyncio.run(service.request_reset(email="user@test.com", session=session))
+
+    def test_sender_not_called_for_unknown_email(self):
+        sender = AsyncMock()
+        service = PasswordResetService(email_sender=sender)
+
+        session = self._build_session_with_user(user=None)
+
+        asyncio.run(service.request_reset(email="ghost@test.com", session=session))
+
+        sender.send_password_reset.assert_not_awaited()

@@ -85,6 +85,20 @@ class UpdateStatusRequest(BaseModel):
     status: str = Field(pattern=r"^(approved|rejected|waiting)$")
 
 
+class SubjectRequest(BaseModel):
+    """Request body for creating a subject."""
+
+    name: str = Field(min_length=1)
+    color: str | None = None
+
+
+class SubjectUpdateRequest(BaseModel):
+    """Request body for partially updating a subject."""
+
+    name: str | None = Field(default=None, min_length=1)
+    color: str | None = None
+
+
 class StudentResponse(BaseModel):
     """Response model for student creation."""
 
@@ -263,6 +277,22 @@ class StudentUploadResponse(BaseModel):
     file_type: str
     file_size_bytes: int
     created_at: str
+
+
+class ContentUpsertRequest(BaseModel):
+    """Request body for creating or updating content."""
+
+    title: str = Field(min_length=1)
+    subject_id: int
+    description: str | None = None
+
+
+class UpdateUploadRequest(BaseModel):
+    """Request body for updating an upload's activity type, status, and/or subject."""
+
+    activity_type: str | None = Field(default=None, pattern=r"^(exercise|essay|activity)$")
+    status: str | None = Field(default=None, pattern=r"^(pending|in_review|corrected|rejected)$")
+    subject_id: int | None = None
 
 
 class WellBeingRequest(BaseModel):
