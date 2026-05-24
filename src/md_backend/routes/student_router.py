@@ -250,6 +250,34 @@ async def delete_student(
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
 
 
+@student_router.patch(
+    "/{student_id}/status",
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def update_student_status(
+    student_id: uuid.UUID,
+    is_active: bool = Query(..., description="Set student active status"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Activate or deactivate a student. Superadmin only."""
+    success = await student_service.set_student_active_status(
+        session=session,
+        student_id=student_id,
+        is_active=is_active,
+    )
+
+    if not success:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(
+        content={"detail": f"Student {'activated' if is_active else 'deactivated'} successfully"},
+        status_code=status.HTTP_200_OK,
+    )
+
+
 @student_router.get("/{student_id}/summary")
 async def get_student_summary(
     student_id: uuid.UUID,

@@ -412,6 +412,34 @@ class StudentService:
         await session.commit()
         return True
 
+    async def set_student_active_status(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        is_active: bool,
+    ) -> bool:
+        """Activate or deactivate a student by setting is_active."""
+        query = (
+            select(UserProfile, StudentProfile)
+            .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
+            .where(StudentProfile.user_id == student_id)
+        )
+        result = await session.execute(query)
+        row = result.one_or_none()
+
+        if row is None:
+            return False
+
+        user_profile, student_profile = row
+        now = datetime.datetime.now(datetime.UTC)
+
+        user_profile.is_active = is_active
+        user_profile.deactivated_at = None if is_active else now
+        student_profile.deactivated_at = None if is_active else now
+
+        await session.commit()
+        return True
+
     async def get_summary_metrics(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
         """Headline metrics for the student dashboard."""
         completed_tasks_q = select(func.count(Task.id)).where(
