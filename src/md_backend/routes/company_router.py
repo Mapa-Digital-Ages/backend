@@ -109,16 +109,18 @@ async def update_company(
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
     """PATCH /company/{user_id} — update company data with business rules."""
+    payload = request.model_dump(exclude_unset=True)
     try:
         result = await company_service.update_company(
             user_id=user_id,
             session=session,
-            first_name=request.first_name,
-            last_name=request.last_name,
-            email=str(request.email) if request.email else None,
-            phone_number=request.phone_number,
-            spots=request.spots,
-            is_active=request.is_active,
+            first_name=payload.get("first_name"),
+            last_name=payload.get("last_name"),
+            email=str(payload["email"]) if payload.get("email") else None,
+            phone_number=payload.get("phone_number"),
+            spots=payload.get("spots"),
+            is_active=payload.get("is_active"),
+            last_name_provided="last_name" in payload,
         )
     except IntegrityError:
         await session.rollback()

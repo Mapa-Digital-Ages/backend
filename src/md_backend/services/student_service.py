@@ -23,6 +23,7 @@ from md_backend.models.db_models import (
     UserProfile,
     WellBeing,
 )
+from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
 _TASK_STATUS_TO_FRONTEND = {
@@ -82,7 +83,7 @@ class StudentService:
     async def create_student(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         birth_date: datetime.date,
@@ -138,7 +139,7 @@ class StudentService:
             .where(SchoolProfile.user_id.in_(school_ids))
         )
         rows = (await session.execute(q)).all()
-        return {row[0]: f"{row[1]} {row[2]}".strip() for row in rows}
+        return {row[0]: build_full_name(row[1], row[2]) for row in rows}
 
     async def _fetch_guardian_info(
         self,
@@ -167,7 +168,7 @@ class StudentService:
         result: dict[uuid.UUID, tuple[uuid.UUID, str]] = {}
         for student_id, guardian_id, first_name, last_name in rows:
             if student_id not in result:
-                result[student_id] = (guardian_id, f"{first_name} {last_name}".strip())
+                result[student_id] = (guardian_id, build_full_name(first_name, last_name))
         return result
 
     async def get_students(
@@ -175,6 +176,7 @@ class StudentService:
         session: AsyncSession,
         name: str | None = None,
         email: str | None = None,
+        school_id: uuid.UUID | None = None,
         page: int = 1,
         size: int = 10,
     ) -> dict:
@@ -191,6 +193,8 @@ class StudentService:
             )
         if email:
             extra_filters.append(UserProfile.email.ilike(f"%{email}%"))
+        if school_id:
+            extra_filters.append(StudentProfile.school_id == school_id)
 
         count_q = (
             select(func.count(UserProfile.id))
@@ -245,6 +249,7 @@ class StudentService:
         self,
         session: AsyncSession,
         name: str | None = None,
+        school_id: uuid.UUID | None = None,
     ) -> int:
         """Return the total count of active students, optionally filtered by name."""
         conditions: list[ColumnElement[bool]] = [
@@ -255,6 +260,8 @@ class StudentService:
             conditions.append(
                 UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
             )
+        if school_id:
+            conditions.append(StudentProfile.school_id == school_id)
         q = (
             select(func.count(UserProfile.id))
             .join(StudentProfile, StudentProfile.user_id == UserProfile.id)
@@ -323,7 +330,7 @@ class StudentService:
         student_fields = {"birth_date", "student_class", "school_id"}
 
         for field, value in data.items():
-            if value is None:
+            if value is None and field != "last_name":
                 continue
             if field in user_fields:
                 setattr(user_profile, field, value)

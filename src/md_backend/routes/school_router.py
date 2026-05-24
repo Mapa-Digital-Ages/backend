@@ -115,14 +115,16 @@ async def update_school(
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
     """Partially update school fields."""
+    payload = request.model_dump(exclude_unset=True)
     result = await school_service.update_school(
         school_id=school_id,
-        first_name=request.first_name,
-        last_name=request.last_name,
-        email=str(request.email) if request.email else None,
-        is_private=request.is_private,
-        requested_spots=request.requested_spots,
+        first_name=payload.get("first_name"),
+        last_name=payload.get("last_name"),
+        email=str(payload["email"]) if payload.get("email") else None,
+        is_private=payload.get("is_private"),
+        requested_spots=payload.get("requested_spots"),
         session=session,
+        last_name_provided="last_name" in payload,
     )
 
     if result is None:

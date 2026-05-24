@@ -14,6 +14,7 @@ from md_backend.models.db_models import (
     StudentProfile,
     UserProfile,
 )
+from md_backend.utils.names import build_full_name
 
 _STATUS_INPUT_MAP = {
     "waiting": GuardianStatusEnum.WAITING,
@@ -44,7 +45,7 @@ def _serialize_user(user: UserProfile) -> dict:
     else:
         status_str = "approved"
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
-    name = f"{user.first_name} {user.last_name}".strip()
+    name = build_full_name(user.first_name, user.last_name)
     return {
         "id": str(user.id),
         "email": user.email,

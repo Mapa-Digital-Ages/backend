@@ -9,6 +9,7 @@ from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
 from md_backend.models.db_models import CompanyProfile, UserProfile
+from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
 
@@ -18,7 +19,7 @@ class CompanyService:
     async def create_company(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         spots: int,
@@ -50,7 +51,7 @@ class CompanyService:
 
         await session.commit()
 
-        full_name = f"{first_name} {last_name}".strip()
+        full_name = build_full_name(first_name, last_name)
         return {
             "user_id": str(user.id),
             "email": user.email,
@@ -91,7 +92,7 @@ class CompanyService:
                 "user_id": str(c.user_id),
                 "email": c.user.email,
                 "phone_number": c.user.phone_number,
-                "name": f"{c.user.first_name} {c.user.last_name}".strip(),
+                "name": build_full_name(c.user.first_name, c.user.last_name),
                 "spots": c.spots,
                 "available_spots": c.available_spots,
                 "status": "aguardando",
@@ -140,7 +141,7 @@ class CompanyService:
             "user_id": str(c.user_id),
             "email": c.user.email,
             "phone_number": c.user.phone_number,
-            "name": f"{c.user.first_name} {c.user.last_name}".strip(),
+            "name": build_full_name(c.user.first_name, c.user.last_name),
             "spots": c.spots,
             "available_spots": c.available_spots,
             "status": "aguardando",
@@ -169,6 +170,7 @@ class CompanyService:
         phone_number: str | None = None,
         spots: int | None = None,
         is_active: bool | None = None,
+        last_name_provided: bool = False,
     ) -> dict | None:
         """Update company and user data with robust business rules."""
         query = (
@@ -184,7 +186,7 @@ class CompanyService:
 
         if first_name is not None:
             company.user.first_name = first_name
-        if last_name is not None:
+        if last_name_provided:
             company.user.last_name = last_name
         if email is not None:
             company.user.email = email
@@ -221,7 +223,7 @@ class CompanyService:
             "user_id": str(company.user_id),
             "email": company.user.email,
             "phone_number": company.user.phone_number,
-            "name": f"{company.user.first_name} {company.user.last_name}".strip(),
+            "name": build_full_name(company.user.first_name, company.user.last_name),
             "spots": company.spots,
             "available_spots": company.available_spots,
             "status": "aguardando",

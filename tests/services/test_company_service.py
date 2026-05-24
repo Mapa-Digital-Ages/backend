@@ -84,6 +84,49 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
+    def test_create_company_accepts_null_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "company_null_last@test.com"
+        resp = self.client.post(
+            "/api/company",
+            json=self._payload(email) | {"last_name": None},
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["name"], "Empresa")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
+    def test_create_company_without_last_name_persists_null(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "company_missing_last@test.com"
+        payload = self._payload(email)
+        del payload["last_name"]
+        resp = self.client.post("/api/company", json=payload)
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["name"], "Empresa")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
     def test_created_company_logs_in_with_company_role(self):
         email = "company_role@test.com"
         resp = self.client.post("/api/company", json=self._payload(email, spots=80))
@@ -242,6 +285,32 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "company_upd_full_new@test.com")
         self.assertEqual(body["spots"], 200)
         self.assertEqual(body["name"], "Novo Nome")
+
+    def test_update_company_can_clear_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        create_resp = self.client.post(
+            "/api/company", json=self._payload("company_clear_last@test.com")
+        )
+        company_id = create_resp.json()["user_id"]
+
+        resp = self.client.patch(
+            f"/api/company/{company_id}",
+            json={"last_name": None},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["name"], "Empresa")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.id == uuid.UUID(company_id))
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
 
     def test_update_company_email_conflict_returns_409(self):
         self.client.post("/api/company", json=self._payload("company_taken@test.com"))
