@@ -316,9 +316,13 @@ class TestStudentRouterIntegration(unittest.TestCase):
         response = self.client.get("/api/student", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertGreaterEqual(len(data), 2)
-        for item in data:
+        self.assertIn("items", data)
+        self.assertIn("total", data)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["page_size"], 10)
+        items = data["items"]
+        self.assertGreaterEqual(len(items), 2)
+        for item in items:
             self.assertNotIn("password", item)
             self.assertTrue(item["is_active"])
 
@@ -333,7 +337,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             "/api/student", params={"name": "zelda"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["first_name"] == "Zelda" for item in items))
 
     def test_list_students_filter_by_email(self):
@@ -349,7 +353,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["email"] == "student_filter_email@example.com" for item in items))
 
     def test_list_students_unauthenticated_returns_401(self):
