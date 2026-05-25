@@ -30,7 +30,7 @@ from md_backend.utils.access_control import (
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)    # type: ignore[call-arg]
 
 student_service = StudentService()
 guardian_service = GuardianService()
@@ -141,12 +141,12 @@ async def list_students(
     school_id: uuid.UUID | None = Query(default=None, description="Filter by school ID"),
     page: int = Query(default=1, ge=1, description="Page number"),
     size: int = Query(default=10, ge=1, le=100, description="Page size"),
-) -> list[dict]:
+) -> JSONResponse:
     """List active students with optional filters and pagination."""
     students = await student_service.get_students(
         session=session, name=name, email=email, school_id=school_id, page=page, size=size
     )
-    return students
+    return JSONResponse(content=students, status_code=status.HTTP_200_OK)
 
 
 @student_router.get(
@@ -360,12 +360,7 @@ async def get_student_calendar(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Return the current week's non-deactivated tasks for *student_id*.
-
-    The week is computed server-side (Sunday 00:00 UTC → Saturday 23:59 UTC).
-    Each task includes the joined subject object ``{ id, label }`` so the
-    frontend can populate the calendar without extra processing.
-    """
+    """Return the current week's non-deactivated tasks for *student_id*."""
     await _ensure_can_access_student(session, current_user, student_id)
 
     student = await student_service.get_student_by_id(

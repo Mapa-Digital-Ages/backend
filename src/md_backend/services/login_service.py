@@ -1,6 +1,7 @@
 """Login service for user authentication."""
 
-from helper_backend.utils.logger import get_logger
+import logging
+
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -16,7 +17,7 @@ from md_backend.utils.security import (
     verify_password,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 _logger_extra = {
     "component_name": "login_service",
     "component_version": "v1",

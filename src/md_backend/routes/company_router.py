@@ -33,18 +33,7 @@ async def create_company(
     request: CreateCompanyRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
-    """Create a new company account.
-
-    Args:
-        request: Company creation payload.
-        session: Database session.
-
-    Returns:
-        HTTP 201 with created company data.
-
-        HTTP 409 if the email already exists or a database
-        integrity conflict occurs.
-    """
+    """Create a new company account."""
     try:
         result = await company_service.create_company(
             first_name=request.first_name,
@@ -78,17 +67,7 @@ async def list_companies(
     size: int = Query(10, ge=1, le=100, description="Tamanho da pagina"),
     session: AsyncSession = Depends(get_db_session),
 ) -> list[dict]:
-    """List active companies with pagination and optional name filtering.
-
-    Args:
-        name: Optional partial name filter.
-        page: Page number.
-        size: Number of items per page.
-        session: Database session.
-
-    Returns:
-        List of active companies.
-    """
+    """List active companies with pagination and optional name filtering."""
     return await company_service.list_companies(
         session=session,
         name=name,
@@ -104,7 +83,7 @@ async def list_companies(
 async def count_companies(
     session: AsyncSession = Depends(get_db_session),
     name: str | None = Query(default=None, description="Filter by first or last name"),
-):
+) -> JSONResponse:
     """Return the total number of active companies, optionally filtered by name."""
     total = await company_service.count_companies(session=session, name=name)
     return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
@@ -115,17 +94,7 @@ async def get_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
-    """Fetch a company by user ID.
-
-    Args:
-        user_id: Company user ID.
-        session: Database session.
-
-    Returns:
-        HTTP 200 with company data.
-
-        HTTP 404 if the company does not exist.
-    """
+    """Fetch a company by user ID."""
     result = await company_service.get_company_by_id(user_id, session)
 
     if result is None:
@@ -142,17 +111,7 @@ async def delete_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> Response:
-    """Soft delete a company.
-
-    Args:
-        user_id: Company user ID.
-        session: Database session.
-
-    Returns:
-        HTTP 204 on success.
-
-        HTTP 404 if the company does not exist.
-    """
+    """Soft delete a company."""
     success = await company_service.delete_company(user_id, session)
 
     if not success:
@@ -170,21 +129,7 @@ async def update_company(
     request: UpdateCompanyRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> Any:
-    """Update a company's data.
-
-    Args:
-        user_id: Company user ID.
-        request: Partial update payload.
-        session: Database session.
-
-    Returns:
-        HTTP 200 with updated company data.
-
-        HTTP 404 if the company does not exist.
-
-        HTTP 409 if the email already belongs to another record.
-    """
-    """PATCH /company/{user_id} — update company data with business rules."""
+    """Update a company's data."""
     payload = request.model_dump(exclude_unset=True)
     try:
         result = await company_service.update_company(
@@ -196,7 +141,6 @@ async def update_company(
             phone_number=payload.get("phone_number"),
             spots=payload.get("spots"),
             is_active=payload.get("is_active"),
-            last_name_provided="last_name" in payload,
         )
     except IntegrityError:
         await session.rollback()

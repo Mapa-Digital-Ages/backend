@@ -1,18 +1,17 @@
 """Service layer for Company operations."""
 
 import datetime
+import logging
 import uuid
 
-from helper_backend.utils.logger import get_logger
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import CompanyProfile, UserProfile
 from md_backend.utils.security import hash_password
 
-logger = get_logger(__name__)
-
+logger = logging.getLogger(__name__)
 _logger_extra = {
     "component_name": "company_service",
     "component_version": "v1",
@@ -25,7 +24,7 @@ class CompanyService:
     async def create_company(
         self,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         email: str,
         password: str,
         spots: int,
@@ -86,7 +85,7 @@ class CompanyService:
             },
         )
 
-        full_name = f"{first_name} {last_name}".strip()
+        full_name = f"{first_name} {last_name or ''}".strip()
 
         return {
             "user_id": str(user.id),
@@ -127,16 +126,7 @@ class CompanyService:
         )
 
         if name:
-            logger.debug(
-                "Applying company name filter",
-                extra={
-                    **_logger_extra,
-                    "name_filter": name,
-                },
-            )
-
             search = f"%{name}%"
-
             query = query.where(
                 (UserProfile.first_name.ilike(search)) | (UserProfile.last_name.ilike(search))
             )
@@ -144,7 +134,6 @@ class CompanyService:
         query = query.offset(offset).limit(size)
 
         result = await session.execute(query)
-
         companies = result.scalars().all()
 
         logger.info(
@@ -160,7 +149,7 @@ class CompanyService:
                 "user_id": str(c.user_id),
                 "email": c.user.email,
                 "phone_number": c.user.phone_number,
-                "name": f"{c.user.first_name} {c.user.last_name}".strip(),
+                "name": f"{c.user.first_name} {c.user.last_name or ''}".strip(),
                 "spots": c.spots,
                 "available_spots": c.available_spots,
                 "status": "aguardando",
@@ -168,6 +157,24 @@ class CompanyService:
             }
             for c in companies
         ]
+
+    async def count_companies(
+        self,
+        session: AsyncSession,
+        name: str | None = None,
+    ) -> int:
+        """Return the total count of active companies."""
+        query = select(func.count(CompanyProfile.user_id)).join(UserProfile).where(
+            UserProfile.is_active
+        )
+
+        if name:
+            search = f"%{name}%"
+            query = query.where(
+                (UserProfile.first_name.ilike(search)) | (UserProfile.last_name.ilike(search))
+            )
+
+        return (await session.execute(query)).scalar() or 0
 
     async def get_company_by_id(
         self,
@@ -191,7 +198,6 @@ class CompanyService:
         )
 
         result = await session.execute(query)
-
         c = result.scalar_one_or_none()
 
         if not c:
@@ -205,19 +211,11 @@ class CompanyService:
 
             return None
 
-        logger.info(
-            "Company retrieved successfully",
-            extra={
-                **_logger_extra,
-                "user_id": str(user_id),
-            },
-        )
-
         return {
             "user_id": str(c.user_id),
             "email": c.user.email,
             "phone_number": c.user.phone_number,
-            "name": f"{c.user.first_name} {c.user.last_name}".strip(),
+            "name": f"{c.user.first_name} {c.user.last_name or ''}".strip(),
             "spots": c.spots,
             "available_spots": c.available_spots,
             "status": "aguardando",
@@ -256,14 +254,6 @@ class CompanyService:
 
         await session.commit()
 
-        logger.info(
-            "Company deleted successfully",
-            extra={
-                **_logger_extra,
-                "user_id": str(user_id),
-            },
-        )
-
         return True
 
     async def update_company(
@@ -293,7 +283,6 @@ class CompanyService:
         )
 
         result = await session.execute(query)
-
         company = result.scalar_one_or_none()
 
         if not company:
@@ -321,26 +310,14 @@ class CompanyService:
 
         if is_active is not None:
             company.user.is_active = is_active
-
-            if is_active:
-                company.user.deactivated_at = None
-            else:
-                company.user.deactivated_at = datetime.datetime.now(datetime.UTC)
+            company.user.deactivated_at = (
+                None if is_active else datetime.datetime.now(datetime.UTC)
+            )
 
         if spots is not None:
             occupied_spots = company.spots - company.available_spots
 
             if spots < occupied_spots:
-                logger.error(
-                    "Invalid company spots update",
-                    extra={
-                        **_logger_extra,
-                        "user_id": str(user_id),
-                        "requested_spots": spots,
-                        "occupied_spots": occupied_spots,
-                    },
-                )
-
                 from fastapi import HTTPException, status
 
                 raise HTTPException(
@@ -356,19 +333,11 @@ class CompanyService:
 
         await session.commit()
 
-        logger.info(
-            "Company updated successfully",
-            extra={
-                **_logger_extra,
-                "user_id": str(user_id),
-            },
-        )
-
         return {
             "user_id": str(company.user_id),
             "email": company.user.email,
             "phone_number": company.user.phone_number,
-            "name": f"{company.user.first_name} {company.user.last_name}".strip(),
+            "name": f"{company.user.first_name} {company.user.last_name or ''}".strip(),
             "spots": company.spots,
             "available_spots": company.available_spots,
             "status": "aguardando",

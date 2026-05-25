@@ -1,17 +1,16 @@
 """Storage service interface and implementations."""
 
+import logging
 import uuid
 from abc import ABC, abstractmethod
 
 import aioboto3
-from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import StudentUploadBlob
 
-logger = get_logger(__name__)
-
+logger = logging.getLogger(__name__)
 _logger_extra = {
     "component_name": "storage_service",
     "component_version": "v1",

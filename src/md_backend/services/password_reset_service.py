@@ -1,10 +1,10 @@
 """Service for password reset requests and confirmations."""
 
 import datetime
+import logging
 import secrets
 
 from fastapi import BackgroundTasks
-from helper_backend.utils.logger import get_logger
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,7 +18,7 @@ from md_backend.utils.security import (
     verify_password,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 
 _logger_extra = {
     "component_name": "password_reset_service",

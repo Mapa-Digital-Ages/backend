@@ -1,661 +1,265 @@
-"""Guardian service for guardian management business logic."""
+"""Guardian router for guardian management endpoints."""
 
-import datetime
+import logging
 import uuid
 
-from helper_backend.utils.logger import get_logger
-from sqlalchemy import and_, func, select
-from sqlalchemy.exc import IntegrityError
+from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
-from md_backend.models.db_models import (
-    GuardianProfile,
-    GuardianStatusEnum,
-    StudentGuardian,
-    StudentProfile,
-    UserProfile,
+from md_backend.models.api_models import (
+    GuardianCreateRequest,
+    GuardianListPaginatedResponse,
+    GuardianResponse,
+    GuardianUpdateRequest,
 )
-from md_backend.utils.security import hash_password
+from md_backend.services.guardian_service import GuardianService
+from md_backend.utils.database import get_db_session
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
-logger = get_logger(__name__)
-_logger_extra = {
-    "component_name": "guardian_service",
-    "component_version": "v1",
-}
+logger = logging.getLogger(__name__)    # type: ignore[call-arg]
+
+guardian_service = GuardianService()
+guardian_router = APIRouter(prefix="/guardian", tags=["Guardian"])
 
 
-class GuardianService:
-    """Service for guardian operations."""
+@guardian_router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=GuardianResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def create_guardian(
+    request: GuardianCreateRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Create a new guardian (admin only)."""
+    result = await guardian_service.create_guardian(
+        first_name=request.first_name,
+        last_name=request.last_name or "",
+        email=str(request.email),
+        password=request.password,
+        phone_number=request.phone_number,
+        session=session,
+    )
 
-    async def create_guardian(
-        self,
-        first_name: str,
-        last_name: str,
-        email: str,
-        password: str,
-        session: AsyncSession,
-        phone_number: str | None = None,
-    ) -> dict | None:
-        """Create a new guardian user with WAITING status."""
-        logger.info(
-            "Creating guardian",
-            extra={
-                **_logger_extra,
-                "email": email,
-            },
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Email already registered"},
+            status_code=status.HTTP_409_CONFLICT,
         )
 
-        existing = await session.execute(select(UserProfile).where(UserProfile.email == email))
+    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
-        if existing.scalar_one_or_none() is not None:
-            logger.warning(
-                "Guardian already exists",
-                extra={
-                    **_logger_extra,
-                    "email": email,
-                },
-            )
 
-            return None
+@guardian_router.get(
+    "",
+    response_model=GuardianListPaginatedResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def list_guardians(
+    session: AsyncSession = Depends(get_db_session),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+    email: str | None = Query(default=None, description="Filter by email"),
+    guardian_status: str | None = Query(
+        default=None, description="Filter by status: waiting, approved, rejected"
+    ),
+    page: int = Query(default=1, ge=1, description="Page number"),
+    size: int = Query(default=10, ge=1, le=100, description="Page size"),
+):
+    """List guardians with optional filters and pagination (admin only)."""
+    guardians = await guardian_service.get_guardians(
+        session=session, name=name, email=email, status=guardian_status, page=page, size=size
+    )
+    return JSONResponse(content=guardians, status_code=status.HTTP_200_OK)
 
-        hashed = await hash_password(password)
 
-        try:
-            user_profile = UserProfile(
-                first_name=first_name,
-                last_name=last_name,
-                email=email,
-                password=hashed,
-                phone_number=phone_number,
-            )
+@guardian_router.get("/me", response_model=GuardianResponse)
+async def get_my_guardian(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the authenticated guardian's profile and linked students."""
+    result = await guardian_service.get_guardian_by_id(
+        session=session, guardian_id=uuid.UUID(current_user["user_id"])
+    )
 
-            guardian_profile = GuardianProfile(
-                user=user_profile,
-                guardian_status=GuardianStatusEnum.WAITING,
-            )
-
-            session.add(user_profile)
-            session.add(guardian_profile)
-
-            await session.commit()
-
-            await session.refresh(user_profile)
-            await session.refresh(guardian_profile)
-
-        except IntegrityError:
-            logger.error(
-                "Failed to create guardian due to integrity error",
-                extra={
-                    **_logger_extra,
-                    "email": email,
-                },
-            )
-
-            await session.rollback()
-
-            return None
-
-        logger.info(
-            "Guardian created successfully",
-            extra={
-                **_logger_extra,
-                "user_id": str(user_profile.id),
-                "email": email,
-            },
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Responsável não encontrado"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        return self._to_response_dict(user_profile, guardian_profile, [])
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
-    async def get_guardians(
-        self,
-        session: AsyncSession,
-        name: str | None = None,
-        email: str | None = None,
-        status: str | None = None,
-        page: int = 1,
-        size: int = 10,
-    ) -> dict:
-        """List active guardians with optional filters and pagination."""
-        logger.info(
-            "Listing guardians",
-            extra={
-                **_logger_extra,
-                "name_filter": name,
-                "email_filter": email,
-                "status_filter": status,
-                "page": page,
-                "size": size,
-            },
+
+@guardian_router.patch("/me", response_model=GuardianResponse)
+async def update_my_guardian(
+    request: GuardianUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Update the authenticated guardian's own profile."""
+    result = await guardian_service.update_guardian(
+        session=session,
+        guardian_id=uuid.UUID(current_user["user_id"]),
+        data=request.model_dump(exclude_unset=True),
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Guardian not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        query = (
-            select(UserProfile, GuardianProfile)
-            .options(
-                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
-            )
-            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
-            .where(
-                UserProfile.is_active.is_(True),
-                GuardianProfile.deactivated_at.is_(None),
-            )
+    if result == "email_conflict":
+        return JSONResponse(
+            content={"detail": "Email already in use"},
+            status_code=status.HTTP_409_CONFLICT,
         )
 
-        if name:
-            query = query.where(
-                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
-            )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
-        if email:
-            query = query.where(UserProfile.email.ilike(f"%{email}%"))
 
-        if status:
-            query = query.where(GuardianProfile.guardian_status == status)
+@guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_my_guardian(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Deactivate the authenticated guardian's own account."""
+    success = await guardian_service.deactivate_guardian(
+        session=session, guardian_id=uuid.UUID(current_user["user_id"])
+    )
 
-        count_query = (
-            select(func.count())
-            .select_from(UserProfile)
-            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
-            .where(
-                UserProfile.is_active.is_(True),
-                GuardianProfile.deactivated_at.is_(None),
-            )
+    if not success:
+        return JSONResponse(
+            content={"detail": "Guardian not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        if name:
-            count_query = count_query.where(
-                UserProfile.first_name.ilike(f"%{name}%") | UserProfile.last_name.ilike(f"%{name}%")
-            )
+    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
 
-        if email:
-            count_query = count_query.where(UserProfile.email.ilike(f"%{email}%"))
 
-        if status:
-            count_query = count_query.where(GuardianProfile.guardian_status == status)
+@guardian_router.get(
+    "/{guardian_id}",
+    response_model=GuardianResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def get_guardian(
+    guardian_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Get a single guardian by ID (admin only)."""
+    result = await guardian_service.get_guardian_by_id(session=session, guardian_id=guardian_id)
 
-        total_result = await session.execute(count_query)
-
-        total = total_result.scalar() or 0
-
-        query = query.offset((page - 1) * size).limit(size)
-
-        result = await session.execute(query)
-
-        rows = result.all()
-
-        items = []
-
-        for user, guardian in rows:
-            students = []
-
-            for student in guardian.students:
-                if student.deactivated_at is None:
-                    students.append(
-                        {
-                            "user_id": str(student.user_id),
-                            "first_name": student.user.first_name,
-                            "last_name": student.user.last_name,
-                            "email": student.user.email,
-                            "birth_date": (
-                                student.birth_date.isoformat() if student.birth_date else ""
-                            ),
-                            "student_class": student.student_class.value,
-                        }
-                    )
-
-            items.append(self._to_response_dict(user, guardian, students))
-
-        logger.info(
-            "Guardians listed successfully",
-            extra={
-                **_logger_extra,
-                "guardians_count": len(items),
-                "total": total,
-            },
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Guardian not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        return {
-            "items": items,
-            "total": total,
-            "page": page,
-            "size": size,
-        }
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
-    async def get_guardian_by_id(
-        self,
-        session: AsyncSession,
-        guardian_id: uuid.UUID,
-    ) -> dict | None:
-        """Fetch a single active guardian by user ID."""
-        logger.info(
-            "Getting guardian by id",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-            },
+
+@guardian_router.patch(
+    "/{guardian_id}",
+    response_model=GuardianResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def update_guardian(
+    guardian_id: uuid.UUID,
+    request: GuardianUpdateRequest,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Update a guardian's profile (admin only)."""
+    result = await guardian_service.update_guardian(
+        session=session,
+        guardian_id=guardian_id,
+        data=request.model_dump(exclude_unset=True),
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Guardian not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        query = (
-            select(UserProfile, GuardianProfile)
-            .options(
-                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
-            )
-            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
-            .where(
-                GuardianProfile.user_id == guardian_id,
-                UserProfile.is_active.is_(True),
-                GuardianProfile.deactivated_at.is_(None),
-            )
+    if result == "email_conflict":
+        return JSONResponse(
+            content={"detail": "Email already in use"},
+            status_code=status.HTTP_409_CONFLICT,
         )
 
-        result = await session.execute(query)
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
-        row = result.one_or_none()
 
-        if row is None:
-            logger.warning(
-                "Guardian not found",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                },
-            )
+@guardian_router.delete(
+    "/{guardian_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def delete_guardian(
+    guardian_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Deactivate a guardian (admin only)."""
+    success = await guardian_service.deactivate_guardian(session=session, guardian_id=guardian_id)
 
-            return None
-
-        user_profile, guardian_profile = row
-
-        students = []
-
-        for student in guardian_profile.students:
-            if student.deactivated_at is None:
-                students.append(
-                    {
-                        "user_id": str(student.user_id),
-                        "first_name": student.user.first_name,
-                        "last_name": student.user.last_name,
-                        "email": student.user.email,
-                        "birth_date": (
-                            student.birth_date.isoformat() if student.birth_date else ""
-                        ),
-                        "student_class": student.student_class.value,
-                    }
-                )
-
-        return self._to_response_dict(
-            user_profile,
-            guardian_profile,
-            students,
+    if not success:
+        return JSONResponse(
+            content={"detail": "Guardian not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    async def update_guardian(
-        self,
-        session: AsyncSession,
-        guardian_id: uuid.UUID,
-        data: dict,
-    ) -> dict | None | str:
-        """Update mutable fields on a guardian user profile."""
-        logger.info(
-            "Updating guardian",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-            },
+    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+
+
+@guardian_router.post(
+    "/{guardian_id}/students/{student_id}",
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def link_student_to_guardian(
+    guardian_id: uuid.UUID,
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Link a student to a guardian (admin only)."""
+    success = await guardian_service.link_student_to_guardian(
+        session=session, guardian_id=guardian_id, student_id=student_id
+    )
+
+    if not success:
+        return JSONResponse(
+            content={"detail": "Guardian or student not found, or already linked"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        query = (
-            select(UserProfile, GuardianProfile)
-            .options(
-                selectinload(GuardianProfile.students).selectinload(StudentProfile.user),
-            )
-            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
-            .where(
-                GuardianProfile.user_id == guardian_id,
-                UserProfile.is_active.is_(True),
-                GuardianProfile.deactivated_at.is_(None),
-            )
+    return JSONResponse(
+        content={"detail": "Student linked to guardian successfully"},
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@guardian_router.delete(
+    "/{guardian_id}/students/{student_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def unlink_student_from_guardian(
+    guardian_id: uuid.UUID,
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Unlink a student from a guardian (admin only)."""
+    success = await guardian_service.unlink_student_from_guardian(
+        session=session, guardian_id=guardian_id, student_id=student_id
+    )
+
+    if not success:
+        return JSONResponse(
+            content={"detail": "Link between guardian and student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
         )
 
-        result = await session.execute(query)
-
-        row = result.one_or_none()
-
-        if row is None:
-            logger.warning(
-                "Guardian not found",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                },
-            )
-
-            return None
-
-        user_profile, guardian_profile = row
-
-        user_fields = {
-            "first_name",
-            "last_name",
-            "phone_number",
-            "email",
-        }
-
-        if "email" in data and data["email"] and data["email"] != user_profile.email:
-            existing = await session.execute(
-                select(UserProfile).where(UserProfile.email == data["email"])
-            )
-
-            if existing.scalar_one_or_none() is not None:
-                logger.warning(
-                    "Guardian email conflict",
-                    extra={
-                        **_logger_extra,
-                        "guardian_id": str(guardian_id),
-                        "email": data["email"],
-                    },
-                )
-
-                return "email_conflict"
-
-        for field, value in data.items():
-            if value is None:
-                continue
-
-            if field in user_fields:
-                setattr(user_profile, field, value)
-
-        try:
-            await session.commit()
-
-            await session.refresh(user_profile)
-            await session.refresh(guardian_profile)
-
-        except Exception:
-            logger.error(
-                "Failed to update guardian",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                },
-            )
-
-            await session.rollback()
-
-            raise
-
-        students = []
-
-        for student in guardian_profile.students:
-            if student.deactivated_at is None:
-                students.append(
-                    {
-                        "user_id": str(student.user_id),
-                        "first_name": student.user.first_name,
-                        "last_name": student.user.last_name,
-                        "email": student.user.email,
-                        "birth_date": (
-                            student.birth_date.isoformat() if student.birth_date else ""
-                        ),
-                        "student_class": student.student_class.value,
-                    }
-                )
-
-        logger.info(
-            "Guardian updated successfully",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-            },
-        )
-
-        return self._to_response_dict(
-            user_profile,
-            guardian_profile,
-            students,
-        )
-
-    async def deactivate_guardian(
-        self,
-        session: AsyncSession,
-        guardian_id: uuid.UUID,
-    ) -> bool:
-        """Soft-delete a guardian."""
-        logger.info(
-            "Deactivating guardian",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-            },
-        )
-
-        query = (
-            select(UserProfile, GuardianProfile)
-            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
-            .where(
-                GuardianProfile.user_id == guardian_id,
-                UserProfile.is_active.is_(True),
-                GuardianProfile.deactivated_at.is_(None),
-            )
-        )
-
-        result = await session.execute(query)
-
-        row = result.one_or_none()
-
-        if row is None:
-            logger.warning(
-                "Guardian not found",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                },
-            )
-
-            return False
-
-        user_profile, guardian_profile = row
-
-        now = datetime.datetime.now(datetime.UTC)
-
-        user_profile.is_active = False
-        user_profile.deactivated_at = now
-        guardian_profile.deactivated_at = now
-
-        await session.commit()
-
-        logger.info(
-            "Guardian deactivated successfully",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-            },
-        )
-
-        return True
-
-    async def link_student_to_guardian(
-        self,
-        session: AsyncSession,
-        guardian_id: uuid.UUID,
-        student_id: uuid.UUID,
-    ) -> bool:
-        """Link a student to a guardian."""
-        logger.info(
-            "Linking student to guardian",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-                "student_id": str(student_id),
-            },
-        )
-
-        guardian_result = await session.execute(
-            select(GuardianProfile).where(
-                GuardianProfile.user_id == guardian_id,
-                GuardianProfile.deactivated_at.is_(None),
-            )
-        )
-
-        if guardian_result.scalar_one_or_none() is None:
-            logger.warning(
-                "Guardian not found for link",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                },
-            )
-
-            return False
-
-        student_result = await session.execute(
-            select(StudentProfile).where(
-                StudentProfile.user_id == student_id,
-                StudentProfile.deactivated_at.is_(None),
-            )
-        )
-
-        if student_result.scalar_one_or_none() is None:
-            logger.warning(
-                "Student not found for link",
-                extra={
-                    **_logger_extra,
-                    "student_id": str(student_id),
-                },
-            )
-
-            return False
-
-        existing = await session.execute(
-            select(StudentGuardian).where(
-                and_(
-                    StudentGuardian.guardian_id == guardian_id,
-                    StudentGuardian.student_id == student_id,
-                    StudentGuardian.deactivated_at.is_(None),
-                )
-            )
-        )
-
-        if existing.scalar_one_or_none() is not None:
-            logger.warning(
-                "Student already linked to guardian",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                    "student_id": str(student_id),
-                },
-            )
-
-            return False
-
-        try:
-            link = StudentGuardian(
-                guardian_id=guardian_id,
-                student_id=student_id,
-            )
-
-            session.add(link)
-
-            await session.commit()
-
-            logger.info(
-                "Student linked successfully",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                    "student_id": str(student_id),
-                },
-            )
-
-            return True
-
-        except Exception:
-            logger.error(
-                "Failed to link student to guardian",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                    "student_id": str(student_id),
-                },
-            )
-
-            await session.rollback()
-
-            return False
-
-    async def unlink_student_from_guardian(
-        self,
-        session: AsyncSession,
-        guardian_id: uuid.UUID,
-        student_id: uuid.UUID,
-    ) -> bool:
-        """Unlink a student from a guardian."""
-        logger.info(
-            "Unlinking student from guardian",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-                "student_id": str(student_id),
-            },
-        )
-
-        query = select(StudentGuardian).where(
-            and_(
-                StudentGuardian.guardian_id == guardian_id,
-                StudentGuardian.student_id == student_id,
-                StudentGuardian.deactivated_at.is_(None),
-            )
-        )
-
-        result = await session.execute(query)
-
-        link = result.scalar_one_or_none()
-
-        if link is None:
-            logger.warning(
-                "Student link not found",
-                extra={
-                    **_logger_extra,
-                    "guardian_id": str(guardian_id),
-                    "student_id": str(student_id),
-                },
-            )
-
-            return False
-
-        link.deactivated_at = datetime.datetime.now(datetime.UTC)
-
-        await session.commit()
-
-        logger.info(
-            "Student unlinked successfully",
-            extra={
-                **_logger_extra,
-                "guardian_id": str(guardian_id),
-                "student_id": str(student_id),
-            },
-        )
-
-        return True
-
-    def _to_response_dict(
-        self,
-        user_profile: UserProfile,
-        guardian_profile: GuardianProfile,
-        students: list,
-    ) -> dict:
-        return {
-            "user_id": str(guardian_profile.user_id),
-            "first_name": user_profile.first_name,
-            "last_name": user_profile.last_name,
-            "email": user_profile.email,
-            "phone_number": user_profile.phone_number,
-            "guardian_status": guardian_profile.guardian_status.value,
-            "is_active": user_profile.is_active,
-            "created_at": (
-                user_profile.created_at.isoformat() if user_profile.created_at else None
-            ),
-            "deactivated_at": (
-                user_profile.deactivated_at.isoformat() if user_profile.deactivated_at else None
-            ),
-            "students": students,
-        }
+    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)

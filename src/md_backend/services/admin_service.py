@@ -1,8 +1,8 @@
 """Admin service for user management."""
 
+import logging
 import uuid
 
-from helper_backend.utils.logger import get_logger
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,7 +15,7 @@ from md_backend.models.db_models import (
     UserProfile,
 )
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 _logger_extra = {
     "component_name": "admin_service",
     "component_version": "v1",

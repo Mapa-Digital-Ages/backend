@@ -1,5 +1,6 @@
 """Upload service."""
 
+import logging
 import math
 import os
 import re
@@ -8,7 +9,6 @@ import zipfile
 from io import BytesIO
 
 from fastapi import UploadFile
-from helper_backend.utils.logger import get_logger
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,8 +22,7 @@ from md_backend.services.storage_service import StorageService
 from md_backend.utils.access_control import guardian_owns_student
 from md_backend.utils.settings import settings
 
-logger = get_logger(__name__)
-
+logger = logging.getLogger(__name__)
 _logger_extra = {
     "component_name": "upload_service",
     "component_version": "v1",

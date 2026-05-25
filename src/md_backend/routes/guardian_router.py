@@ -17,7 +17,7 @@ from md_backend.services.guardian_service import GuardianService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)    # type: ignore[call-arg]
 
 guardian_service = GuardianService()
 guardian_router = APIRouter(prefix="/guardian", tags=["Guardian"])

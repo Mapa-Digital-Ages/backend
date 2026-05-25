@@ -12,6 +12,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from md_backend.models.db_models import (
     ClassEnum,
     GuardianProfile,
+    HumorEnum,
     SchoolProfile,
     StudentGuardian,
     StudentProfile,
@@ -35,7 +36,6 @@ _TASK_STATUS_TO_FRONTEND = {
     TaskStatusEnum.PENDING: "pending",
     TaskStatusEnum.ADJUST: "adjust",
 }
-
 
 def get_week_bounds(
     reference: datetime.date | None = None,
@@ -89,7 +89,6 @@ def _task_with_subject_to_dict(task: Task, subject: Subject) -> dict:
             "label": subject.name,
         },
     }
-
 
 class StudentService:
     """Service for student operations."""
@@ -821,11 +820,12 @@ class StudentService:
         session: AsyncSession,
         student_id: uuid.UUID,
         date: datetime.date,
-        humor: str | None = None,
+        humor: HumorEnum | str | None = None,
         online_activity_minutes: int | None = None,
         sleep_hours: float | None = None,
     ) -> dict:
         """Atomically create or update a student's well-being record for a date."""
+        humor_value: HumorEnum | None = HumorEnum(humor) if isinstance(humor, str) else humor
         query = select(WellBeing).where(
             WellBeing.student_id == student_id,
             WellBeing.date == date,
@@ -837,14 +837,14 @@ class StudentService:
             record = WellBeing(
                 student_id=student_id,
                 date=date,
-                humor=humor,
+                humor=humor_value,
                 online_activity_minutes=online_activity_minutes,
                 sleep_hours=sleep_hours,
             )
             session.add(record)
         else:
-            if humor is not None:
-                record.humor = humor
+            if humor_value is not None:
+                record.humor = humor_value
             if online_activity_minutes is not None:
                 record.online_activity_minutes = online_activity_minutes
             if sleep_hours is not None:
@@ -927,7 +927,9 @@ class StudentService:
         date: datetime.date,
     ) -> list[dict]:
         """Return all active tasks for a student on a given date."""
-        day_start = datetime.datetime(date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC)
+        day_start = datetime.datetime(
+            date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC
+        )
         day_end = datetime.datetime(
             date.year, date.month, date.day, 23, 59, 59, 999999, tzinfo=datetime.UTC
         )
@@ -957,7 +959,9 @@ class StudentService:
     ) -> list[dict]:
         """Sync the full task state for a student/date (upsert + soft delete omitted tasks)."""
         now = datetime.datetime.now(datetime.UTC)
-        day_start = datetime.datetime(date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC)
+        day_start = datetime.datetime(
+            date.year, date.month, date.day, 0, 0, 0, tzinfo=datetime.UTC
+        )
         day_end = datetime.datetime(
             date.year, date.month, date.day, 23, 59, 59, 999999, tzinfo=datetime.UTC
         )

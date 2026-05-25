@@ -32,7 +32,7 @@ async def setup(
     request: SetupRequest,
     session: AsyncSession = Depends(get_db_session),
     x_setup_token: str | None = Header(default=None, alias="X-Setup-Token"),
-) -> dict:
+) -> JSONResponse:
     """Create the first superadmin. Only works once."""
     _require_setup_token(x_setup_token)
 
@@ -40,7 +40,7 @@ async def setup(
         email=request.email,
         password=request.password,
         first_name=request.first_name,
-        last_name=request.last_name,
+        last_name=request.last_name or "",
         phone_number=request.phone_number,
         session=session,
     )

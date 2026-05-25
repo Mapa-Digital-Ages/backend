@@ -1,9 +1,9 @@
 """School Services - handles atomic creation of school accounts."""
 
 import datetime
+import logging
 import uuid
 
-from helper_backend.utils.logger import get_logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +14,7 @@ from md_backend.models.db_models import (
 )
 from md_backend.utils.security import hash_password
 
-logger = get_logger(__name__)
+logger = logging.getLogger(__name__)
 _logger_extra = {
     "component_name": "school_service",
     "component_version": "v1",

@@ -25,21 +25,11 @@ async def register_guardian(
     request: RegisterRequest,
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Register a new guardian account.
-
-    Args:
-        request: Guardian registration payload.
-        session: Database session.
-
-    Returns:
-        HTTP 201 with registration details on success.
-
-        HTTP 409 if the email is already registered.
-    """
+    """Register a new guardian account."""
     result = await register_service.register_guardian(
         session=session,
         first_name=request.first_name,
-        last_name=request.last_name,
+        last_name=request.last_name or "",
         email=request.email,
         password=request.password,
         phone_number=request.phone_number,
@@ -62,23 +52,12 @@ async def register_student(
     request: StudentRegisterRequest,
     session: AsyncSession = Depends(get_db_session),
 ):
-    """Register a new student account.
-
-    Args:
-        request: Student registration payload.
-        session: Database session.
-
-    Returns:
-        HTTP 201 with registration details on success.
-
-        HTTP 409 if the email is already registered.
-    """
-    # CORRIGIDO: Esta linha e as seguintes receberam o recuo correto de 4 espaços
+    """Register a new student account."""
     result = await register_service.register_student(
         email=request.email,
         password=request.password,
         first_name=request.first_name,
-        last_name=request.last_name,
+        last_name=request.last_name or "",
         phone_number=request.phone_number,
         birth_date=request.birth_date,
         student_class=request.student_class,

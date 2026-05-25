@@ -41,22 +41,11 @@ async def create_school(
     request: CreateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Create a new school account.
-
-    Args:
-        request: School creation payload.
-        session: Database session.
-
-    Returns:
-        HTTP 201 with the created school data.
-
-        HTTP 409 if the email already exists or an
-        integrity error occurs.
-    """
+    """Create a new school account."""
     try:
         result = await school_service.create_school(
             first_name=request.first_name,
-            last_name=request.last_name,
+            last_name=request.last_name or "",
             email=str(request.email),
             password=request.password,
             phone_number=request.phone_number,
@@ -99,17 +88,7 @@ async def list_schools(
         description="Partial filter by name (case-insensitive)",
     ),
 ) -> JSONResponse:
-    """List active schools with pagination and optional filtering.
-
-    Args:
-        session: Database session.
-        page: Page number starting at 1.
-        size: Number of items per page.
-        name: Optional partial name filter.
-
-    Returns:
-        HTTP 200 with paginated school data.
-    """
+    """List active schools with pagination and optional filtering."""
     result = await school_service.list_schools(
         session=session,
         page=page,
@@ -133,17 +112,7 @@ async def get_school(
     school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Retrieve a school by its ID.
-
-    Args:
-        school_id: School user ID.
-        session: Database session.
-
-    Returns:
-        HTTP 200 with school data.
-
-        HTTP 404 if the school does not exist.
-    """
+    """Retrieve a school by its ID."""
     result = await school_service.get_school_by_id(
         school_id=school_id,
         session=session,
@@ -172,21 +141,7 @@ async def update_school(
     request: UpdateSchoolRequest,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Partially update school information.
-
-    Args:
-        school_id: School user ID.
-        request: Partial update payload.
-        session: Database session.
-
-    Returns:
-        HTTP 200 with updated school data.
-
-        HTTP 404 if the school does not exist.
-
-        HTTP 409 if the email already belongs to another user.
-    """
-    """Partially update school fields."""
+    """Partially update school information."""
     payload = request.model_dump(exclude_unset=True)
     result = await school_service.update_school(
         school_id=school_id,
@@ -196,7 +151,6 @@ async def update_school(
         is_private=payload.get("is_private"),
         requested_spots=payload.get("requested_spots"),
         session=session,
-        last_name_provided="last_name" in payload,
     )
 
     if result is None:
@@ -227,17 +181,7 @@ async def deactivate_school(
     school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
 ) -> JSONResponse:
-    """Soft delete a school account.
-
-    Args:
-        school_id: School user ID.
-        session: Database session.
-
-    Returns:
-        HTTP 204 when the school is successfully deactivated.
-
-        HTTP 404 if the school does not exist.
-    """
+    """Soft delete a school account."""
     success = await school_service.deactivate_school(
         school_id=school_id,
         session=session,
