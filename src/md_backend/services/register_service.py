@@ -25,7 +25,7 @@ class RegisterService:
         email: str,
         password: str,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         session: AsyncSession,
         phone_number: str | None = None,
     ) -> dict | None:
@@ -59,7 +59,7 @@ class RegisterService:
         email: str,
         password: str,
         first_name: str,
-        last_name: str,
+        last_name: str | None,
         birth_date: datetime.date,
         student_class: ClassEnum,
         session: AsyncSession,

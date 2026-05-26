@@ -1,8 +1,9 @@
 """Tests for database utilities."""
 
+import asyncio
 import importlib
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -29,6 +30,31 @@ class TestDatabase(unittest.TestCase):
 
 class TestDatabasePostgresEngineConfig(unittest.TestCase):
     """Cover the non-sqlite branch in database module init."""
+
+    def test_postgres_schema_fix_drops_last_name_not_null(self):
+        import md_backend.utils.database as db
+
+        conn = MagicMock()
+        conn.dialect.name = "postgresql"
+        conn.execute = AsyncMock()
+
+        asyncio.run(db._ensure_user_last_name_nullable(conn))
+
+        conn.execute.assert_awaited_once()
+        statement = str(conn.execute.await_args.args[0])
+        self.assertIn("ALTER TABLE user_profile", statement)
+        self.assertIn("DROP NOT NULL", statement)
+
+    def test_sqlite_schema_fix_is_noop(self):
+        import md_backend.utils.database as db
+
+        conn = MagicMock()
+        conn.dialect.name = "sqlite"
+        conn.execute = AsyncMock()
+
+        asyncio.run(db._ensure_user_last_name_nullable(conn))
+
+        conn.execute.assert_not_awaited()
 
     def test_postgres_url_sets_pool_kwargs(self):
         import md_backend.utils.database as db

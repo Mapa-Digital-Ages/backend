@@ -91,6 +91,23 @@ class TestRegisterRouter(unittest.TestCase):
         user = asyncio.run(fetch())
         self.assertIsNone(user.phone_number)
 
+    def test_register_guardian_accepts_null_last_name(self):
+        email = "guardian_null_last@test.com"
+        response = self.test_client.post(
+            "/api/register/guardian", json=_guardian_payload(email, last_name=None)
+        )
+        self.assertEqual(response.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
     def test_register_guardian_duplicate_email(self):
         self.test_client.post(
             "/api/register/guardian", json=_guardian_payload("duplicate@test.com")
@@ -119,11 +136,21 @@ class TestRegisterRouter(unittest.TestCase):
         response = self.test_client.post("/api/register/guardian", json=payload)
         self.assertEqual(response.status_code, 422)
 
-    def test_register_guardian_missing_last_name(self):
+    def test_register_guardian_without_last_name_persists_null(self):
         payload = _guardian_payload("missing_last@test.com")
         del payload["last_name"]
         response = self.test_client.post("/api/register/guardian", json=payload)
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == "missing_last@test.com")
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
 
     def test_register_student_success(self):
         response = self.test_client.post(

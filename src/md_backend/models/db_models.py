@@ -53,7 +53,7 @@ class UserProfile(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True, index=True)
     first_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    last_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     password: Mapped[str] = mapped_column(String(128), nullable=False)
     phone_number: Mapped[str | None] = mapped_column(String(20), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
@@ -314,7 +314,9 @@ class Subject(Base):
     __tablename__ = "subjects"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    slug: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    color: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
 
 class Content(Base):
@@ -326,6 +328,15 @@ class Content(Base):
     subject_id: Mapped[int] = mapped_column(Integer, ForeignKey("subjects.id"), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 class Resource(Base):
@@ -538,15 +549,22 @@ class StudentUpload(Base):
     student_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
     )
+    subject_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("subjects.id"), nullable=True
+    )
     file_name: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(255), nullable=False)
     file_type: Mapped[str] = mapped_column(String(100), nullable=False)
+    activity_type: Mapped[str] = mapped_column(String(32), nullable=False, default="activity")
+    correction_status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     file_size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
 
     student: Mapped["StudentProfile"] = relationship("StudentProfile", back_populates="uploads")
+    subject: Mapped["Subject | None"] = relationship("Subject")
     blob: Mapped["StudentUploadBlob"] = relationship(
         "StudentUploadBlob",
         back_populates="upload",

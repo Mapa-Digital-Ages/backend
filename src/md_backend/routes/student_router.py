@@ -8,9 +8,13 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    CalendarTaskSyncItemRequest,
+    CalendarUpsertRequest,
+    StudentListResponse,
     StudentRequest,
     StudentResponse,
     StudentUpdateRequest,
+    TaskResponse,
     WellBeingRequest,
     WellBeingResponse,
 )
@@ -121,20 +125,36 @@ async def create_student(
 
 @student_router.get(
     "",
+    response_model=StudentListResponse,
     dependencies=[Depends(get_current_approved_user)],
 )
 async def list_students(
     session: AsyncSession = Depends(get_db_session),
     name: str | None = Query(default=None, description="Filter by first or last name"),
     email: str | None = Query(default=None, description="Filter by email"),
+    school_id: uuid.UUID | None = Query(default=None, description="Filter by school ID"),
     page: int = Query(default=1, ge=1, description="Page number"),
     size: int = Query(default=10, ge=1, le=100, description="Page size"),
 ):
     """List active students with optional filters and pagination."""
     students = await student_service.get_students(
-        session=session, name=name, email=email, page=page, size=size
+        session=session, name=name, email=email, school_id=school_id, page=page, size=size
     )
     return JSONResponse(content=students, status_code=status.HTTP_200_OK)
+
+
+@student_router.get(
+    "/count",
+    dependencies=[Depends(get_current_approved_user)],
+)
+async def count_students(
+    session: AsyncSession = Depends(get_db_session),
+    name: str | None = Query(default=None, description="Filter by first or last name"),
+    school_id: uuid.UUID | None = Query(default=None, description="Filter by school ID"),
+):
+    """Return the total number of active students, optionally filtered by name."""
+    total = await student_service.count_students(session=session, name=name, school_id=school_id)
+    return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
 
 
 async def _ensure_can_access_student(
@@ -232,6 +252,34 @@ async def delete_student(
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
 
 
+@student_router.patch(
+    "/{student_id}/status",
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def update_student_status(
+    student_id: uuid.UUID,
+    is_active: bool = Query(..., description="Set student active status"),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Activate or deactivate a student. Superadmin only."""
+    success = await student_service.set_student_active_status(
+        session=session,
+        student_id=student_id,
+        is_active=is_active,
+    )
+
+    if not success:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(
+        content={"detail": f"Student {'activated' if is_active else 'deactivated'} successfully"},
+        status_code=status.HTTP_200_OK,
+    )
+
+
 @student_router.get("/{student_id}/summary")
 async def get_student_summary(
     student_id: uuid.UUID,
@@ -276,6 +324,60 @@ async def get_student_tasks(
         return denied
 
     tasks = await student_service.get_tasks(session=session, student_id=student_id)
+    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+
+
+@student_router.get(
+    "/{student_id}/calendar",
+    summary="Weekly task calendar for a student",
+    responses={
+        200: {
+            "description": "List of tasks for the current week (Sunday → Saturday, server UTC).",
+            "content": {
+                "application/json": {
+                    "example": [
+                        {
+                            "id": 42,
+                            "date": "2026-05-19T14:00:00+00:00",
+                            "title": "Resolver exercícios de álgebra",
+                            "status": "pending",
+                            "subject": {"id": 3, "label": "Matemática"},
+                        }
+                    ]
+                }
+            },
+        },
+        403: {"description": "Access denied — caller is not allowed to view this student."},
+        404: {"description": "Student not found."},
+    },
+)
+async def get_student_calendar(
+    student_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the current week's non-deactivated tasks for *student_id*.
+
+    The week is computed server-side (Sunday 00:00 UTC → Saturday 23:59 UTC).
+    Each task includes the joined subject object ``{ id, label }`` so the
+    frontend can populate the calendar without extra processing.
+
+    - **200 OK** – list (possibly empty) of tasks in the current week.
+    - **403 Forbidden** – caller lacks permission to access this student.
+    - **404 Not Found** – no active student with the given ID exists.
+    """
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    student = await student_service.get_student_by_id(session=session, student_id=student_id)
+    if student is None:
+        return JSONResponse(
+            content={"detail": "Student not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    tasks = await student_service.get_weekly_tasks(session=session, student_id=student_id)
     return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
 
 
@@ -428,3 +530,109 @@ async def upsert_student_well_being(
     )
 
     return JSONResponse(content=record, status_code=status.HTTP_200_OK)
+
+
+@student_router.put(
+    "/{student_id}/calendar/tasks",
+    summary="Sync calendar tasks",
+)
+async def sync_calendar_tasks(
+    student_id: uuid.UUID,
+    request: list[CalendarTaskSyncItemRequest],
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Sync tasks (create/update) atomically."""
+    token_student_id = current_user["user_id"]
+
+    if str(student_id) != str(token_student_id):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    try:
+        result = await student_service.sync_calendar_tasks(
+            session=session,
+            student_id=student_id,
+            tasks_payload=[item.model_dump() for item in request],
+        )
+
+        return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+    except ValueError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+
+@student_router.get(
+    "/{student_id}/calendar/{date}",
+    response_model=list[TaskResponse],
+    summary="Get student tasks for a specific date",
+    responses={
+        200: {"description": "List of active tasks for the given date."},
+        403: {"description": "Access denied."},
+    },
+)
+async def get_calendar_day(
+    student_id: uuid.UUID,
+    date: datetime.date,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return all active (non-soft-deleted) tasks for a student on a given date."""
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    tasks = await student_service.get_calendar_day(
+        session=session,
+        student_id=student_id,
+        date=date,
+    )
+    return JSONResponse(content=tasks, status_code=status.HTTP_200_OK)
+
+
+@student_router.put(
+    "/{student_id}/calendar/{date}",
+    response_model=list[TaskResponse],
+    summary="Sync student tasks for a specific date (upsert + soft delete)",
+    responses={
+        200: {"description": "Updated list of active tasks for the given date."},
+        403: {"description": "Access denied."},
+    },
+    description=(
+        "Receives the **complete** task list for a student on a given date. "
+        "Tasks present in the database but **absent from this array** will be "
+        "automatically soft-deleted (their `deactivated_at` field will be set to "
+        "the current timestamp). No physical DELETE is ever executed on the `tasks` table."
+    ),
+)
+async def upsert_calendar_day(
+    student_id: uuid.UUID,
+    date: datetime.date,
+    request: CalendarUpsertRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Sync the full task state for a student/date.
+
+    - Tasks with an **id** → updated in place.
+    - Tasks without an **id** → inserted as new.
+    - Tasks existing in the DB but **omitted** from the array → soft-deleted.
+    """
+    denied = await _ensure_can_access_student(session, current_user, student_id)
+    if denied is not None:
+        return denied
+
+    tasks_data = [t.model_dump() for t in request.tasks]
+
+    result = await student_service.upsert_calendar_day(
+        session=session,
+        student_id=student_id,
+        date=date,
+        tasks=tasks_data,
+    )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)

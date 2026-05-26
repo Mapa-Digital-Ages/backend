@@ -135,6 +135,29 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         user = asyncio.run(fetch())
         self.assertIsNone(user.phone_number)
 
+    def test_create_school_accepts_null_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "school_null_last@test.com"
+        resp = self.client.post(
+            "/api/school",
+            json=self._payload(email) | {"last_name": None},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["name"], "School")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
     def test_create_school_duplicate_email_returns_409(self):
         self.client.post(
             "/api/school", json=self._payload("school_dup@test.com"), headers=self.admin_headers
@@ -304,6 +327,35 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["is_private"], False)
         self.assertEqual(body["requested_spots"], 200)
         self.assertEqual(body["name"], "New Name")
+
+    def test_update_school_can_clear_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        create_resp = self.client.post(
+            "/api/school",
+            json=self._payload("school_clear_last@test.com"),
+            headers=self.admin_headers,
+        )
+        school_id = create_resp.json()["user_id"]
+
+        resp = self.client.patch(
+            f"/api/school/{school_id}",
+            json={"last_name": None},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["name"], "School")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.id == uuid.UUID(school_id))
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
 
     def test_update_school_email_conflict_returns_409(self):
         self.client.post(

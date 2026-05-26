@@ -99,11 +99,12 @@ class TestStudentRouterValidation(unittest.TestCase):
         response = self.client.post("/api/student", json=payload, headers=self.admin_headers)
         self.assertEqual(response.status_code, 422)
 
-    def test_missing_last_name_returns_422(self):
+    def test_missing_last_name_is_accepted(self):
         payload = {**self.valid_payload}
         del payload["last_name"]
         response = self.client.post("/api/student", json=payload, headers=self.admin_headers)
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["last_name"])
 
     def test_invalid_email_returns_422(self):
         payload = {**self.valid_payload, "email": "not-an-email"}
@@ -236,6 +237,29 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertIsNone(user.phone_number)
         self.assertIsNone(student.school_id)
 
+    def test_create_student_accepts_null_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "student_create_null_last@example.com"
+        response = self.client.post(
+            "/api/student",
+            json=_student_payload(email, last_name=None),
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["last_name"])
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
     def test_duplicate_email_returns_409(self):
         payload = _student_payload("student_dup@example.com")
         self.client.post("/api/student", json=payload, headers=self.admin_headers)
@@ -316,9 +340,13 @@ class TestStudentRouterIntegration(unittest.TestCase):
         response = self.client.get("/api/student", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertGreaterEqual(len(data), 2)
-        for item in data:
+        self.assertIn("items", data)
+        self.assertIn("total", data)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["page_size"], 10)
+        items = data["items"]
+        self.assertGreaterEqual(len(items), 2)
+        for item in items:
             self.assertNotIn("password", item)
             self.assertTrue(item["is_active"])
 
@@ -333,7 +361,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             "/api/student", params={"name": "zelda"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["first_name"] == "Zelda" for item in items))
 
     def test_list_students_filter_by_email(self):
@@ -349,7 +377,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["email"] == "student_filter_email@example.com" for item in items))
 
     def test_list_students_unauthenticated_returns_401(self):
@@ -458,6 +486,35 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertEqual(body["first_name"], "OnlyFirst")
         self.assertEqual(body["last_name"], "Doe")
         self.assertEqual(body["student_class"], "5th class")
+
+    def test_update_student_can_clear_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        create_resp = self.client.post(
+            "/api/student",
+            json=_student_payload("student_clear_last@example.com"),
+            headers=self.admin_headers,
+        )
+        student_id = create_resp.json()["user_id"]
+
+        response = self.client.put(
+            f"/api/student/{student_id}",
+            json={"last_name": None},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["last_name"])
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.id == uuid.UUID(student_id))
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
 
     def test_update_student_not_found_returns_404(self):
         response = self.client.put(
@@ -1189,3 +1246,250 @@ class TestWellBeingAuthorizationAndHistory(unittest.TestCase):
                 headers=headers,
             )
             self.assertEqual(response.status_code, 403)
+
+
+class TestStudentRouter(unittest.TestCase):
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def test_sync_calendar_tasks_create_and_update(self):
+        import asyncio
+
+        from md_backend.models.db_models import Subject
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def create_subject():
+            async with AsyncSessionLocal() as session:
+                subject = Subject(id=1, name="Matemática")
+                session.add(subject)
+                try:
+                    await session.commit()
+                except Exception:
+                    await session.rollback()
+
+        asyncio.run(create_subject())
+
+        student_id, _, token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"calendar_{uuid.uuid4().hex[:6]}@example.com",
+        )
+
+        headers = {"Authorization": f"Bearer {token}"}
+
+        create_response = self.client.put(
+            f"/api/student/{student_id}/calendar/tasks",
+            headers=headers,
+            json=[
+                {
+                    "id": "temp-1",
+                    "title": "New Task",
+                    "task_status": "pending",
+                    "subject": {"id": 1},
+                    "date": "2026-05-18T10:00:00+00:00",
+                }
+            ],
+        )
+
+        self.assertEqual(create_response.status_code, 200)
+        created = create_response.json()[0]
+        self.assertIsInstance(int(created["id"]), int)
+
+        update_response = self.client.put(
+            f"/api/student/{student_id}/calendar/tasks",
+            headers=headers,
+            json=[
+                {
+                    "id": int(created["id"]),  # precisa ser int para o branch de update
+                    "title": "Updated Task",
+                    "task_status": "done",
+                    "subject": {"id": 1},
+                    "date": "2026-05-18T10:00:00+00:00",
+                }
+            ],
+        )
+
+        self.assertEqual(update_response.status_code, 200)
+        self.assertEqual(update_response.json()[0]["title"], "Updated Task")
+        self.assertEqual(update_response.json()[0]["status"], "done")
+
+
+class TestStudentCalendar(unittest.TestCase):
+    """Integration tests for GET /student/{id}/calendar."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+        self.student_id, _, self.student_token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"calendar_student_{uuid.uuid4().hex[:8]}@example.com",
+        )
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _seed_task(
+        self,
+        student_id: str,
+        title: str,
+        date: datetime.datetime,
+        deactivated: bool = False,
+    ) -> int:
+        """Insert a task directly into the DB and return its id."""
+        from md_backend.models.db_models import Subject, Task, TaskStatusEnum
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def insert():
+            async with AsyncSessionLocal() as session:
+                subject_result = await session.execute(select(Subject).limit(1))
+                subject = subject_result.scalar_one_or_none()
+                if subject is None:
+                    subject = Subject(name=f"Subject_{uuid.uuid4().hex[:6]}")
+                    session.add(subject)
+                    await session.flush()
+
+                task = Task(
+                    student_id=uuid.UUID(student_id),
+                    title=title,
+                    task_status=TaskStatusEnum.PENDING,
+                    subject_id=subject.id,
+                    date=date,
+                    deactivated_at=datetime.datetime.now(datetime.UTC) if deactivated else None,
+                )
+                session.add(task)
+                await session.commit()
+                await session.refresh(task)
+                return task.id
+
+        return asyncio.run(insert())
+
+    def _this_week_date(self) -> datetime.datetime:
+        """Return a datetime in the current week (Wednesday noon UTC)."""
+        today = datetime.datetime.now(datetime.UTC)
+        days_since_sunday = (today.weekday() + 1) % 7
+        sunday = today - datetime.timedelta(days=days_since_sunday)
+        wednesday = sunday + datetime.timedelta(days=3)
+        return wednesday.replace(hour=12, minute=0, second=0, microsecond=0)
+
+    def _last_week_date(self) -> datetime.datetime:
+        """Return a datetime from last week."""
+        return self._this_week_date() - datetime.timedelta(days=7)
+
+    def _next_week_date(self) -> datetime.datetime:
+        """Return a datetime from next week."""
+        return self._this_week_date() + datetime.timedelta(days=7)
+
+    # ------------------------------------------------------------------
+    # 200 OK
+    # ------------------------------------------------------------------
+
+    def test_returns_200_with_empty_list_when_no_tasks(self):
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), [])
+
+    def test_returns_only_current_week_tasks(self):
+        self._seed_task(self.student_id, "Esta semana", self._this_week_date())
+        self._seed_task(self.student_id, "Semana passada", self._last_week_date())
+        self._seed_task(self.student_id, "Próxima semana", self._next_week_date())
+
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        titles = [t["title"] for t in response.json()]
+        self.assertIn("Esta semana", titles)
+        self.assertNotIn("Semana passada", titles)
+        self.assertNotIn("Próxima semana", titles)
+
+    def test_excludes_deactivated_tasks(self):
+        self._seed_task(self.student_id, "Ativa", self._this_week_date())
+        self._seed_task(self.student_id, "Desativada", self._this_week_date(), deactivated=True)
+
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        titles = [t["title"] for t in response.json()]
+        self.assertIn("Ativa", titles)
+        self.assertNotIn("Desativada", titles)
+
+    def test_response_contains_subject_object(self):
+        self._seed_task(self.student_id, "Com matéria", self._this_week_date())
+
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        tasks = response.json()
+        self.assertGreater(len(tasks), 0)
+        task = tasks[0]
+        self.assertIn("subject", task)
+        self.assertIn("id", task["subject"])
+        self.assertIn("label", task["subject"])
+
+    def test_response_contains_required_fields(self):
+        self._seed_task(self.student_id, "Campos obrigatórios", self._this_week_date())
+
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers=self.admin_headers,
+        )
+        task = response.json()[0]
+        for field in ("id", "date", "title", "status", "subject"):
+            self.assertIn(field, task)
+
+    def test_tasks_ordered_by_date_ascending(self):
+        monday = self._this_week_date() - datetime.timedelta(days=2)
+        friday = self._this_week_date() + datetime.timedelta(days=2)
+        self._seed_task(self.student_id, "Sexta", friday)
+        self._seed_task(self.student_id, "Segunda", monday)
+
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers=self.admin_headers,
+        )
+        titles = [t["title"] for t in response.json()]
+        segunda_idx = titles.index("Segunda")
+        sexta_idx = titles.index("Sexta")
+        self.assertLess(segunda_idx, sexta_idx)
+
+    # ------------------------------------------------------------------
+    # 403 / 404
+    # ------------------------------------------------------------------
+
+    def test_unknown_student_returns_404(self):
+        response = self.client.get(
+            f"/api/student/{uuid.uuid4()}/calendar",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 404)
+
+    def test_unrelated_student_returns_403(self):
+        _, _, other_token = _create_student_with_token(
+            self.client,
+            self.admin_headers,
+            f"calendar_other_{uuid.uuid4().hex[:8]}@example.com",
+        )
+        response = self.client.get(
+            f"/api/student/{self.student_id}/calendar",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        self.assertEqual(response.status_code, 403)
+
+    def test_unauthenticated_returns_401(self):
+        response = self.client.get(f"/api/student/{self.student_id}/calendar")
+        self.assertEqual(response.status_code, 401)
