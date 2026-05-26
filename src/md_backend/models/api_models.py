@@ -123,6 +123,7 @@ class StudentRequest(BaseModel):
     birth_date: datetime.date
     student_class: ClassEnum
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
 class StudentListItemResponse(BaseModel):

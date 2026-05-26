@@ -119,6 +119,12 @@ async def create_student(
             guardian_id=uuid.UUID(current_user["user_id"]),
             student_id=uuid.UUID(result["user_id"]),
         )
+    elif is_superadmin and request.guardian_id is not None:
+        await guardian_service.link_student_to_guardian(
+            session=session,
+            guardian_id=request.guardian_id,
+            student_id=uuid.UUID(result["user_id"]),
+        )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
