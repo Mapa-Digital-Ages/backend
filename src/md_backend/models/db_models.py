@@ -269,6 +269,16 @@ class DifficultyEnum(enum.StrEnum):
     VERY_HARD = "very_hard"
 
 
+class ResourceTypeEnum(enum.StrEnum):
+    """Resource content type."""
+
+    VIDEO = "video"
+    PDF = "pdf"
+    PRESENTATION = "presentation"
+    LINK = "link"
+    DOCUMENT = "document"
+
+
 class PathStatusEnum(enum.StrEnum):
     """Path progress status."""
 
@@ -345,10 +355,25 @@ class Resource(Base):
     __tablename__ = "resources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
-    type: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    type: Mapped[ResourceTypeEnum] = mapped_column(
+        Enum(ResourceTypeEnum, name="resource_type_enum"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    url_or_contents: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 class Exercise(Base):

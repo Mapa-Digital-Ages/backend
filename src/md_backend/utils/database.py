@@ -40,8 +40,57 @@ async def _ensure_user_last_name_nullable(conn: AsyncConnection) -> None:
         await conn.execute(text("ALTER TABLE user_profile ALTER COLUMN last_name DROP NOT NULL"))
 
 
+async def _migrate_resources_table(conn: AsyncConnection) -> None:
+    """Apply schema updates to the resources table."""
+    if conn.dialect.name != "postgresql":
+        return
+
+    # Create the enum type if it doesn't exist yet
+    await conn.execute(
+        text(
+            "DO $$ BEGIN "
+            "CREATE TYPE resource_type_enum AS ENUM "
+            "('video','pdf','presentation','link','document'); "
+            "EXCEPTION WHEN duplicate_object THEN NULL; "
+            "END $$"
+        )
+    )
+
+    # Rename contents_id → content_id
+    await conn.execute(
+        text(
+            "ALTER TABLE resources RENAME COLUMN contents_id TO content_id"
+        )
+    )
+
+    # Convert type column from varchar to resource_type_enum
+    await conn.execute(
+        text(
+            "ALTER TABLE resources "
+            "ALTER COLUMN type TYPE resource_type_enum USING type::resource_type_enum"
+        )
+    )
+
+    # Drop the old url_or_contents column
+    await conn.execute(text("ALTER TABLE resources DROP COLUMN IF EXISTS url_or_contents"))
+
+    # Add new file metadata columns
+    for stmt in [
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_name VARCHAR(255) NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_type VARCHAR(100) NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS storage_key VARCHAR(255) NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_url VARCHAR(1024) NOT NULL DEFAULT ''",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+    ]:
+        await conn.execute(text(stmt))
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_user_last_name_nullable(conn)
+        await _migrate_resources_table(conn)
+
