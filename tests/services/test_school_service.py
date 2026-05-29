@@ -1,4 +1,4 @@
-"""Unit and integration tests for SchoolService and /school router."""
+"""Unit and integration tests for SchoolService and /api/school router."""
 
 import asyncio
 import unittest
@@ -9,20 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
-from md_backend.services.school_service import SchoolService, _split_name
-
-
-class TestSplitNameHelper(unittest.TestCase):
-    """Unit tests for the module-level _split_name helper."""
-
-    def test_split_name_with_full_name(self):
-        self.assertEqual(_split_name("First Last"), ("First", "Last"))
-
-    def test_split_name_with_single_word(self):
-        self.assertEqual(_split_name("Solo"), ("Solo", ""))
-
-    def test_split_name_keeps_remaining_tokens(self):
-        self.assertEqual(_split_name("First Middle Last"), ("First", "Middle Last"))
+from md_backend.services.school_service import SchoolService
 
 
 class TestSchoolServiceUnit(unittest.TestCase):
@@ -40,10 +27,10 @@ class TestSchoolServiceUnit(unittest.TestCase):
 
         result = asyncio.run(
             service.create_school(
-                first_name="Escola",
-                last_name="Duplicada",
+                first_name="School",
+                last_name="Duplicate",
                 email="dup_unit@test.com",
-                password="senha1234",
+                password="password1234",
                 is_private=True,
                 session=mock_session,
             )
@@ -55,7 +42,7 @@ class TestSchoolServiceUnit(unittest.TestCase):
 
 
 class TestSchoolServiceIntegration(unittest.TestCase):
-    """Integration tests against /school via FastAPI TestClient."""
+    """Integration tests against /api/school via FastAPI TestClient."""
 
     def setUp(self):
         from fastapi.testclient import TestClient
@@ -70,24 +57,28 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
 
-    def _payload(self, email, *, is_private=True, requested_spots=None):
-        return {
-            "first_name": "Escola",
-            "last_name": "Teste",
+    def _payload(self, email, *, is_private=True, requested_spots=None, phone_number=None):
+        payload = {
+            "first_name": "School",
+            "last_name": "Test",
             "email": email,
-            "password": "senha1234",
+            "password": "password1234",
             "is_private": is_private,
             "requested_spots": requested_spots,
         }
+        if phone_number is not None:
+            payload["phone_number"] = phone_number
+        return payload
 
     # ------------------------------------------------------------------
-    # POST /school
+    # POST /api/school
     # ------------------------------------------------------------------
 
     def test_create_school_success_returns_201(self):
         resp = self.client.post(
-            "/school",
+            "/api/school",
             json=self._payload("create_ok@test.com", is_private=False, requested_spots=80),
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
         body = resp.json()
@@ -96,17 +87,86 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "create_ok@test.com")
         self.assertEqual(body["is_private"], False)
         self.assertEqual(body["requested_spots"], 80)
-        self.assertEqual(body["quantidade_alunos"], 0)
+        self.assertEqual(body["student_count"], 0)
         self.assertTrue(body["is_active"])
         self.assertIsNone(body["deactivated_at"])
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
+    def test_create_school_with_phone_number_persists(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "school_phone@test.com"
+        resp = self.client.post(
+            "/api/school",
+            json=self._payload(email, phone_number="+5511444443333"),
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertEqual(user.phone_number, "+5511444443333")
+
+    def test_create_school_without_phone_number_persists_null(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "school_no_phone@test.com"
+        resp = self.client.post(
+            "/api/school", json=self._payload(email), headers=self.admin_headers
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.phone_number)
+
+    def test_create_school_accepts_null_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "school_null_last@test.com"
+        resp = self.client.post(
+            "/api/school",
+            json=self._payload(email) | {"last_name": None},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.json()["name"], "School")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
     def test_create_school_duplicate_email_returns_409(self):
-        self.client.post("/school", json=self._payload("school_dup@test.com"))
-        resp = self.client.post("/school", json=self._payload("school_dup@test.com"))
+        self.client.post(
+            "/api/school", json=self._payload("school_dup@test.com"), headers=self.admin_headers
+        )
+        resp = self.client.post(
+            "/api/school", json=self._payload("school_dup@test.com"), headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 409)
-        self.assertIn("E-mail ja cadastrado", resp.json()["detail"])
+        self.assertIn("Email already registered", resp.json()["detail"])
 
     def test_create_school_integrity_error_returns_409(self):
         with patch(
@@ -114,30 +174,55 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             new=AsyncMock(side_effect=IntegrityError("forced", {}, Exception("forced"))),
         ):
             resp = self.client.post(
-                "/school", json=self._payload("school_integrity@test.com")
+                "/api/school",
+                json=self._payload("school_integrity@test.com"),
+                headers=self.admin_headers,
             )
 
         self.assertEqual(resp.status_code, 409)
-        self.assertIn("integridade", resp.json()["detail"].lower())
+        self.assertIn("integrity", resp.json()["detail"].lower())
 
     def test_create_school_invalid_email_returns_422(self):
         payload = self._payload("not-an-email")
-        resp = self.client.post("/school", json=payload)
+        resp = self.client.post("/api/school", json=payload, headers=self.admin_headers)
         self.assertEqual(resp.status_code, 422)
 
     def test_create_school_missing_required_fields_returns_422(self):
-        resp = self.client.post("/school", json={"email": "incomplete@test.com"})
+        resp = self.client.post(
+            "/api/school", json={"email": "incomplete@test.com"}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 422)
 
+    def test_create_school_unauthenticated_returns_401(self):
+        resp = self.client.post("/api/school", json=self._payload("school_unauth@test.com"))
+        self.assertEqual(resp.status_code, 401)
+
+    def test_create_school_non_superadmin_returns_403(self):
+        from tests.helpers import create_approved_user
+
+        token = create_approved_user(
+            self.client, self.admin_headers, "school_create_nonadmin@test.com"
+        )
+        resp = self.client.post(
+            "/api/school",
+            json=self._payload("school_create_forbidden@test.com"),
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(resp.status_code, 403)
+
     # ------------------------------------------------------------------
-    # GET /school
+    # GET /api/school
     # ------------------------------------------------------------------
 
     def test_list_schools_returns_pagination_envelope(self):
-        self.client.post("/school", json=self._payload("school_list_a@test.com"))
-        self.client.post("/school", json=self._payload("school_list_b@test.com"))
+        self.client.post(
+            "/api/school", json=self._payload("school_list_a@test.com"), headers=self.admin_headers
+        )
+        self.client.post(
+            "/api/school", json=self._payload("school_list_b@test.com"), headers=self.admin_headers
+        )
 
-        resp = self.client.get("/school")
+        resp = self.client.get("/api/school", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertIn("items", body)
@@ -150,69 +235,86 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_list_schools_filter_by_name_partial_case_insensitive(self):
         self.client.post(
-            "/school",
+            "/api/school",
             json={
-                "first_name": "Olimpo",
-                "last_name": "Educacional",
-                "email": "olimpo_filter@test.com",
-                "password": "senha1234",
+                "first_name": "Olympus",
+                "last_name": "Education",
+                "email": "olympus_filter@test.com",
+                "password": "password1234",
                 "is_private": False,
                 "requested_spots": 100,
             },
+            headers=self.admin_headers,
         )
 
-        resp = self.client.get("/school", params={"name": "olimpo"})
+        resp = self.client.get(
+            "/api/school", params={"name": "olympus"}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 200)
         items = resp.json()["items"]
         self.assertTrue(len(items) >= 1)
-        self.assertTrue(any("Olimpo" in item["name"] for item in items))
+        self.assertTrue(any("Olympus" in item["name"] for item in items))
 
     def test_list_schools_pagination_respects_size_and_page(self):
-        resp = self.client.get("/school", params={"page": 1, "size": 1})
+        resp = self.client.get(
+            "/api/school", params={"page": 1, "size": 1}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["page"], 1)
         self.assertEqual(body["size"], 1)
         self.assertLessEqual(len(body["items"]), 1)
 
+    def test_list_schools_unauthenticated_returns_401(self):
+        resp = self.client.get("/api/school")
+        self.assertEqual(resp.status_code, 401)
+
     # ------------------------------------------------------------------
-    # GET /school/{id}
+    # GET /api/school/{id}
     # ------------------------------------------------------------------
 
     def test_get_school_by_id_returns_correct_data(self):
         create_resp = self.client.post(
-            "/school", json=self._payload("school_getbyid@test.com", requested_spots=42)
+            "/api/school",
+            json=self._payload("school_getbyid@test.com", requested_spots=42),
+            headers=self.admin_headers,
         )
         school_id = create_resp.json()["user_id"]
 
-        resp = self.client.get(f"/school/{school_id}")
+        resp = self.client.get(f"/api/school/{school_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["user_id"], school_id)
         self.assertEqual(body["email"], "school_getbyid@test.com")
         self.assertEqual(body["requested_spots"], 42)
-        self.assertEqual(body["quantidade_alunos"], 0)
+        self.assertEqual(body["student_count"], 0)
         self.assertNotIn("password", body)
 
     def test_get_school_by_id_not_found_returns_404(self):
-        resp = self.client.get(f"/school/{uuid.uuid4()}")
+        resp = self.client.get(f"/api/school/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 404)
 
+    def test_get_school_by_id_unauthenticated_returns_401(self):
+        resp = self.client.get(f"/api/school/{uuid.uuid4()}")
+        self.assertEqual(resp.status_code, 401)
+
     # ------------------------------------------------------------------
-    # PATCH /school/{id}
+    # PATCH /api/school/{id}
     # ------------------------------------------------------------------
 
     def test_update_school_partial_updates_all_fields(self):
         create_resp = self.client.post(
-            "/school", json=self._payload("school_upd_full@test.com")
+            "/api/school",
+            json=self._payload("school_upd_full@test.com"),
+            headers=self.admin_headers,
         )
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
-            f"/school/{school_id}",
+            f"/api/school/{school_id}",
             json={
-                "first_name": "Novo",
-                "last_name": "Nome",
+                "first_name": "New",
+                "last_name": "Name",
                 "email": "school_upd_full_new@test.com",
                 "is_private": False,
                 "requested_spots": 200,
@@ -224,17 +326,52 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "school_upd_full_new@test.com")
         self.assertEqual(body["is_private"], False)
         self.assertEqual(body["requested_spots"], 200)
-        self.assertEqual(body["name"], "Novo Nome")
+        self.assertEqual(body["name"], "New Name")
 
-    def test_update_school_email_conflict_returns_409(self):
-        self.client.post("/school", json=self._payload("school_taken@test.com"))
+    def test_update_school_can_clear_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
         create_resp = self.client.post(
-            "/school", json=self._payload("school_to_update@test.com")
+            "/api/school",
+            json=self._payload("school_clear_last@test.com"),
+            headers=self.admin_headers,
         )
         school_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
-            f"/school/{school_id}",
+            f"/api/school/{school_id}",
+            json={"last_name": None},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["name"], "School")
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.id == uuid.UUID(school_id))
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
+    def test_update_school_email_conflict_returns_409(self):
+        self.client.post(
+            "/api/school",
+            json=self._payload("school_taken@test.com"),
+            headers=self.admin_headers,
+        )
+        create_resp = self.client.post(
+            "/api/school",
+            json=self._payload("school_to_update@test.com"),
+            headers=self.admin_headers,
+        )
+        school_id = create_resp.json()["user_id"]
+
+        resp = self.client.patch(
+            f"/api/school/{school_id}",
             json={"email": "school_taken@test.com"},
             headers=self.admin_headers,
         )
@@ -242,15 +379,15 @@ class TestSchoolServiceIntegration(unittest.TestCase):
 
     def test_update_school_not_found_returns_404(self):
         resp = self.client.patch(
-            f"/school/{uuid.uuid4()}",
-            json={"first_name": "Fantasma"},
+            f"/api/school/{uuid.uuid4()}",
+            json={"first_name": "Ghost"},
             headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 404)
 
     def test_update_school_unauthenticated_returns_401(self):
         resp = self.client.patch(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             json={"first_name": "X"},
         )
         self.assertEqual(resp.status_code, 401)
@@ -262,14 +399,14 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             self.client, self.admin_headers, "school_patch_nonadmin@test.com"
         )
         resp = self.client.patch(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             json={"first_name": "X"},
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(resp.status_code, 403)
 
     # ------------------------------------------------------------------
-    # DELETE /school/{id}
+    # DELETE /api/school/{id}
     # ------------------------------------------------------------------
 
     def test_deactivate_school_sets_is_active_false(self):
@@ -277,11 +414,13 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         from md_backend.utils.database import AsyncSessionLocal
 
         create_resp = self.client.post(
-            "/school", json=self._payload("school_deact@test.com")
+            "/api/school",
+            json=self._payload("school_deact@test.com"),
+            headers=self.admin_headers,
         )
         school_id = create_resp.json()["user_id"]
 
-        resp = self.client.delete(f"/school/{school_id}", headers=self.admin_headers)
+        resp = self.client.delete(f"/api/school/{school_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 204)
 
         async def fetch():
@@ -290,9 +429,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
                     select(UserProfile).where(UserProfile.id == uuid.UUID(school_id))
                 )
                 school_row = await session.execute(
-                    select(SchoolProfile).where(
-                        SchoolProfile.user_id == uuid.UUID(school_id)
-                    )
+                    select(SchoolProfile).where(SchoolProfile.user_id == uuid.UUID(school_id))
                 )
                 return user_row.scalar_one(), school_row.scalar_one()
 
@@ -302,13 +439,11 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         self.assertIsNotNone(school.deactivated_at)
 
     def test_deactivate_school_not_found_returns_404(self):
-        resp = self.client.delete(
-            f"/school/{uuid.uuid4()}", headers=self.admin_headers
-        )
+        resp = self.client.delete(f"/api/school/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 404)
 
     def test_deactivate_school_unauthenticated_returns_401(self):
-        resp = self.client.delete(f"/school/{uuid.uuid4()}")
+        resp = self.client.delete(f"/api/school/{uuid.uuid4()}")
         self.assertEqual(resp.status_code, 401)
 
     def test_deactivate_school_non_superadmin_returns_403(self):
@@ -318,7 +453,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
             self.client, self.admin_headers, "school_delete_nonadmin@test.com"
         )
         resp = self.client.delete(
-            f"/school/{uuid.uuid4()}",
+            f"/api/school/{uuid.uuid4()}",
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(resp.status_code, 403)

@@ -139,3 +139,39 @@ Project Setup Startup
             If everything works, you should see this:
 
             ![alt text](.github/images/request_success.png)`
+
+------------------------------------------------------------------------
+
+5. Pre-commit Hooks
+
+    The repo ships with a [pre-commit](https://pre-commit.com/) config that
+    runs ruff (lint + format with autofix) and pyright on every `git commit`.
+    Each step prints a clear banner and the next action to take.
+
+    Install once after cloning:
+
+    ```bash
+    make hooks-install
+    ```
+
+    Run all hooks against every file (useful before opening a PR):
+
+    ```bash
+    make hooks-run
+    ```
+
+    What happens on commit:
+
+    - Ruff fixes/formats what it can. If files change, the commit is aborted
+      and the wrapper tells you to `git add -u && git commit` again.
+    - Pyright runs on `src/`. Type errors abort the commit; fix them by hand,
+      then `git add` + `git commit` again.
+
+    Tests + coverage are not in the hook anymore — run them manually with
+    `make test` or `make cicd` before pushing.
+
+    Emergency bypass (use sparingly):
+
+    ```bash
+    git commit --no-verify
+    ```

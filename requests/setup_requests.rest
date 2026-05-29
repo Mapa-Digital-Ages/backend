@@ -1,10 +1,18 @@
-@BaseUrl = http://localhost:8000
+@BaseUrl = http://localhost:8000/api
+@SetupToken = 64789cc299acf5ba538a4ad5b37bd1269611d3419e5983d5ac4b614975a46fee
 
 ### Setup - Create first superadmin (only works once)
 POST {{BaseUrl}}/setup
 Content-Type: application/json
+X-setup-token: {{SetupToken}}
 
 {
+    "first_name": "Admin",
+    "last_name": "User",
     "email": "admin@admin.com",
     "password": "admin123"
 }
+
+### Setup - Create default subjects (only works once)
+POST {{BaseUrl}}/setup/subjects
+X-setup-token: {{SetupToken}}

@@ -1,6 +1,9 @@
 """Security utilities for password hashing and JWT tokens."""
 
+import asyncio
 import datetime
+import hashlib
+import hmac
 import uuid
 
 import bcrypt
@@ -21,25 +24,50 @@ from md_backend.utils.settings import settings
 _bearer_scheme = HTTPBearer(auto_error=False)
 
 
-def hash_password(plain_password: str) -> str:
-    """Hash a password with pepper and bcrypt."""
-    peppered = (settings.PASSWORD_PEPPER + plain_password).encode("utf-8")
-    return bcrypt.hashpw(peppered, bcrypt.gensalt()).decode("utf-8")
+def _pepper_bytes(plain_password: str) -> bytes:
+    return (
+        hmac.new(
+            settings.PASSWORD_PEPPER.encode("utf-8"),
+            plain_password.encode("utf-8"),
+            hashlib.sha256,
+        )
+        .hexdigest()
+        .encode("ascii")
+    )
 
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a password against its hash (constant-time)."""
-    peppered = (settings.PASSWORD_PEPPER + plain_password).encode("utf-8")
-    return bcrypt.checkpw(peppered, hashed_password.encode("utf-8"))
+def _hash_sync(plain_password: str) -> str:
+    return bcrypt.hashpw(_pepper_bytes(plain_password), bcrypt.gensalt()).decode("utf-8")
+
+
+def _verify_sync(plain_password: str, hashed_password: str) -> bool:
+    try:
+        return bcrypt.checkpw(_pepper_bytes(plain_password), hashed_password.encode("utf-8"))
+    except ValueError:
+        return False
+
+
+async def hash_password(plain_password: str) -> str:
+    """Hash a password with HMAC-pepper and bcrypt (off event loop)."""
+    return await asyncio.to_thread(_hash_sync, plain_password)
+
+
+async def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a password against its hash (constant-time, off event loop)."""
+    return await asyncio.to_thread(_verify_sync, plain_password, hashed_password)
 
 
 def create_access_token(data: dict) -> str:
-    """Create a JWT access token with expiration."""
+    """Create a JWT access token with expiration, jti, and iat."""
+    now = datetime.datetime.now(datetime.UTC)
     to_encode = data.copy()
-    expire = datetime.datetime.now(datetime.UTC) + datetime.timedelta(
-        minutes=settings.JWT_EXPIRATION_MINUTES
+    to_encode.update(
+        {
+            "exp": now + datetime.timedelta(minutes=settings.JWT_EXPIRATION_MINUTES),
+            "iat": now,
+            "jti": str(uuid.uuid4()),
+        }
     )
-    to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.JWT_SECRET_KEY, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -80,47 +108,58 @@ async def get_current_approved_user(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict:
     """FastAPI dependency: verify user exists in DB and is approved."""
+    try:
+        user_id = uuid.UUID(payload["user_id"])
+    except (KeyError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from None
+
     result = await session.execute(
         select(UserProfile)
         .options(
             selectinload(UserProfile.guardian_profile),
             selectinload(UserProfile.admin_profile),
         )
-        .where(UserProfile.id == uuid.UUID(payload["user_id"]))
+        .where(UserProfile.id == user_id)
     )
     user = result.scalar_one_or_none()
 
     if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Usuario nao encontrado",
+            detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Conta desativada",
+            detail="Account deactivated",
         )
 
     if user.guardian_profile is not None:
         if user.guardian_profile.guardian_status == GuardianStatusEnum.WAITING:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Conta aguardando aprovacao",
+                detail="Account awaiting approval",
             )
         if user.guardian_profile.guardian_status == GuardianStatusEnum.REJECTED:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="Conta negada",
+                detail="Account rejected",
             )
 
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
+    is_guardian = user.guardian_profile is not None
 
     return {
         "user_id": str(user.id),
         "email": user.email,
         "is_superadmin": is_superadmin,
+        "is_guardian": is_guardian,
     }
 
 
@@ -131,6 +170,6 @@ async def get_current_superadmin(
     if not user["is_superadmin"]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Acesso restrito a administradores",
+            detail="Access restricted to administrators",
         )
     return user

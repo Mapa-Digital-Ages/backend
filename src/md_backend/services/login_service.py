@@ -6,23 +6,31 @@ from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import (
     GuardianStatusEnum,
+    LoginHistory,
     UserProfile,
 )
-from md_backend.utils.security import create_access_token, verify_password
+from md_backend.utils.names import build_full_name
+from md_backend.utils.security import _hash_sync, create_access_token, verify_password
+
+_DUMMY_HASH: str = _hash_sync("__dummy_timing_guard__")
 
 
 def _derive_role(user: UserProfile) -> str:
     if user.admin_profile is not None:
         return "admin"
     if user.student_profile is not None:
-        return "aluno"
-    return "responsavel"
+        return "student"
+    if user.company_profile is not None:
+        return "company"
+    return "guardian"
 
 
 class LoginService:
     """Service for handling user login."""
 
-    async def login(self, email: str, password: str, session: AsyncSession) -> dict:
+    async def login(
+        self, email: str, password: str, session: AsyncSession, ip: str | None = None
+    ) -> dict:
         """Authenticate user and return JWT token, or error dict."""
         result = await session.execute(
             select(UserProfile)
@@ -30,25 +38,33 @@ class LoginService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .where(UserProfile.email == email)
         )
         user = result.scalar_one_or_none()
 
         if user is None:
+            await verify_password(password, _DUMMY_HASH)
             return {"error": "invalid_credentials"}
 
-        if not verify_password(password, user.password):
+        if not await verify_password(password, user.password):
             return {"error": "invalid_credentials"}
+
+        if not user.is_active:
+            return {"error": "Account deactivated"}
 
         if user.guardian_profile is not None:
             if user.guardian_profile.guardian_status == GuardianStatusEnum.WAITING:
-                return {"error": "AGUARDANDO"}
+                return {"error": "WAITING"}
             if user.guardian_profile.guardian_status == GuardianStatusEnum.REJECTED:
-                return {"error": "NEGADO"}
+                return {"error": "REJECTED"}
 
-        token = create_access_token({"sub": user.email, "user_id": str(user.id)})
-        name = f"{user.first_name} {user.last_name}".strip()
+        session.add(LoginHistory(user_id=user.id, ip=ip))
+        await session.commit()
+
+        token = create_access_token({"sub": str(user.id), "user_id": str(user.id)})
+        name = build_full_name(user.first_name, user.last_name)
         return {
             "token": token,
             "role": _derive_role(user),

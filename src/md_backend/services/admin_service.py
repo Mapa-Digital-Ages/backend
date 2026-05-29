@@ -8,22 +8,24 @@ from sqlalchemy.orm import selectinload
 
 from md_backend.models.db_models import (
     AdminProfile,
+    CompanyProfile,
     GuardianProfile,
     GuardianStatusEnum,
     StudentProfile,
     UserProfile,
 )
+from md_backend.utils.names import build_full_name
 
 _STATUS_INPUT_MAP = {
-    "aguardando": GuardianStatusEnum.WAITING,
-    "aprovado": GuardianStatusEnum.APPROVED,
-    "negado": GuardianStatusEnum.REJECTED,
+    "waiting": GuardianStatusEnum.WAITING,
+    "approved": GuardianStatusEnum.APPROVED,
+    "rejected": GuardianStatusEnum.REJECTED,
 }
 
 _STATUS_OUTPUT_MAP = {
-    GuardianStatusEnum.WAITING: "aguardando",
-    GuardianStatusEnum.APPROVED: "aprovado",
-    GuardianStatusEnum.REJECTED: "negado",
+    GuardianStatusEnum.WAITING: "waiting",
+    GuardianStatusEnum.APPROVED: "approved",
+    GuardianStatusEnum.REJECTED: "rejected",
 }
 
 
@@ -31,17 +33,19 @@ def _derive_role(user: UserProfile) -> str:
     if user.admin_profile is not None:
         return "admin"
     if user.student_profile is not None:
-        return "aluno"
-    return "responsavel"
+        return "student"
+    if user.company_profile is not None:
+        return "company"
+    return "guardian"
 
 
 def _serialize_user(user: UserProfile) -> dict:
     if user.guardian_profile is not None:
         status_str = _STATUS_OUTPUT_MAP[user.guardian_profile.guardian_status]
     else:
-        status_str = "aprovado"
+        status_str = "approved"
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
-    name = f"{user.first_name} {user.last_name}".strip()
+    name = build_full_name(user.first_name, user.last_name)
     return {
         "id": str(user.id),
         "email": user.email,
@@ -69,22 +73,27 @@ class AdminService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .order_by(UserProfile.created_at.desc())
         )
 
-        if role == "responsavel":
+        guardian_joined = False
+        if role == "guardian":
             query = query.join(GuardianProfile, UserProfile.guardian_profile)
-        elif role == "aluno":
+            guardian_joined = True
+        elif role == "student":
             query = query.join(StudentProfile, UserProfile.student_profile)
         elif role == "admin":
             query = query.join(AdminProfile, UserProfile.admin_profile)
+        elif role == "company":
+            query = query.join(CompanyProfile, UserProfile.company_profile)
 
         if status_filter is not None:
             guardian_status = _STATUS_INPUT_MAP[status_filter]
-            query = query.join(GuardianProfile, UserProfile.guardian_profile).where(
-                GuardianProfile.guardian_status == guardian_status
-            )
+            if not guardian_joined:
+                query = query.join(GuardianProfile, UserProfile.guardian_profile)
+            query = query.where(GuardianProfile.guardian_status == guardian_status)
 
         result = await session.execute(query)
         users = result.scalars().all()
@@ -100,6 +109,7 @@ class AdminService:
                 selectinload(UserProfile.guardian_profile),
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
+                selectinload(UserProfile.company_profile),
             )
             .where(UserProfile.id == user_id)
         )
@@ -109,10 +119,10 @@ class AdminService:
             return None
 
         if user.admin_profile and user.admin_profile.is_superadmin:
-            return {"error": "Nao e possivel alterar status de um superadmin"}
+            return {"error": "Cannot change a superadmin's status"}
 
         if user.guardian_profile is None:
-            return {"error": "Usuario nao possui perfil de responsavel"}
+            return {"error": "User does not have a guardian profile"}
 
         user.guardian_profile.guardian_status = _STATUS_INPUT_MAP[new_status]
         await session.commit()

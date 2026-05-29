@@ -1,6 +1,9 @@
 """Settings module for the service."""
 
+from typing import Literal
+
 from dotenv import find_dotenv
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,13 +17,39 @@ class Settings(BaseSettings):
     TEST_VARIABLE: str = ""
 
     # Database
-    DATABASE_URL: str = ""
+    DATABASE_URL: str = Field(min_length=1)
 
-    # Security
-    JWT_SECRET_KEY: str = ""
+    # Security — all secret fields are required and must be at least 32 characters.
+    # An empty or short value means the service was deployed without secrets configured.
+    JWT_SECRET_KEY: str = Field(min_length=32)
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRATION_MINUTES: int = 30
-    PASSWORD_PEPPER: str = ""
+    PASSWORD_PEPPER: str = Field(min_length=32)
+    SETUP_TOKEN: str = Field(min_length=32)
+
+    # CORS — comma-separated list of allowed origins, e.g. "http://localhost:5173,https://app.example.com"
+    CORS_ORIGINS: list[str] = ["http://localhost:5173"]
+
+    # Storage
+    STORAGE_BACKEND: Literal["auto", "postgres", "s3"] = "auto"
+    AWS_S3_BUCKET: str | None = None
+    AWS_S3_REGION: str | None = None
+    AWS_ACCESS_KEY_ID: str | None = None
+    AWS_SECRET_ACCESS_KEY: str | None = None
+    AWS_S3_ENDPOINT_URL: str | None = (
+        None  # overrides default AWS endpoint; use for MinIO/localstack
+    )
+
+    # Email (SMTP) — sender activates automatically when USERNAME + PASSWORD are set.
+    # Without credentials, the sender logs the code locally instead of sending an email.
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "Mapa Digital"
+
+    # Cloudfront
+    CLOUDFRONT_URL: str | None = None
 
 
 settings = Settings()  # type: ignore
