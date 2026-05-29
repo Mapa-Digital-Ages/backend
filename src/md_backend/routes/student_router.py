@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from md_backend.routes.path_router import path_router
 from md_backend.models.api_models import (
     CalendarTaskSyncItemRequest,
     CalendarUpsertRequest,
@@ -642,3 +643,6 @@ async def upsert_calendar_day(
         tasks=tasks_data,
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+student_router.include_router(path_router, prefix="/{student_id}/trails")
