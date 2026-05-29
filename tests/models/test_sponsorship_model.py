@@ -56,7 +56,7 @@ class TestSponsorshipModel:
                 password="hashed",
             )
             session.add(school_user)
-            
+
             # Create company
             company_user = UserProfile(
                 email=f"company_{uuid.uuid4()}@test.com",

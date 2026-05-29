@@ -81,8 +81,10 @@ async def _migrate_resources_table(conn: AsyncConnection) -> None:
         "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT NULL",
         "ALTER TABLE resources ADD COLUMN IF NOT EXISTS storage_key VARCHAR(255) NULL",
         "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_url VARCHAR(1024) NOT NULL DEFAULT ''",
-        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
-        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
     ]:
         await conn.execute(text(stmt))
 
@@ -116,14 +118,22 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
     # previous schema had no UUID `id` or `request_id`, it's complex.
     # To be safe and idempotent, we'll try to add the `id` column. If it fails, we assume it's done.
     try:
-        await conn.execute(text("ALTER TABLE school_company_partnership DROP CONSTRAINT school_company_partnership_pkey"))
+        await conn.execute(
+            text(
+                "ALTER TABLE school_company_partnership "
+                "DROP CONSTRAINT school_company_partnership_pkey"
+            )
+        )
     except Exception:
         pass
-    
+
     for stmt in [
-        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS request_id UUID NULL",
-        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS granted_spots INTEGER NULL",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "request_id UUID NULL",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "granted_spots INTEGER NULL",
     ]:
         try:
             await conn.execute(text(stmt))
@@ -133,7 +143,8 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
     try:
         await conn.execute(
             text(
-                "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS status partnership_status_enum NOT NULL DEFAULT 'pending'"
+                "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+                "status partnership_status_enum NOT NULL DEFAULT 'pending'"
             )
         )
     except Exception:

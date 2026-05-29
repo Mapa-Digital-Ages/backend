@@ -19,6 +19,7 @@ from md_backend.models.db_models import (
 
 @pytest.fixture(scope="module")
 def engine():
+    """Create an engine for tests."""
     eng = create_engine("sqlite:///:memory:")
 
     @event.listens_for(eng, "connect")
@@ -34,6 +35,7 @@ def engine():
 
 @pytest.fixture()
 def session(engine):
+    """Provide a session for tests."""
     with Session(engine) as s:
         yield s
         s.rollback()
@@ -41,6 +43,7 @@ def session(engine):
 
 @pytest.fixture()
 def subject(session):
+    """Create a test subject."""
     subj = Subject(name=f"Math-{uuid.uuid4().hex[:6]}", slug=f"math-{uuid.uuid4().hex[:6]}")
     session.add(subj)
     session.flush()
@@ -49,6 +52,7 @@ def subject(session):
 
 @pytest.fixture()
 def content(session, subject):
+    """Create a test content object."""
     c = Content(subject_id=subject.id, name="Algebra Basics")
     session.add(c)
     session.flush()
