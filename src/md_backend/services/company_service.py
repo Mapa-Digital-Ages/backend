@@ -45,7 +45,6 @@ class CompanyService:
         company = CompanyProfile(
             user_id=user.id,
             spots=spots,
-
         )
         session.add(company)
 
@@ -58,7 +57,6 @@ class CompanyService:
             "phone_number": user.phone_number,
             "name": full_name,
             "spots": company.spots,
-
             "status": "aguardando",
             "created_at": user.created_at.isoformat(),
         }
@@ -94,7 +92,6 @@ class CompanyService:
                 "phone_number": c.user.phone_number,
                 "name": build_full_name(c.user.first_name, c.user.last_name),
                 "spots": c.spots,
-
                 "status": "aguardando",
                 "created_at": c.user.created_at.isoformat(),
             }
@@ -143,7 +140,6 @@ class CompanyService:
             "phone_number": c.user.phone_number,
             "name": build_full_name(c.user.first_name, c.user.last_name),
             "spots": c.spots,
-
             "status": "aguardando",
             "created_at": c.user.created_at.isoformat(),
         }
@@ -229,7 +225,6 @@ class CompanyService:
             "phone_number": company.user.phone_number,
             "name": build_full_name(company.user.first_name, company.user.last_name),
             "spots": company.spots,
-
             "status": "aguardando",
             "created_at": company.user.created_at.isoformat(),
         }

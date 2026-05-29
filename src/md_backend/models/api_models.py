@@ -241,7 +241,6 @@ class UpdateSchoolRequest(BaseModel):
     is_private: bool | None = None
 
 
-
 class SchoolResponse(BaseModel):
     """Response model for a single school."""
 
