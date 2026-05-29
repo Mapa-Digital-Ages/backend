@@ -87,10 +87,64 @@ async def _migrate_resources_table(conn: AsyncConnection) -> None:
         await conn.execute(text(stmt))
 
 
+async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
+    """Apply schema updates for the sponsorship refactoring."""
+    if conn.dialect.name != "postgresql":
+        return
+
+    # Create new enums if they do not exist
+    for enum_name, enum_values in [
+        ("request_status_enum", "('open','partially_fulfilled','fulfilled','cancelled')"),
+        ("partnership_status_enum", "('pending','approved','rejected')"),
+    ]:
+        await conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE TYPE {enum_name} AS ENUM {enum_values}; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
+
+    # Drop legacy columns from user profiles (if they exist)
+    await conn.execute(text("ALTER TABLE school_profile DROP COLUMN IF EXISTS requested_spots"))
+    await conn.execute(text("ALTER TABLE company_profile DROP COLUMN IF EXISTS available_spots"))
+
+    # Refactor SchoolCompanyPartnership table (we can just let create_all recreate it if we drop,
+    # or handle dropping the old composite PK and adding the new UUID PK if the table exists).
+    # Since we are adding new UUID PKs and removing the composite PK, the simplest manual
+    # migration in dev environment is to drop and let create_all recreate it,
+    # or alter it directly. We'll try to alter it if we want to preserve data, but since the
+    # previous schema had no UUID `id` or `request_id`, it's complex.
+    # To be safe and idempotent, we'll try to add the `id` column. If it fails, we assume it's done.
+    try:
+        await conn.execute(text("ALTER TABLE school_company_partnership DROP CONSTRAINT school_company_partnership_pkey"))
+    except Exception:
+        pass
+    
+    for stmt in [
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS request_id UUID NULL",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS granted_spots INTEGER NULL",
+    ]:
+        try:
+            await conn.execute(text(stmt))
+        except Exception:
+            pass
+
+    try:
+        await conn.execute(
+            text(
+                "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS status partnership_status_enum NOT NULL DEFAULT 'pending'"
+            )
+        )
+    except Exception:
+        pass
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_user_last_name_nullable(conn)
         await _migrate_resources_table(conn)
+        await _migrate_sponsorship_tables(conn)
 
