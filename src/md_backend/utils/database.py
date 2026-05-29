@@ -57,11 +57,7 @@ async def _migrate_resources_table(conn: AsyncConnection) -> None:
     )
 
     # Rename contents_id → content_id
-    await conn.execute(
-        text(
-            "ALTER TABLE resources RENAME COLUMN contents_id TO content_id"
-        )
-    )
+    await conn.execute(text("ALTER TABLE resources RENAME COLUMN contents_id TO content_id"))
 
     # Convert type column from varchar to resource_type_enum
     await conn.execute(
@@ -130,8 +126,7 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
     for stmt in [
         "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
         "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
-        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
-        "request_id UUID NULL",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS request_id UUID NULL",
         "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
         "granted_spots INTEGER NULL",
     ]:
@@ -158,4 +153,3 @@ async def init_db() -> None:
         await _ensure_user_last_name_nullable(conn)
         await _migrate_resources_table(conn)
         await _migrate_sponsorship_tables(conn)
-
