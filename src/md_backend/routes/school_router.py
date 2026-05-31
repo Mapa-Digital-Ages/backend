@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from md_backend.models.api_models import (
     CreateSchoolRequest,
     CreateSponsorshipRequestRequest,
+    PublicSponsorshipRequestListResponse,
     SchoolListResponse,
     SchoolResponse,
     SponsorshipRequestListResponse,
@@ -81,6 +82,19 @@ async def list_schools(
         size=size,
         name=name,
     )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@school_router.get(
+    "/requests",
+    response_model=PublicSponsorshipRequestListResponse,
+    summary="Public showcase — list open sponsorship requests",
+)
+async def list_public_requests(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """List all OPEN or PARTIALLY_FULFILLED sponsorship requests publicly."""
+    result = await school_service.list_public_sponsorship_requests(session=session)
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 

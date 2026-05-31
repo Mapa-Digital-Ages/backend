@@ -45,6 +45,7 @@ class SponsorshipRequestStatusEnum(enum.StrEnum):
     """Sponsorship request status."""
 
     OPEN = "open"
+    PARTIALLY_FULFILLED = "partially_fulfilled"
     FULFILLED = "fulfilled"
     CANCELLED = "cancelled"
 
@@ -257,16 +258,34 @@ class GuardianProfile(Base):
     )
 
 
+class PartnershipStatusEnum(enum.StrEnum):
+    """Partnership / donation intent status."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
 class SchoolCompanyPartnership(Base):
     """N:M Relationship between School and Company."""
 
     __tablename__ = "school_company_partnership"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), primary_key=True
     )
     company_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("company_profile.user_id"), primary_key=True
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("sponsorship_request.id"), nullable=False, index=True
+    )
+    granted_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[PartnershipStatusEnum] = mapped_column(
+        Enum(PartnershipStatusEnum, name="partnership_status_enum"),
+        nullable=False,
+        default=PartnershipStatusEnum.PENDING,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
