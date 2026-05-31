@@ -41,6 +41,14 @@ class GuardianStatusEnum(enum.StrEnum):
     REJECTED = "rejected"
 
 
+class SponsorshipRequestStatusEnum(enum.StrEnum):
+    """Sponsorship request status."""
+
+    OPEN = "open"
+    FULFILLED = "fulfilled"
+    CANCELLED = "cancelled"
+
+
 class Base(DeclarativeBase):
     """Base class for all database models."""
 
@@ -194,6 +202,35 @@ class SchoolProfile(Base):
     )
     companies: Mapped[list["CompanyProfile"]] = relationship(
         "CompanyProfile", secondary="school_company_partnership", back_populates="schools"
+    )
+
+    sponsorship_requests: Mapped[list["SponsorshipRequest"]] = relationship(
+        "SponsorshipRequest", back_populates="school"
+    )
+
+
+class SponsorshipRequest(Base):
+    """Sponsorship request made by a school."""
+
+    __tablename__ = "sponsorship_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False, index=True
+    )
+    requested_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[SponsorshipRequestStatusEnum] = mapped_column(
+        Enum(SponsorshipRequestStatusEnum, name="sponsorship_request_status_enum"),
+        nullable=False,
+        default=SponsorshipRequestStatusEnum.OPEN,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    school: Mapped["SchoolProfile"] = relationship(
+        "SchoolProfile", back_populates="sponsorship_requests"
     )
 
 

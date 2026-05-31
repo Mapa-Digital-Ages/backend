@@ -360,6 +360,30 @@ class CompanyResponse(BaseModel):
     created_at: str
 
 
+class CreateSponsorshipRequestRequest(BaseModel):
+    """Request body for POST /school/{school_id}/requests."""
+
+    requested_spots: int = Field(gt=0, description="Number of sponsorship spots requested")
+
+
+class SponsorshipRequestResponse(BaseModel):
+    """Response model for a sponsorship request."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    requested_spots: int
+    remaining_spots: int
+    status: str
+    created_at: str
+
+
+class SponsorshipRequestListResponse(BaseModel):
+    """List of sponsorship requests for a school."""
+
+    items: list[SponsorshipRequestResponse]
+    total: int
+
+
 class CalendarTaskSubjectPayload(BaseModel):
     """Payload for the subject field in a calendar task sync request."""
 
