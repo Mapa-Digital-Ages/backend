@@ -264,33 +264,6 @@ class GuardianProfile(Base):
     )
 
 
-class SponsorshipRequest(Base):
-    """Sponsorship request made by a school."""
-
-    __tablename__ = "sponsorship_request"
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    school_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False
-    )
-    requested_spots: Mapped[int] = mapped_column(Integer, nullable=False)
-    remaining_spots: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[RequestStatusEnum] = mapped_column(
-        Enum(RequestStatusEnum, name="request_status_enum"),
-        nullable=False,
-        default=RequestStatusEnum.OPEN,
-    )
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    updated_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-        nullable=False,
-    )
-
-
 class SchoolCompanyPartnership(Base):
     """N:M Relationship between School and Company representing a contract."""
 
