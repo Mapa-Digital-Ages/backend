@@ -230,9 +230,6 @@ class CreateSchoolRequest(BaseModel):
     password: str = Field(min_length=8, description="Access password with at least 8 characters")
     phone_number: str | None = Field(default=None, description="Optional phone number")
     is_private: bool = Field(description="Whether the school is public or private")
-    requested_spots: int | None = Field(
-        default=None, description="Requested spots (public schools only)"
-    )
 
 
 class UpdateSchoolRequest(BaseModel):
@@ -242,7 +239,6 @@ class UpdateSchoolRequest(BaseModel):
     last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     is_private: bool | None = None
-    requested_spots: int | None = None
 
 
 class SchoolResponse(BaseModel):
@@ -252,7 +248,7 @@ class SchoolResponse(BaseModel):
     email: str
     name: str
     is_private: bool
-    requested_spots: int | None
+
     is_active: bool
     deactivated_at: str | None
     created_at: str
@@ -355,7 +351,7 @@ class CompanyResponse(BaseModel):
     phone_number: str | None = None
     name: str
     spots: int
-    available_spots: int
+
     status: str
     created_at: str
 
