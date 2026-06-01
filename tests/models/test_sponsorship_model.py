@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from md_backend.models.db_models import (
     CompanyProfile,
     PartnershipStatusEnum,
-    RequestStatusEnum,
     SchoolCompanyPartnership,
     SchoolProfile,
     SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
     UserProfile,
 )
 from md_backend.utils.database import AsyncSessionLocal, init_db
@@ -43,7 +43,7 @@ class TestSponsorshipModel:
             await session.commit()
 
             assert req.id is not None
-            assert req.status == RequestStatusEnum.OPEN
+            assert req.status == SponsorshipRequestStatusEnum.OPEN
 
     @pytest.mark.anyio
     async def test_create_partnership_success(self):
