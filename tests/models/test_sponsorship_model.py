@@ -6,10 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from md_backend.models.db_models import (
     CompanyProfile,
     PartnershipStatusEnum,
-    SponsorshipRequestStatusEnum,
     SchoolCompanyPartnership,
     SchoolProfile,
     SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
     UserProfile,
 )
 from md_backend.utils.database import AsyncSessionLocal, init_db
