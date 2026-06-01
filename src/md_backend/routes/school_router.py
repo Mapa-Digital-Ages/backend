@@ -44,7 +44,6 @@ async def create_school(
             password=request.password,
             phone_number=request.phone_number,
             is_private=request.is_private,
-            requested_spots=request.requested_spots,
             session=session,
         )
     except IntegrityError:
@@ -139,7 +138,6 @@ async def update_school(
         last_name=payload.get("last_name"),
         email=str(payload["email"]) if payload.get("email") else None,
         is_private=payload.get("is_private"),
-        requested_spots=payload.get("requested_spots"),
         session=session,
         last_name_provided="last_name" in payload,
     )
