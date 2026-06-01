@@ -45,8 +45,17 @@ class SponsorshipRequestStatusEnum(enum.StrEnum):
     """Sponsorship request status."""
 
     OPEN = "open"
+    PARTIALLY_FULFILLED = "partially_fulfilled"
     FULFILLED = "fulfilled"
     CANCELLED = "cancelled"
+
+
+class PartnershipStatusEnum(enum.StrEnum):
+    """School-Company partnership status."""
+
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class Base(DeclarativeBase):
@@ -171,7 +180,6 @@ class CompanyProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    available_spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -191,7 +199,6 @@ class SchoolProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -257,16 +264,53 @@ class GuardianProfile(Base):
     )
 
 
+class SponsorshipRequest(Base):
+    """Sponsorship request made by a school."""
+
+    __tablename__ = "sponsorship_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False
+    )
+    requested_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[RequestStatusEnum] = mapped_column(
+        Enum(RequestStatusEnum, name="request_status_enum"),
+        nullable=False,
+        default=RequestStatusEnum.OPEN,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class SchoolCompanyPartnership(Base):
-    """N:M Relationship between School and Company."""
+    """N:M Relationship between School and Company representing a contract."""
 
     __tablename__ = "school_company_partnership"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False
     )
     company_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("company_profile.user_id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("company_profile.user_id"), nullable=False
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("sponsorship_request.id"), nullable=False
+    )
+    granted_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[PartnershipStatusEnum] = mapped_column(
+        Enum(PartnershipStatusEnum, name="partnership_status_enum"),
+        nullable=False,
+        default=PartnershipStatusEnum.PENDING,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -304,6 +348,16 @@ class DifficultyEnum(enum.StrEnum):
     MEDIUM = "medium"
     HARD = "hard"
     VERY_HARD = "very_hard"
+
+
+class ResourceTypeEnum(enum.StrEnum):
+    """Resource content type."""
+
+    VIDEO = "video"
+    PDF = "pdf"
+    PRESENTATION = "presentation"
+    LINK = "link"
+    DOCUMENT = "document"
 
 
 class PathStatusEnum(enum.StrEnum):
@@ -382,10 +436,25 @@ class Resource(Base):
     __tablename__ = "resources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
-    type: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    type: Mapped[ResourceTypeEnum] = mapped_column(
+        Enum(ResourceTypeEnum, name="resource_type_enum"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
-    url_or_contents: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
 
 
 class Exercise(Base):

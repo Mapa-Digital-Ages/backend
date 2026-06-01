@@ -57,14 +57,13 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
 
-    def _payload(self, email, *, is_private=True, requested_spots=None, phone_number=None):
+    def _payload(self, email, *, is_private=True, phone_number=None):
         payload = {
             "first_name": "School",
             "last_name": "Test",
             "email": email,
             "password": "password1234",
             "is_private": is_private,
-            "requested_spots": requested_spots,
         }
         if phone_number is not None:
             payload["phone_number"] = phone_number
@@ -77,7 +76,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def test_create_school_success_returns_201(self):
         resp = self.client.post(
             "/api/school",
-            json=self._payload("create_ok@test.com", is_private=False, requested_spots=80),
+            json=self._payload("create_ok@test.com", is_private=False),
             headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
@@ -86,7 +85,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         uuid.UUID(body["user_id"])
         self.assertEqual(body["email"], "create_ok@test.com")
         self.assertEqual(body["is_private"], False)
-        self.assertEqual(body["requested_spots"], 80)
         self.assertEqual(body["student_count"], 0)
         self.assertTrue(body["is_active"])
         self.assertIsNone(body["deactivated_at"])
@@ -242,7 +240,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
                 "email": "olympus_filter@test.com",
                 "password": "password1234",
                 "is_private": False,
-                "requested_spots": 100,
             },
             headers=self.admin_headers,
         )
@@ -276,7 +273,7 @@ class TestSchoolServiceIntegration(unittest.TestCase):
     def test_get_school_by_id_returns_correct_data(self):
         create_resp = self.client.post(
             "/api/school",
-            json=self._payload("school_getbyid@test.com", requested_spots=42),
+            json=self._payload("school_getbyid@test.com"),
             headers=self.admin_headers,
         )
         school_id = create_resp.json()["user_id"]
@@ -286,7 +283,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         body = resp.json()
         self.assertEqual(body["user_id"], school_id)
         self.assertEqual(body["email"], "school_getbyid@test.com")
-        self.assertEqual(body["requested_spots"], 42)
         self.assertEqual(body["student_count"], 0)
         self.assertNotIn("password", body)
 
@@ -317,7 +313,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
                 "last_name": "Name",
                 "email": "school_upd_full_new@test.com",
                 "is_private": False,
-                "requested_spots": 200,
             },
             headers=self.admin_headers,
         )
@@ -325,7 +320,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         body = resp.json()
         self.assertEqual(body["email"], "school_upd_full_new@test.com")
         self.assertEqual(body["is_private"], False)
-        self.assertEqual(body["requested_spots"], 200)
         self.assertEqual(body["name"], "New Name")
 
     def test_update_school_can_clear_last_name(self):
@@ -470,7 +464,6 @@ class TestUpdateSchoolRequestDTO(unittest.TestCase):
         self.assertIsNone(req.last_name)
         self.assertIsNone(req.email)
         self.assertIsNone(req.is_private)
-        self.assertIsNone(req.requested_spots)
 
     def test_update_request_validates_email_format(self):
         from pydantic import ValidationError

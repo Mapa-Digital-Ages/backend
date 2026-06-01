@@ -29,7 +29,6 @@ class SchoolService:
         is_private: bool,
         session: AsyncSession,
         phone_number: str | None = None,
-        requested_spots: int | None = None,
     ) -> dict | None:
         """Create a school atomically (user_profile + school_profile).
 
@@ -53,7 +52,6 @@ class SchoolService:
         school = SchoolProfile(
             user_id=user.id,
             is_private=is_private,
-            requested_spots=requested_spots,
         )
         session.add(school)
 
@@ -73,7 +71,6 @@ class SchoolService:
             "email": user.email,
             "name": full_name,
             "is_private": school.is_private,
-            "requested_spots": school.requested_spots,
             "is_active": user.is_active,
             "deactivated_at": school.deactivated_at.isoformat() if school.deactivated_at else None,
             "created_at": user.created_at.isoformat(),
@@ -155,7 +152,6 @@ class SchoolService:
         last_name: str | None,
         email: str | None,
         is_private: bool | None,
-        requested_spots: int | None,
         session: AsyncSession,
         last_name_provided: bool = False,
     ) -> dict | None | str:
@@ -185,9 +181,6 @@ class SchoolService:
 
         if is_private is not None:
             school.is_private = is_private
-
-        if requested_spots is not None:
-            school.requested_spots = requested_spots
 
         await session.commit()
         await session.refresh(user)
