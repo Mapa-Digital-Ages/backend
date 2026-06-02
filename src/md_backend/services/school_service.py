@@ -6,7 +6,13 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import SchoolProfile, StudentProfile, UserProfile
+from md_backend.models.db_models import (
+    SchoolProfile,
+    SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
+    StudentProfile,
+    UserProfile,
+)
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
@@ -211,3 +217,73 @@ class SchoolService:
 
         await session.commit()
         return True
+
+    async def create_sponsorship_request(
+        self,
+        school_id: uuid.UUID,
+        requested_spots: int,
+        session: AsyncSession,
+    ) -> dict | None:
+        """Create a sponsorship request for a school.
+
+        Returns the created request dict, or None if the school does not exist.
+        """
+        school_result = await session.execute(
+            select(SchoolProfile).where(SchoolProfile.user_id == school_id)
+        )
+        school = school_result.scalar_one_or_none()
+
+        if school is None:
+            return None
+
+        sponsorship = SponsorshipRequest(
+            school_id=school_id,
+            requested_spots=requested_spots,
+            remaining_spots=requested_spots,
+            status=SponsorshipRequestStatusEnum.OPEN,
+        )
+        session.add(sponsorship)
+        await session.commit()
+        await session.refresh(sponsorship)
+
+        return self._build_sponsorship_dict(sponsorship)
+
+    async def list_sponsorship_requests(
+        self,
+        school_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> dict | None:
+        """Return all sponsorship requests for a school.
+
+        Returns None if the school does not exist.
+        """
+        school_result = await session.execute(
+            select(SchoolProfile).where(SchoolProfile.user_id == school_id)
+        )
+        school = school_result.scalar_one_or_none()
+
+        if school is None:
+            return None
+
+        result = await session.execute(
+            select(SponsorshipRequest)
+            .where(SponsorshipRequest.school_id == school_id)
+            .order_by(SponsorshipRequest.created_at.desc())
+        )
+        requests = result.scalars().all()
+
+        return {
+            "items": [self._build_sponsorship_dict(r) for r in requests],
+            "total": len(requests),
+        }
+
+    def _build_sponsorship_dict(self, request: SponsorshipRequest) -> dict:
+        """Build the sponsorship request response dict."""
+        return {
+            "id": str(request.id),
+            "school_id": str(request.school_id),
+            "requested_spots": request.requested_spots,
+            "remaining_spots": request.remaining_spots,
+            "status": request.status,
+            "created_at": request.created_at.isoformat(),
+        }

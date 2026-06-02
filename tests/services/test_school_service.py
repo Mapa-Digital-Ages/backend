@@ -472,3 +472,205 @@ class TestUpdateSchoolRequestDTO(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             UpdateSchoolRequest(email="not-an-email")
+
+
+class TestSponsorshipRequestIntegration(unittest.TestCase):
+    """Integration tests for POST and GET /api/school/{id}/requests."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from md_backend.main import app
+        from tests.helpers import get_admin_headers
+
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+        # Create a school and get its credentials
+        school_email = f"school_req_{uuid.uuid4().hex[:8]}@test.com"
+        school_password = "password1234"
+        resp = self.client.post(
+            "/api/school",
+            json={
+                "first_name": "Request",
+                "last_name": "School",
+                "email": school_email,
+                "password": school_password,
+                "is_private": False,
+            },
+            headers=self.admin_headers,
+        )
+        self.school_id = resp.json()["user_id"]
+
+        login_resp = self.client.post(
+            "/api/login", json={"email": school_email, "password": school_password}
+        )
+        self.school_headers = {"Authorization": f"Bearer {login_resp.json()['token']}"}
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    # POST /api/school/{id}/requests
+    def test_create_request_returns_201_with_open_status(self):
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 50},
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertEqual(body["status"], "open")
+        self.assertEqual(body["requested_spots"], 50)
+
+    def test_create_request_remaining_spots_equals_requested_spots(self):
+        """Validate business rule: remaining_spots must be initialized to requested_spots."""
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 30},
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertEqual(body["remaining_spots"], body["requested_spots"])
+        self.assertEqual(body["remaining_spots"], 30)
+
+    def test_create_request_status_is_open_on_creation(self):
+        """Validate business rule: status must be OPEN on creation."""
+        from md_backend.models.db_models import SponsorshipRequest
+        from md_backend.utils.database import AsyncSessionLocal
+
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 10},
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        request_id = resp.json()["id"]
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(SponsorshipRequest).where(SponsorshipRequest.id == uuid.UUID(request_id))
+                )
+                return result.scalar_one()
+
+        db_record = asyncio.run(fetch())
+        from md_backend.models.db_models import SponsorshipRequestStatusEnum
+
+        self.assertEqual(db_record.status, SponsorshipRequestStatusEnum.OPEN)
+        self.assertEqual(db_record.remaining_spots, db_record.requested_spots)
+
+    def test_create_request_admin_can_create_for_any_school(self):
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 20},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+    def test_create_request_other_user_returns_403(self):
+        from tests.helpers import create_approved_user
+
+        token = create_approved_user(
+            self.client, self.admin_headers, f"other_{uuid.uuid4().hex[:8]}@test.com"
+        )
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 10},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_create_request_unauthenticated_returns_401(self):
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 10},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_create_request_school_not_found_returns_404(self):
+        resp = self.client.post(
+            f"/api/school/{uuid.uuid4()}/requests",
+            json={"requested_spots": 10},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_create_request_invalid_spots_returns_422(self):
+        resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 0},
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    # GET /api/school/{id}/requests
+    def test_list_requests_returns_all_school_requests(self):
+        self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 10},
+            headers=self.school_headers,
+        )
+        self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 20},
+            headers=self.school_headers,
+        )
+
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/requests",
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("items", body)
+        self.assertIn("total", body)
+        self.assertGreaterEqual(body["total"], 2)
+
+    def test_list_requests_shows_progress_fields(self):
+        self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 40},
+            headers=self.school_headers,
+        )
+
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/requests",
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        item = resp.json()["items"][0]
+        self.assertIn("requested_spots", item)
+        self.assertIn("remaining_spots", item)
+        self.assertIn("status", item)
+
+    def test_list_requests_admin_can_list_any_school(self):
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/requests",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+
+    def test_list_requests_other_user_returns_403(self):
+        from tests.helpers import create_approved_user
+
+        token = create_approved_user(
+            self.client, self.admin_headers, f"other2_{uuid.uuid4().hex[:8]}@test.com"
+        )
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/requests",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_list_requests_unauthenticated_returns_401(self):
+        resp = self.client.get(f"/api/school/{self.school_id}/requests")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_list_requests_school_not_found_returns_404(self):
+        resp = self.client.get(
+            f"/api/school/{uuid.uuid4()}/requests",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 404)
