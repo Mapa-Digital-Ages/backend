@@ -380,6 +380,44 @@ class SponsorshipRequestListResponse(BaseModel):
     total: int
 
 
+class CreatePartnershipRequest(BaseModel):
+    """Request body for POST /company/{user_id}/partnerships."""
+
+    request_id: uuid.UUID = Field(description="ID of the SponsorshipRequest to fulfill")
+    granted_spots: int = Field(gt=0, description="Number of spots the company wants to donate")
+
+
+class PartnershipResponse(BaseModel):
+    """Response model for a donation intent (partnership)."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class PublicSponsorshipRequestResponse(BaseModel):
+    """Response model for the public showcase listing."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    school_name: str
+    requested_spots: int
+    remaining_spots: int
+    status: str
+    created_at: str
+
+
+class PublicSponsorshipRequestListResponse(BaseModel):
+    """Paginated public showcase of open sponsorship requests."""
+
+    items: list[PublicSponsorshipRequestResponse]
+    total: int
+
+
 class CalendarTaskSubjectPayload(BaseModel):
     """Payload for the subject field in a calendar task sync request."""
 

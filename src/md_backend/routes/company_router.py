@@ -8,7 +8,13 @@ from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import CompanyResponse, CreateCompanyRequest, UpdateCompanyRequest
+from md_backend.models.api_models import (
+    CompanyResponse,
+    CreateCompanyRequest,
+    CreatePartnershipRequest,
+    PartnershipResponse,
+    UpdateCompanyRequest,
+)
 from md_backend.services.company_service import CompanyService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
@@ -135,3 +141,49 @@ async def update_company(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     return result
+
+
+@company_router.post(
+    "/{user_id}/partnerships",
+    status_code=status.HTTP_201_CREATED,
+    response_model=PartnershipResponse,
+    summary="Create a donation intent (partnership)",
+)
+async def create_partnership(
+    user_id: uuid.UUID,
+    request: CreatePartnershipRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> JSONResponse:
+    """Formalize a company's intent to donate spots to a sponsorship request.
+
+    Only the company itself or a superadmin may create partnerships.
+    Blocked if granted_spots exceeds the request's remaining_spots.
+    """
+    is_own_company = str(user_id) == current_user["user_id"]
+    if not current_user.get("is_superadmin") and not is_own_company:
+        return JSONResponse(
+            content={"detail": "Access restricted to the company owner or administrators."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await company_service.create_partnership(
+        company_id=user_id,
+        request_id=request.request_id,
+        granted_spots=request.granted_spots,
+        session=session,
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Company or sponsorship request not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    if result == "overbooking":
+        return JSONResponse(
+            content={"detail": "granted_spots exceeds the remaining spots for this request."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)

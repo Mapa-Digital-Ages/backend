@@ -287,3 +287,43 @@ class SchoolService:
             "status": request.status,
             "created_at": request.created_at.isoformat(),
         }
+
+    async def list_public_sponsorship_requests(
+        self,
+        session: AsyncSession,
+    ) -> dict:
+        """Return all OPEN or PARTIALLY_FULFILLED sponsorship requests with school name."""
+        from md_backend.models.db_models import SponsorshipRequestStatusEnum
+
+        query = (
+            select(SponsorshipRequest, UserProfile)
+            .join(SchoolProfile, SchoolProfile.user_id == SponsorshipRequest.school_id)
+            .join(UserProfile, UserProfile.id == SchoolProfile.user_id)
+            .where(
+                SponsorshipRequest.status.in_(
+                    [
+                        SponsorshipRequestStatusEnum.OPEN,
+                        SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED,
+                    ]
+                )
+            )
+            .order_by(SponsorshipRequest.created_at.desc())
+        )
+
+        result = await session.execute(query)
+        rows = result.all()
+
+        items = [
+            {
+                "id": str(req.id),
+                "school_id": str(req.school_id),
+                "school_name": build_full_name(user.first_name, user.last_name),
+                "requested_spots": req.requested_spots,
+                "remaining_spots": req.remaining_spots,
+                "status": req.status,
+                "created_at": req.created_at.isoformat(),
+            }
+            for req, user in rows
+        ]
+
+        return {"items": items, "total": len(items)}

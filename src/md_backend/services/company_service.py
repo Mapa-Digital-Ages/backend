@@ -228,3 +228,75 @@ class CompanyService:
             "status": "aguardando",
             "created_at": company.user.created_at.isoformat(),
         }
+
+    async def create_partnership(
+        self,
+        company_id: uuid.UUID,
+        request_id: uuid.UUID,
+        granted_spots: int,
+        session: AsyncSession,
+    ) -> dict | str | None:
+        """Create a donation intent (partnership) for a sponsorship request.
+
+        Returns:
+            dict  — success, the created partnership.
+            None  — company or sponsorship request not found.
+            "overbooking" — granted_spots exceeds remaining_spots.
+        """
+        from md_backend.models.db_models import (
+            CompanyProfile,
+            PartnershipStatusEnum,
+            SchoolCompanyPartnership,
+            SponsorshipRequest,
+            SponsorshipRequestStatusEnum,
+        )
+
+        # Verify company exists
+        company_result = await session.execute(
+            select(CompanyProfile).where(CompanyProfile.user_id == company_id)
+        )
+        if company_result.scalar_one_or_none() is None:
+            return None
+
+        # Lock the sponsorship request row to prevent overbooking under concurrency
+        req_result = await session.execute(
+            select(SponsorshipRequest).where(SponsorshipRequest.id == request_id).with_for_update()
+        )
+        sponsorship = req_result.scalar_one_or_none()
+
+        if sponsorship is None:
+            return None
+
+        if granted_spots > sponsorship.remaining_spots:
+            return "overbooking"
+
+        # Reserve spots
+        sponsorship.remaining_spots -= granted_spots
+
+        # Update sponsorship status
+        if sponsorship.remaining_spots == 0:
+            sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
+        else:
+            sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+
+        partnership = SchoolCompanyPartnership(
+            school_id=sponsorship.school_id,
+            company_id=company_id,
+            request_id=request_id,
+            granted_spots=granted_spots,
+            status=PartnershipStatusEnum.PENDING,
+        )
+        session.add(partnership)
+
+        await session.commit()
+        await session.refresh(partnership)
+
+        return {
+            "id": str(partnership.id),
+            "school_id": str(partnership.school_id),
+            "company_id": str(partnership.company_id),
+            "request_id": str(partnership.request_id),
+            "granted_spots": partnership.granted_spots,
+            "status": partnership.status,
+            "created_at": partnership.created_at.isoformat(),
+        }

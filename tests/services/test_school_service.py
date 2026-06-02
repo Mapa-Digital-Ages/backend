@@ -674,3 +674,255 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 404)
+
+
+class TestPartnershipIntegration(unittest.TestCase):
+    """Integration tests for POST /api/company/{id}/partnerships and GET /api/school/requests."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from md_backend.main import app
+        from tests.helpers import get_admin_headers
+
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+        # Create school
+        school_email = f"school_partner_{uuid.uuid4().hex[:8]}@test.com"
+        school_password = "password1234"
+        school_resp = self.client.post(
+            "/api/school",
+            json={
+                "first_name": "Partner",
+                "last_name": "School",
+                "email": school_email,
+                "password": school_password,
+                "is_private": False,
+            },
+            headers=self.admin_headers,
+        )
+        self.school_id = school_resp.json()["user_id"]
+        school_login = self.client.post(
+            "/api/login", json={"email": school_email, "password": school_password}
+        )
+        self.school_headers = {"Authorization": f"Bearer {school_login.json()['token']}"}
+
+        # Create sponsorship request with 10 spots
+        req_resp = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"requested_spots": 10},
+            headers=self.school_headers,
+        )
+        self.request_id = req_resp.json()["id"]
+
+        # Create company A
+        company_a_email = f"company_a_{uuid.uuid4().hex[:8]}@test.com"
+        company_a_password = "password1234"
+        company_a_resp = self.client.post(
+            "/api/company",
+            json={
+                "first_name": "Company",
+                "last_name": "Alpha",
+                "email": company_a_email,
+                "password": company_a_password,
+                "spots": 100,
+            },
+        )
+        self.company_a_id = company_a_resp.json()["user_id"]
+        login_a = self.client.post(
+            "/api/login", json={"email": company_a_email, "password": company_a_password}
+        )
+        self.company_a_headers = {"Authorization": f"Bearer {login_a.json()['token']}"}
+
+        # Create company B
+        company_b_email = f"company_b_{uuid.uuid4().hex[:8]}@test.com"
+        company_b_password = "password1234"
+        company_b_resp = self.client.post(
+            "/api/company",
+            json={
+                "first_name": "Company",
+                "last_name": "Beta",
+                "email": company_b_email,
+                "password": company_b_password,
+                "spots": 100,
+            },
+        )
+        self.company_b_id = company_b_resp.json()["user_id"]
+        login_b = self.client.post(
+            "/api/login", json={"email": company_b_email, "password": company_b_password}
+        )
+        self.company_b_headers = {"Authorization": f"Bearer {login_b.json()['token']}"}
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    # POST /api/company/{id}/partnerships
+    def test_create_partnership_returns_201_with_pending_status(self):
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 5},
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+        body = resp.json()
+        self.assertEqual(body["status"], "pending")
+        self.assertEqual(body["granted_spots"], 5)
+        self.assertEqual(body["company_id"], self.company_a_id)
+
+    def test_create_partnership_reduces_remaining_spots(self):
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+        showcase = self.client.get("/api/school/requests")
+        items = showcase.json()["items"]
+        req = next(i for i in items if i["id"] == self.request_id)
+        self.assertEqual(req["remaining_spots"], 6)
+
+    def test_create_partnership_overbooking_returns_400(self):
+        """Two companies trying to donate beyond available spots — second must get 400."""
+        # Company A donates 7 (leaves 3)
+        resp_a = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 7},
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp_a.status_code, 201)
+
+        # Company B tries to donate 5 — only 3 remain — must be blocked
+        resp_b = self.client.post(
+            f"/api/company/{self.company_b_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 5},
+            headers=self.company_b_headers,
+        )
+        self.assertEqual(resp_b.status_code, 400)
+        self.assertIn("remaining", resp_b.json()["detail"].lower())
+
+    def test_create_partnership_exact_spots_marks_request_fulfilled(self):
+        """Donating exactly remaining_spots should mark the request as fulfilled."""
+        from md_backend.models.db_models import SponsorshipRequest, SponsorshipRequestStatusEnum
+        from md_backend.utils.database import AsyncSessionLocal
+
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 10},
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(SponsorshipRequest).where(
+                        SponsorshipRequest.id == uuid.UUID(self.request_id)
+                    )
+                )
+                return result.scalar_one()
+
+        req = asyncio.run(fetch())
+        self.assertEqual(req.status, SponsorshipRequestStatusEnum.FULFILLED)
+        self.assertEqual(req.remaining_spots, 0)
+
+    def test_create_partnership_partial_donation_marks_partially_fulfilled(self):
+        """Donating fewer than remaining_spots should mark the request as partially_fulfilled."""
+        from md_backend.models.db_models import SponsorshipRequest, SponsorshipRequestStatusEnum
+        from md_backend.utils.database import AsyncSessionLocal
+
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 3},
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 201)
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(SponsorshipRequest).where(
+                        SponsorshipRequest.id == uuid.UUID(self.request_id)
+                    )
+                )
+                return result.scalar_one()
+
+        req = asyncio.run(fetch())
+        self.assertEqual(req.status, SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED)
+        self.assertEqual(req.remaining_spots, 7)
+
+    def test_create_partnership_unauthenticated_returns_401(self):
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 1},
+        )
+        self.assertEqual(resp.status_code, 401)
+
+    def test_create_partnership_other_user_returns_403(self):
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 1},
+            headers=self.company_b_headers,
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_create_partnership_invalid_request_id_returns_404(self):
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": str(uuid.uuid4()), "granted_spots": 1},
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 404)
+
+    def test_create_partnership_zero_granted_spots_returns_422(self):
+        resp = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 0},
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    # GET /api/school/requests  (vitrine pública)
+    def test_showcase_returns_open_requests(self):
+        resp = self.client.get("/api/school/requests")
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertIn("items", body)
+        self.assertIn("total", body)
+        ids = [i["id"] for i in body["items"]]
+        self.assertIn(self.request_id, ids)
+
+    def test_showcase_exposes_remaining_spots(self):
+        resp = self.client.get("/api/school/requests")
+        items = resp.json()["items"]
+        req = next(i for i in items if i["id"] == self.request_id)
+        self.assertIn("remaining_spots", req)
+        self.assertEqual(req["remaining_spots"], 10)
+
+    def test_showcase_does_not_return_fulfilled_requests(self):
+        # Fulfill the request completely
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 10},
+            headers=self.company_a_headers,
+        )
+        resp = self.client.get("/api/school/requests")
+        ids = [i["id"] for i in resp.json()["items"]]
+        self.assertNotIn(self.request_id, ids)
+
+    def test_showcase_returns_partially_fulfilled_requests(self):
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 3},
+            headers=self.company_a_headers,
+        )
+        resp = self.client.get("/api/school/requests")
+        items = resp.json()["items"]
+        req = next((i for i in items if i["id"] == self.request_id), None)
+        self.assertIsNotNone(req)
+        self.assertEqual(req["status"], "partially_fulfilled")
+
+    def test_showcase_no_auth_required(self):
+        """Vitrine is public — no token needed."""
+        resp = self.client.get("/api/school/requests")
+        self.assertEqual(resp.status_code, 200)
