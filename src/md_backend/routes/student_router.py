@@ -63,7 +63,6 @@ async def _can_read_well_being_history(
         return True
 
     user_id = uuid.UUID(current_user["user_id"])
-    
     if await guardian_owns_student(session, user_id, student_id):
         return True
 
