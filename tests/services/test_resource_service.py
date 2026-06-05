@@ -6,7 +6,12 @@ import uuid
 from typing import cast
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.ext.asyncio import (
+    AsyncEngine,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from md_backend.models.db_models import Base, Content, Resource, Subject
 from md_backend.services.resource_service import ResourceService
@@ -17,6 +22,7 @@ class MockStorage(StorageService):
     """In-memory storage fake for normal upload and delete flows."""
 
     def __init__(self):
+        """Create an empty in-memory store used by the mock methods."""
         self.store: dict[uuid.UUID, bytes] = {}
 
     async def upload_file(self, upload_id, storage_key, file_bytes, content_type):
@@ -33,6 +39,7 @@ class FailingDeleteStorage(StorageService):
     """Storage fake that fails on delete to verify DB consistency."""
 
     def __init__(self):
+        """Create an empty in-memory store used by the mock methods."""
         self.store: dict[uuid.UUID, bytes] = {}
 
     async def upload_file(self, upload_id, storage_key, file_bytes, content_type):

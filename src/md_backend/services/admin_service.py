@@ -5,6 +5,7 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+
 from md_backend.models.db_models import (
     AdminProfile,
     CompanyProfile,
@@ -220,7 +221,7 @@ class AdminService:
                         sponsorship.status = SponsorshipRequestStatusEnum.OPEN
                     elif sponsorship.remaining_spots > 0:
                         sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
-                    # If remaining_spots == 0, status stays as-is (other approved partnerships fill it)
+                    # If remaining_spots == 0, status remains unchanged.
 
             await session.commit()
 

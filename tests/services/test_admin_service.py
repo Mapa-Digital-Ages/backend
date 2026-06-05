@@ -361,6 +361,8 @@ class TestAdminServicePartnershipStatus(unittest.TestCase):
         not_found.scalar_one_or_none.return_value = None
         session.execute = AsyncMock(return_value=not_found)
 
-        result = asyncio.run(AdminService().update_partnership_status(session, uuid.uuid4(), "APPROVED"))
+        result = asyncio.run(
+            AdminService().update_partnership_status(session, uuid.uuid4(), "APPROVED")
+        )
 
         self.assertIsNone(result)

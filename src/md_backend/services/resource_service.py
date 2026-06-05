@@ -35,6 +35,11 @@ class ResourceService:
     """Service layer for resource persistence and storage orchestration."""
 
     def __init__(self, storage: StorageService) -> None:
+        """Initialize ResourceService with a StorageService implementation.
+
+        The provided `storage` is used for all storage operations (upload/delete)
+        and is injected to keep the service implementation testable and backend-agnostic.
+        """
         self.storage = storage
 
     async def upload_resource(
