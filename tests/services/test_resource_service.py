@@ -254,9 +254,7 @@ class TestResourceService(unittest.TestCase):
                 created = cast(dict, created)
 
                 resource_id: int = int(created["id"])
-                deleted = await service.delete_resource(
-                    session=db_session, resource_id=resource_id
-                )
+                deleted = await service.delete_resource(session=db_session, resource_id=resource_id)
                 self.assertTrue(deleted)
 
                 row = await db_session.execute(select(Resource).where(Resource.id == created["id"]))
@@ -292,9 +290,7 @@ class TestResourceService(unittest.TestCase):
 
                 storage = FailingDeleteStorage()
                 service = ResourceService(storage=storage)
-                result = await service.delete_resource(
-                    session=db_session, resource_id=resource_id
-                )
+                result = await service.delete_resource(session=db_session, resource_id=resource_id)
                 self.assertFalse(result)
 
                 row = await db_session.execute(select(Resource).where(Resource.id == resource_id))

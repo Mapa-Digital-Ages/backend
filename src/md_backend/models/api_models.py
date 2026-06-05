@@ -489,6 +489,7 @@ class CalendarUpsertRequest(BaseModel):
 
     tasks: list[CalendarTaskUpsertItem]
 
+
 class PartnershipStatusUpdateRequest(BaseModel):
     """Request body for PATCH /admin/partnerships/{id}/status."""
 

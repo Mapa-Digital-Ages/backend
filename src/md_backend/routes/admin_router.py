@@ -77,6 +77,7 @@ async def update_user_status(
 
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
+
 _ALLOWED_PARTNERSHIP_STATUSES = {"pending", "approved", "rejected"}
 
 
@@ -133,6 +134,7 @@ async def update_partnership_status(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
 
 admin_router.include_router(subject_router)
 admin_router.include_router(content_router, prefix="/content")
