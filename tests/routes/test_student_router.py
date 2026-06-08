@@ -99,11 +99,12 @@ class TestStudentRouterValidation(unittest.TestCase):
         response = self.client.post("/api/student", json=payload, headers=self.admin_headers)
         self.assertEqual(response.status_code, 422)
 
-    def test_missing_last_name_returns_422(self):
+    def test_missing_last_name_is_accepted(self):
         payload = {**self.valid_payload}
         del payload["last_name"]
         response = self.client.post("/api/student", json=payload, headers=self.admin_headers)
-        self.assertEqual(response.status_code, 422)
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["last_name"])
 
     def test_invalid_email_returns_422(self):
         payload = {**self.valid_payload, "email": "not-an-email"}
@@ -236,6 +237,29 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertIsNone(user.phone_number)
         self.assertIsNone(student.school_id)
 
+    def test_create_student_accepts_null_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        email = "student_create_null_last@example.com"
+        response = self.client.post(
+            "/api/student",
+            json=_student_payload(email, last_name=None),
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+        self.assertIsNone(response.json()["last_name"])
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.email == email)
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
+
     def test_duplicate_email_returns_409(self):
         payload = _student_payload("student_dup@example.com")
         self.client.post("/api/student", json=payload, headers=self.admin_headers)
@@ -316,9 +340,13 @@ class TestStudentRouterIntegration(unittest.TestCase):
         response = self.client.get("/api/student", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
         data = response.json()
-        self.assertIsInstance(data, list)
-        self.assertGreaterEqual(len(data), 2)
-        for item in data:
+        self.assertIn("items", data)
+        self.assertIn("total", data)
+        self.assertEqual(data["page"], 1)
+        self.assertEqual(data["page_size"], 10)
+        items = data["items"]
+        self.assertGreaterEqual(len(items), 2)
+        for item in items:
             self.assertNotIn("password", item)
             self.assertTrue(item["is_active"])
 
@@ -333,7 +361,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             "/api/student", params={"name": "zelda"}, headers=self.admin_headers
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["first_name"] == "Zelda" for item in items))
 
     def test_list_students_filter_by_email(self):
@@ -349,7 +377,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 200)
-        items = response.json()
+        items = response.json()["items"]
         self.assertTrue(any(item["email"] == "student_filter_email@example.com" for item in items))
 
     def test_list_students_unauthenticated_returns_401(self):
@@ -458,6 +486,35 @@ class TestStudentRouterIntegration(unittest.TestCase):
         self.assertEqual(body["first_name"], "OnlyFirst")
         self.assertEqual(body["last_name"], "Doe")
         self.assertEqual(body["student_class"], "5th class")
+
+    def test_update_student_can_clear_last_name(self):
+        from md_backend.models.db_models import UserProfile
+        from md_backend.utils.database import AsyncSessionLocal
+
+        create_resp = self.client.post(
+            "/api/student",
+            json=_student_payload("student_clear_last@example.com"),
+            headers=self.admin_headers,
+        )
+        student_id = create_resp.json()["user_id"]
+
+        response = self.client.put(
+            f"/api/student/{student_id}",
+            json={"last_name": None},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(response.json()["last_name"])
+
+        async def fetch():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(UserProfile).where(UserProfile.id == uuid.UUID(student_id))
+                )
+                return result.scalar_one()
+
+        user = asyncio.run(fetch())
+        self.assertIsNone(user.last_name)
 
     def test_update_student_not_found_returns_404(self):
         response = self.client.put(

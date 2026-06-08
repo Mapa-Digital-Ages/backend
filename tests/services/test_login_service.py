@@ -20,6 +20,7 @@ def _make_user(
     has_guardian=True,
     has_student=False,
     has_admin=False,
+    has_company=False,
     is_superadmin=False,
 ):
     user = MagicMock()
@@ -47,6 +48,11 @@ def _make_user(
         user.admin_profile = admin
     else:
         user.admin_profile = None
+
+    if has_company:
+        user.company_profile = MagicMock()
+    else:
+        user.company_profile = None
     return user
 
 
@@ -78,6 +84,21 @@ class TestLoginService(unittest.TestCase):
         self.assertEqual(result["role"], "guardian")
         self.assertEqual(result["name"], "First Last")
 
+    def test_login_name_omits_null_last_name(self):
+        service = LoginService()
+        user = _make_user(guardian_status=GuardianStatusEnum.APPROVED, last_name=None)
+        session = _session_with_user(user)
+
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
+            with patch(
+                "md_backend.services.login_service.create_access_token", return_value="tok123"
+            ):
+                result = asyncio.run(service.login(user.email, "pass", session))
+
+        self.assertEqual(result["name"], "First")
+
     def test_login_success_admin(self):
         service = LoginService()
         user = _make_user(has_guardian=False, has_admin=True, is_superadmin=True)
@@ -103,6 +124,19 @@ class TestLoginService(unittest.TestCase):
                 result = asyncio.run(service.login(user.email, "pass", session))
 
         self.assertEqual(result["role"], "student")
+
+    def test_login_success_company(self):
+        service = LoginService()
+        user = _make_user(has_guardian=False, has_company=True)
+        session = _session_with_user(user)
+
+        with patch(
+            "md_backend.services.login_service.verify_password", new=AsyncMock(return_value=True)
+        ):
+            with patch("md_backend.services.login_service.create_access_token", return_value="tok"):
+                result = asyncio.run(service.login(user.email, "pass", session))
+
+        self.assertEqual(result["role"], "company")
 
     def test_login_user_not_found(self):
         service = LoginService()

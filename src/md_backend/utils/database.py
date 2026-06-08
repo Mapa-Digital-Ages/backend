@@ -2,7 +2,13 @@
 
 from collections.abc import AsyncGenerator
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import (
+    AsyncConnection,
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 from sqlalchemy.pool import StaticPool
 
 from md_backend.models.db_models import Base
@@ -28,7 +34,122 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
+async def _ensure_user_last_name_nullable(conn: AsyncConnection) -> None:
+    """Drop the legacy NOT NULL constraint from user_profile.last_name."""
+    if conn.dialect.name == "postgresql":
+        await conn.execute(text("ALTER TABLE user_profile ALTER COLUMN last_name DROP NOT NULL"))
+
+
+async def _migrate_resources_table(conn: AsyncConnection) -> None:
+    """Apply schema updates to the resources table."""
+    if conn.dialect.name != "postgresql":
+        return
+
+    # Create the enum type if it doesn't exist yet
+    await conn.execute(
+        text(
+            "DO $$ BEGIN "
+            "CREATE TYPE resource_type_enum AS ENUM "
+            "('video','pdf','presentation','link','document'); "
+            "EXCEPTION WHEN duplicate_object THEN NULL; "
+            "END $$"
+        )
+    )
+
+    # Rename contents_id → content_id
+    await conn.execute(text("ALTER TABLE resources RENAME COLUMN contents_id TO content_id"))
+
+    # Convert type column from varchar to resource_type_enum
+    await conn.execute(
+        text(
+            "ALTER TABLE resources "
+            "ALTER COLUMN type TYPE resource_type_enum USING type::resource_type_enum"
+        )
+    )
+
+    # Drop the old url_or_contents column
+    await conn.execute(text("ALTER TABLE resources DROP COLUMN IF EXISTS url_or_contents"))
+
+    # Add new file metadata columns
+    for stmt in [
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_name VARCHAR(255) NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_type VARCHAR(100) NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_size_bytes BIGINT NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS storage_key VARCHAR(255) NULL",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS file_url VARCHAR(1024) NOT NULL DEFAULT ''",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE resources ADD COLUMN IF NOT EXISTS "
+        "updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+    ]:
+        await conn.execute(text(stmt))
+
+
+async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
+    """Apply schema updates for the sponsorship refactoring."""
+    if conn.dialect.name != "postgresql":
+        return
+
+    # Create new enums if they do not exist
+    for enum_name, enum_values in [
+        ("request_status_enum", "('open','partially_fulfilled','fulfilled','cancelled')"),
+        ("partnership_status_enum", "('pending','approved','rejected')"),
+    ]:
+        await conn.execute(
+            text(
+                f"DO $$ BEGIN CREATE TYPE {enum_name} AS ENUM {enum_values}; "
+                "EXCEPTION WHEN duplicate_object THEN NULL; END $$"
+            )
+        )
+
+    # Drop legacy columns from user profiles (if they exist)
+    await conn.execute(text("ALTER TABLE school_profile DROP COLUMN IF EXISTS requested_spots"))
+    await conn.execute(text("ALTER TABLE company_profile DROP COLUMN IF EXISTS available_spots"))
+
+    # Refactor SchoolCompanyPartnership table (we can just let create_all recreate it if we drop,
+    # or handle dropping the old composite PK and adding the new UUID PK if the table exists).
+    # Since we are adding new UUID PKs and removing the composite PK, the simplest manual
+    # migration in dev environment is to drop and let create_all recreate it,
+    # or alter it directly. We'll try to alter it if we want to preserve data, but since the
+    # previous schema had no UUID `id` or `request_id`, it's complex.
+    # To be safe and idempotent, we'll try to add the `id` column. If it fails, we assume it's done.
+    try:
+        await conn.execute(
+            text(
+                "ALTER TABLE school_company_partnership "
+                "DROP CONSTRAINT school_company_partnership_pkey"
+            )
+        )
+    except Exception:
+        pass
+
+    for stmt in [
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "id UUID PRIMARY KEY DEFAULT gen_random_uuid()",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS request_id UUID NULL",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "granted_spots INTEGER NULL",
+    ]:
+        try:
+            await conn.execute(text(stmt))
+        except Exception:
+            pass
+
+    try:
+        await conn.execute(
+            text(
+                "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+                "status partnership_status_enum NOT NULL DEFAULT 'pending'"
+            )
+        )
+    except Exception:
+        pass
+
+
 async def init_db() -> None:
-    """Create all database tables."""
+    """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_user_last_name_nullable(conn)
+        await _migrate_resources_table(conn)
+        await _migrate_sponsorship_tables(conn)

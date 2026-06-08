@@ -1,6 +1,6 @@
 """Password reset router."""
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,10 +23,13 @@ password_reset_router = APIRouter(prefix="/password-reset")
 async def request_password_reset(
     request: Request,
     body: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db_session),
 ):
     """Generate a password reset code for the requested email."""
-    result = await password_reset_service.request_reset(email=body.email, session=session)
+    result = await password_reset_service.request_reset(
+        email=body.email, session=session, background_tasks=background_tasks
+    )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 

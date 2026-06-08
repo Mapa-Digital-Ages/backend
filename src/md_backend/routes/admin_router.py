@@ -7,18 +7,25 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import UpdateStatusRequest
+from md_backend.routes.content_router import content_router
+from md_backend.routes.subject_router import subject_router
+from md_backend.routes.upload_router import admin_upload_router
 from md_backend.services.admin_service import AdminService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_superadmin
 
 admin_service = AdminService()
-admin_router = APIRouter(prefix="/admin")
+
+admin_router = APIRouter(
+    prefix="/admin",
+    dependencies=[Depends(get_current_superadmin)],
+)
 
 _ALLOWED_STATUSES = {"waiting", "approved", "rejected"}
-_ALLOWED_ROLES = {"student", "admin", "guardian"}
+_ALLOWED_ROLES = {"student", "admin", "guardian", "company"}
 
 
-@admin_router.get("/users", dependencies=[Depends(get_current_superadmin)])
+@admin_router.get("/users")
 async def list_users(
     session: AsyncSession = Depends(get_db_session),
     user_status: str | None = None,
@@ -40,7 +47,7 @@ async def list_users(
     return JSONResponse(content=users, status_code=status.HTTP_200_OK)
 
 
-@admin_router.patch("/users/{user_id}/status", dependencies=[Depends(get_current_superadmin)])
+@admin_router.patch("/users/{user_id}/status")
 async def update_user_status(
     user_id: uuid.UUID,
     request: UpdateStatusRequest,
@@ -64,3 +71,8 @@ async def update_user_status(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+admin_router.include_router(subject_router)
+admin_router.include_router(content_router, prefix="/content")
+admin_router.include_router(admin_upload_router, prefix="/uploads")

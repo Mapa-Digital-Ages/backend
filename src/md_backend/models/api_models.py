@@ -12,7 +12,7 @@ class RegisterRequest(BaseModel):
     """Register request model."""
 
     first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -22,7 +22,7 @@ class StudentRegisterRequest(BaseModel):
     """Register request model for student (requires school-specific fields)."""
 
     first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -62,7 +62,7 @@ class SetupRequest(BaseModel):
     """Setup request model for creating the first superadmin."""
 
     first_name: str = Field(min_length=1)
-    last_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -85,13 +85,27 @@ class UpdateStatusRequest(BaseModel):
     status: str = Field(pattern=r"^(approved|rejected|waiting)$")
 
 
+class SubjectRequest(BaseModel):
+    """Request body for creating a subject."""
+
+    name: str = Field(min_length=1)
+    color: str | None = None
+
+
+class SubjectUpdateRequest(BaseModel):
+    """Request body for partially updating a subject."""
+
+    name: str | None = Field(default=None, min_length=1)
+    color: str | None = None
+
+
 class StudentResponse(BaseModel):
     """Response model for student creation."""
 
     id: uuid.UUID
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     birth_date: str
     student_class: str
@@ -102,40 +116,55 @@ class StudentRequest(BaseModel):
     """Request model for creating a new student."""
 
     first_name: str
-    last_name: str
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
     birth_date: datetime.date
     student_class: ClassEnum
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
-class StudentListResponse(BaseModel):
-    """Response model for student listing."""
+class StudentListItemResponse(BaseModel):
+    """Student item returned by the paginated listing."""
 
     id: uuid.UUID
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     phone_number: str
     birth_date: str
     student_class: str
-    school_id: str
+    school_id: str | None
+    school_name: str | None
+    guardian_id: str | None
+    guardian_name: str | None
     is_active: bool
     created_at: str | None
+
+
+class StudentListResponse(BaseModel):
+    """Paginated list of students."""
+
+    items: list[StudentListItemResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class StudentUpdateRequest(BaseModel):
     """Request model for updating a student."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     phone_number: str | None = None
     birth_date: datetime.date | None = None
     student_class: ClassEnum | None = None
     school_id: uuid.UUID | None = None
+    guardian_id: uuid.UUID | None = None
 
 
 class GuardianStudentResponse(BaseModel):
@@ -143,7 +172,7 @@ class GuardianStudentResponse(BaseModel):
 
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     birth_date: str
     student_class: str
@@ -153,7 +182,7 @@ class GuardianCreateRequest(BaseModel):
     """Request body for creating a guardian."""
 
     first_name: str
-    last_name: str
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr
     password: str = Field(min_length=8)
     phone_number: str | None = None
@@ -163,7 +192,7 @@ class GuardianUpdateRequest(BaseModel):
     """Request body for partially updating a guardian."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     phone_number: str | None = None
 
@@ -173,7 +202,7 @@ class GuardianResponse(BaseModel):
 
     user_id: uuid.UUID
     first_name: str
-    last_name: str
+    last_name: str | None
     email: str
     phone_number: str | None = None
     guardian_status: str
@@ -196,24 +225,20 @@ class CreateSchoolRequest(BaseModel):
     """Request body for POST /school."""
 
     first_name: str = Field(min_length=1, description="First name")
-    last_name: str = Field(min_length=1, description="Last name")
+    last_name: str | None = Field(default=None, min_length=1, description="Last name")
     email: EmailStr = Field(description="Email")
     password: str = Field(min_length=8, description="Access password with at least 8 characters")
     phone_number: str | None = Field(default=None, description="Optional phone number")
     is_private: bool = Field(description="Whether the school is public or private")
-    requested_spots: int | None = Field(
-        default=None, description="Requested spots (public schools only)"
-    )
 
 
 class UpdateSchoolRequest(BaseModel):
     """Partial update body for PATCH /school/{id}."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     is_private: bool | None = None
-    requested_spots: int | None = None
 
 
 class SchoolResponse(BaseModel):
@@ -223,7 +248,7 @@ class SchoolResponse(BaseModel):
     email: str
     name: str
     is_private: bool
-    requested_spots: int | None
+
     is_active: bool
     deactivated_at: str | None
     created_at: str
@@ -249,6 +274,22 @@ class StudentUploadResponse(BaseModel):
     file_type: str
     file_size_bytes: int
     created_at: str
+
+
+class ContentUpsertRequest(BaseModel):
+    """Request body for creating or updating content."""
+
+    title: str = Field(min_length=1)
+    subject_id: int
+    description: str | None = None
+
+
+class UpdateUploadRequest(BaseModel):
+    """Request body for updating an upload's activity type, status, and/or subject."""
+
+    activity_type: str | None = Field(default=None, pattern=r"^(exercise|essay|activity)$")
+    status: str | None = Field(default=None, pattern=r"^(pending|in_review|corrected|rejected)$")
+    subject_id: int | None = None
 
 
 class WellBeingRequest(BaseModel):
@@ -285,7 +326,7 @@ class CreateCompanyRequest(BaseModel):
     """Request body for POST /company."""
 
     first_name: str = Field(min_length=1, description="Primeiro nome")
-    last_name: str = Field(min_length=1, description="Sobrenome")
+    last_name: str | None = Field(default=None, min_length=1, description="Sobrenome")
     email: EmailStr = Field(description="E-mail")
     password: str = Field(min_length=8, description="Senha de acesso com mínimo de 8 caracteres")
     spots: int = Field(ge=0, description="Quantidade total de vagas")
@@ -295,7 +336,7 @@ class UpdateCompanyRequest(BaseModel):
     """Partial update body for PATCH /company/{user_id}."""
 
     first_name: str | None = None
-    last_name: str | None = None
+    last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     phone_number: str | None = None
     spots: int | None = None
@@ -310,9 +351,71 @@ class CompanyResponse(BaseModel):
     phone_number: str | None = None
     name: str
     spots: int
-    available_spots: int
+
     status: str
     created_at: str
+
+
+class CreateSponsorshipRequestRequest(BaseModel):
+    """Request body for POST /school/{school_id}/requests."""
+
+    requested_spots: int = Field(gt=0, description="Number of sponsorship spots requested")
+
+
+class SponsorshipRequestResponse(BaseModel):
+    """Response model for a sponsorship request."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    requested_spots: int
+    remaining_spots: int
+    status: str
+    created_at: str
+
+
+class SponsorshipRequestListResponse(BaseModel):
+    """List of sponsorship requests for a school."""
+
+    items: list[SponsorshipRequestResponse]
+    total: int
+
+
+class CreatePartnershipRequest(BaseModel):
+    """Request body for POST /company/{user_id}/partnerships."""
+
+    request_id: uuid.UUID = Field(description="ID of the SponsorshipRequest to fulfill")
+    granted_spots: int = Field(gt=0, description="Number of spots the company wants to donate")
+
+
+class PartnershipResponse(BaseModel):
+    """Response model for a donation intent (partnership)."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class PublicSponsorshipRequestResponse(BaseModel):
+    """Response model for the public showcase listing."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    school_name: str
+    requested_spots: int
+    remaining_spots: int
+    status: str
+    created_at: str
+
+
+class PublicSponsorshipRequestListResponse(BaseModel):
+    """Paginated public showcase of open sponsorship requests."""
+
+    items: list[PublicSponsorshipRequestResponse]
+    total: int
 
 
 class CalendarTaskSubjectPayload(BaseModel):
@@ -326,7 +429,7 @@ class CalendarTaskSyncItemRequest(BaseModel):
 
     id: int | str
     title: str
-    task_status: TaskStatusEnum
+    task_status: TaskStatusEnum | None = None
     subject: CalendarTaskSubjectPayload
     date: datetime.datetime
 
@@ -358,3 +461,30 @@ class CalendarTaskSyncResponse(BaseModel):
     task_status: str | None
     subject_id: int
     date: datetime.datetime
+
+
+class TaskResponse(BaseModel):
+    """Response model for a single task."""
+
+    id: int
+    title: str
+    task_status: str | None
+    subject_id: int
+    date: datetime.datetime
+    deactivated_at: str | None = None
+
+
+class CalendarTaskUpsertItem(BaseModel):
+    """A single task item within a CalendarUpsertRequest."""
+
+    id: int | None = None
+    title: str
+    task_status: TaskStatusEnum | None = None
+    subject_id: int
+    date: datetime.datetime | None = None
+
+
+class CalendarUpsertRequest(BaseModel):
+    """Request body for upserting a student's full task list for a given date."""
+
+    tasks: list[CalendarTaskUpsertItem]
