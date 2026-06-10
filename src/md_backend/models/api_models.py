@@ -230,9 +230,6 @@ class CreateSchoolRequest(BaseModel):
     password: str = Field(min_length=8, description="Access password with at least 8 characters")
     phone_number: str | None = Field(default=None, description="Optional phone number")
     is_private: bool = Field(description="Whether the school is public or private")
-    requested_spots: int | None = Field(
-        default=None, description="Requested spots (public schools only)"
-    )
 
 
 class UpdateSchoolRequest(BaseModel):
@@ -242,7 +239,6 @@ class UpdateSchoolRequest(BaseModel):
     last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     is_private: bool | None = None
-    requested_spots: int | None = None
 
 
 class SchoolResponse(BaseModel):
@@ -252,7 +248,7 @@ class SchoolResponse(BaseModel):
     email: str
     name: str
     is_private: bool
-    requested_spots: int | None
+
     is_active: bool
     deactivated_at: str | None
     created_at: str
@@ -355,9 +351,71 @@ class CompanyResponse(BaseModel):
     phone_number: str | None = None
     name: str
     spots: int
-    available_spots: int
+
     status: str
     created_at: str
+
+
+class CreateSponsorshipRequestRequest(BaseModel):
+    """Request body for POST /school/{school_id}/requests."""
+
+    requested_spots: int = Field(gt=0, description="Number of sponsorship spots requested")
+
+
+class SponsorshipRequestResponse(BaseModel):
+    """Response model for a sponsorship request."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    requested_spots: int
+    remaining_spots: int
+    status: str
+    created_at: str
+
+
+class SponsorshipRequestListResponse(BaseModel):
+    """List of sponsorship requests for a school."""
+
+    items: list[SponsorshipRequestResponse]
+    total: int
+
+
+class CreatePartnershipRequest(BaseModel):
+    """Request body for POST /company/{user_id}/partnerships."""
+
+    request_id: uuid.UUID = Field(description="ID of the SponsorshipRequest to fulfill")
+    granted_spots: int = Field(gt=0, description="Number of spots the company wants to donate")
+
+
+class PartnershipResponse(BaseModel):
+    """Response model for a donation intent (partnership)."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class PublicSponsorshipRequestResponse(BaseModel):
+    """Response model for the public showcase listing."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    school_name: str
+    requested_spots: int
+    remaining_spots: int
+    status: str
+    created_at: str
+
+
+class PublicSponsorshipRequestListResponse(BaseModel):
+    """Paginated public showcase of open sponsorship requests."""
+
+    items: list[PublicSponsorshipRequestResponse]
+    total: int
 
 
 class CalendarTaskSubjectPayload(BaseModel):

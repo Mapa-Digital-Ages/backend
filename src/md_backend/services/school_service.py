@@ -6,7 +6,13 @@ import uuid
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import SchoolProfile, StudentProfile, UserProfile
+from md_backend.models.db_models import (
+    SchoolProfile,
+    SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
+    StudentProfile,
+    UserProfile,
+)
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
@@ -23,7 +29,6 @@ class SchoolService:
         is_private: bool,
         session: AsyncSession,
         phone_number: str | None = None,
-        requested_spots: int | None = None,
     ) -> dict | None:
         """Create a school atomically (user_profile + school_profile).
 
@@ -47,7 +52,6 @@ class SchoolService:
         school = SchoolProfile(
             user_id=user.id,
             is_private=is_private,
-            requested_spots=requested_spots,
         )
         session.add(school)
 
@@ -67,7 +71,6 @@ class SchoolService:
             "email": user.email,
             "name": full_name,
             "is_private": school.is_private,
-            "requested_spots": school.requested_spots,
             "is_active": user.is_active,
             "deactivated_at": school.deactivated_at.isoformat() if school.deactivated_at else None,
             "created_at": user.created_at.isoformat(),
@@ -149,7 +152,6 @@ class SchoolService:
         last_name: str | None,
         email: str | None,
         is_private: bool | None,
-        requested_spots: int | None,
         session: AsyncSession,
         last_name_provided: bool = False,
     ) -> dict | None | str:
@@ -179,9 +181,6 @@ class SchoolService:
 
         if is_private is not None:
             school.is_private = is_private
-
-        if requested_spots is not None:
-            school.requested_spots = requested_spots
 
         await session.commit()
         await session.refresh(user)
@@ -218,3 +217,113 @@ class SchoolService:
 
         await session.commit()
         return True
+
+    async def create_sponsorship_request(
+        self,
+        school_id: uuid.UUID,
+        requested_spots: int,
+        session: AsyncSession,
+    ) -> dict | None:
+        """Create a sponsorship request for a school.
+
+        Returns the created request dict, or None if the school does not exist.
+        """
+        school_result = await session.execute(
+            select(SchoolProfile).where(SchoolProfile.user_id == school_id)
+        )
+        school = school_result.scalar_one_or_none()
+
+        if school is None:
+            return None
+
+        sponsorship = SponsorshipRequest(
+            school_id=school_id,
+            requested_spots=requested_spots,
+            remaining_spots=requested_spots,
+            status=SponsorshipRequestStatusEnum.OPEN,
+        )
+        session.add(sponsorship)
+        await session.commit()
+        await session.refresh(sponsorship)
+
+        return self._build_sponsorship_dict(sponsorship)
+
+    async def list_sponsorship_requests(
+        self,
+        school_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> dict | None:
+        """Return all sponsorship requests for a school.
+
+        Returns None if the school does not exist.
+        """
+        school_result = await session.execute(
+            select(SchoolProfile).where(SchoolProfile.user_id == school_id)
+        )
+        school = school_result.scalar_one_or_none()
+
+        if school is None:
+            return None
+
+        result = await session.execute(
+            select(SponsorshipRequest)
+            .where(SponsorshipRequest.school_id == school_id)
+            .order_by(SponsorshipRequest.created_at.desc())
+        )
+        requests = result.scalars().all()
+
+        return {
+            "items": [self._build_sponsorship_dict(r) for r in requests],
+            "total": len(requests),
+        }
+
+    def _build_sponsorship_dict(self, request: SponsorshipRequest) -> dict:
+        """Build the sponsorship request response dict."""
+        return {
+            "id": str(request.id),
+            "school_id": str(request.school_id),
+            "requested_spots": request.requested_spots,
+            "remaining_spots": request.remaining_spots,
+            "status": request.status,
+            "created_at": request.created_at.isoformat(),
+        }
+
+    async def list_public_sponsorship_requests(
+        self,
+        session: AsyncSession,
+    ) -> dict:
+        """Return all OPEN or PARTIALLY_FULFILLED sponsorship requests with school name."""
+        from md_backend.models.db_models import SponsorshipRequestStatusEnum
+
+        query = (
+            select(SponsorshipRequest, UserProfile)
+            .join(SchoolProfile, SchoolProfile.user_id == SponsorshipRequest.school_id)
+            .join(UserProfile, UserProfile.id == SchoolProfile.user_id)
+            .where(
+                SponsorshipRequest.status.in_(
+                    [
+                        SponsorshipRequestStatusEnum.OPEN,
+                        SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED,
+                    ]
+                )
+            )
+            .order_by(SponsorshipRequest.created_at.desc())
+        )
+
+        result = await session.execute(query)
+        rows = result.all()
+
+        items = [
+            {
+                "id": str(req.id),
+                "school_id": str(req.school_id),
+                "school_name": build_full_name(user.first_name, user.last_name),
+                "requested_spots": req.requested_spots,
+                "remaining_spots": req.remaining_spots,
+                "status": req.status,
+                "created_at": req.created_at.isoformat(),
+            }
+            for req, user in rows
+        ]
+
+        return {"items": items, "total": len(items)}

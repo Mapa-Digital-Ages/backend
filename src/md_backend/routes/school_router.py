@@ -9,8 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
     CreateSchoolRequest,
+    CreateSponsorshipRequestRequest,
+    PublicSponsorshipRequestListResponse,
     SchoolListResponse,
     SchoolResponse,
+    SponsorshipRequestListResponse,
+    SponsorshipRequestResponse,
     UpdateSchoolRequest,
 )
 from md_backend.services.school_service import SchoolService
@@ -40,7 +44,6 @@ async def create_school(
             password=request.password,
             phone_number=request.phone_number,
             is_private=request.is_private,
-            requested_spots=request.requested_spots,
             session=session,
         )
     except IntegrityError:
@@ -78,6 +81,19 @@ async def list_schools(
         size=size,
         name=name,
     )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@school_router.get(
+    "/requests",
+    response_model=PublicSponsorshipRequestListResponse,
+    summary="Public showcase — list open sponsorship requests",
+)
+async def list_public_requests(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """List all OPEN or PARTIALLY_FULFILLED sponsorship requests publicly."""
+    result = await school_service.list_public_sponsorship_requests(session=session)
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
@@ -122,7 +138,6 @@ async def update_school(
         last_name=payload.get("last_name"),
         email=str(payload["email"]) if payload.get("email") else None,
         is_private=payload.get("is_private"),
-        requested_spots=payload.get("requested_spots"),
         session=session,
         last_name_provided="last_name" in payload,
     )
@@ -162,3 +177,76 @@ async def deactivate_school(
         )
 
     return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+
+
+@school_router.post(
+    "/{school_id}/requests",
+    status_code=status.HTTP_201_CREATED,
+    response_model=SponsorshipRequestResponse,
+    summary="Create a sponsorship request",
+)
+async def create_sponsorship_request(
+    school_id: uuid.UUID,
+    request: CreateSponsorshipRequestRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> JSONResponse:
+    """Create a sponsorship request for a school.
+
+    Only the school itself or a superadmin may create requests.
+    """
+    is_own_school = str(school_id) == current_user["user_id"]
+    if not current_user.get("is_superadmin") and not is_own_school:
+        return JSONResponse(
+            content={"detail": "Access restricted to the school owner or administrators."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await school_service.create_sponsorship_request(
+        school_id=school_id,
+        requested_spots=request.requested_spots,
+        session=session,
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "School not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+
+
+@school_router.get(
+    "/{school_id}/requests",
+    response_model=SponsorshipRequestListResponse,
+    summary="List sponsorship requests for a school",
+)
+async def list_sponsorship_requests(
+    school_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> JSONResponse:
+    """Return all sponsorship requests for a school.
+
+    Only the school itself or a superadmin may list requests.
+    """
+    is_own_school = str(school_id) == current_user["user_id"]
+    if not current_user.get("is_superadmin") and not is_own_school:
+        return JSONResponse(
+            content={"detail": "Access restricted to the school owner or administrators."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await school_service.list_sponsorship_requests(
+        school_id=school_id,
+        session=session,
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "School not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
