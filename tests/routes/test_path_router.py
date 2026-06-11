@@ -275,3 +275,46 @@ class TestPathRouter(unittest.TestCase):
             headers=self.student_headers,
         )
         self.assertEqual(resp.status_code, 403)
+
+    def test_complete_step_grades_records_and_advances(self):
+        s = self.seed
+        resp = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/complete",
+            headers=self.student_headers,
+            json={"answers": [
+                {"exercise_id": s["exercise_id"], "option_id": s["correct_option_id"]}
+            ]},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["correct"], 1)
+        self.assertEqual(body["total"], 1)
+        self.assertTrue(body["passed"])
+        self.assertEqual(body["current_sub_path"], s["next_sub_path_id"])
+        self.assertEqual(body["path_status"], "on_going")
+
+    def test_complete_last_step_marks_trail_completed(self):
+        s = self.seed
+        self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/complete",
+            headers=self.student_headers, json={"answers": []},
+        )
+        resp = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['next_sub_path_id']}/complete",
+            headers=self.student_headers, json={"answers": []},
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["path_status"], "completed")
+
+    def test_complete_step_403_for_other_student(self):
+        other_id, _ = _create_student(self.client, self.admin_headers)
+        s = self.seed
+        resp = self.client.post(
+            f"/api/student/{other_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/complete",
+            headers=self.student_headers, json={"answers": []},
+        )
+        self.assertEqual(resp.status_code, 403)

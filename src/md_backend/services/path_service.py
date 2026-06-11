@@ -1,11 +1,13 @@
 """Path (adaptive trail) service."""
 
+import datetime
 import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import (
+    Attempt,
     Content,
     Exercise,
     Option,
@@ -150,6 +152,81 @@ class PathService:
             )
         ).scalar_one_or_none()
         return next_id
+
+    async def complete_sub_path(
+        self,
+        session: AsyncSession,
+        student_id: uuid.UUID,
+        path_id: int,
+        sub_path_id: int,
+        answers: list[dict],
+    ) -> dict:
+        """Grade a sub-path quiz, record attempts, and advance the trail.
+
+        ``answers`` may be empty (resource-only sub-path); then no grading happens
+        and the standard/next transition is used.
+        """
+        correct = 0
+        total = len(answers)
+        now = datetime.datetime.now(datetime.timezone.utc)
+
+        for ans in answers:
+            option = (
+                await session.execute(
+                    select(Option).where(Option.id == ans["option_id"])
+                )
+            ).scalar_one_or_none()
+            is_correct = bool(
+                option is not None
+                and option.correct
+                and option.exercise_id == ans["exercise_id"]
+            )
+            if is_correct:
+                correct += 1
+            session.add(Attempt(
+                student_id=student_id,
+                exercise_id=ans["exercise_id"],
+                is_correct=is_correct,
+                time_spent_seconds=0,
+                created_at=now,
+            ))
+
+        score = correct if total > 0 else None
+        next_id = await self._resolve_next_sub_path(
+            session=session, path_id=path_id, sub_path_id=sub_path_id, score=score
+        )
+
+        progress = (
+            await session.execute(
+                select(StudentPathProgress).where(
+                    StudentPathProgress.student_id == student_id,
+                    StudentPathProgress.path_id == path_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if progress is None:
+            progress = StudentPathProgress(
+                student_id=student_id, path_id=path_id, current_sub_path=sub_path_id
+            )
+            session.add(progress)
+
+        if next_id is None:
+            progress.path_status = PathStatusEnum.COMPLETED
+            progress.current_sub_path = sub_path_id
+        else:
+            progress.path_status = PathStatusEnum.ON_GOING
+            progress.current_sub_path = next_id
+        progress.updated_at = now
+
+        await session.commit()
+
+        return {
+            "correct": correct,
+            "total": total,
+            "passed": total == 0 or correct == total,
+            "current_sub_path": progress.current_sub_path,
+            "path_status": progress.path_status.value if progress.path_status else None,
+        }
 
     async def get_question_flow(
         self, session: AsyncSession, path_id: int, sub_path_id: int

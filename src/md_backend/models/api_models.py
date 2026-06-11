@@ -488,3 +488,16 @@ class CalendarUpsertRequest(BaseModel):
     """Request body for upserting a student's full task list for a given date."""
 
     tasks: list[CalendarTaskUpsertItem]
+
+
+class StepAnswer(BaseModel):
+    """A single submitted answer in a sub-path quiz."""
+
+    exercise_id: int
+    option_id: int
+
+
+class StepCompleteRequest(BaseModel):
+    """Payload to complete a sub-path (optionally grading a quiz)."""
+
+    answers: list[StepAnswer] = []
