@@ -92,7 +92,7 @@ class TestResourceService(unittest.TestCase):
                 self.assertIn("id", result)
                 self.assertEqual(result["file_name"], "lesson.pdf")
                 self.assertEqual(result["type"], "pdf")
-                self.assertEqual(result["created_at"].__class__.__name__, "datetime")
+                self.assertIsInstance(result["created_at"], str)
                 self.assertEqual(len(storage.store), 1)
                 upper_case_result = await service.upload_resource(
                     session=db_session,
@@ -328,7 +328,7 @@ class TestResourceService(unittest.TestCase):
                     file_type="application/pdf",
                 )
                 # Deve rejeitar arquivo com magic bytes inválidos
-                self.assertEqual(result, "invalid_file_format")
+                self.assertEqual(result, "file_type_mismatch")
 
                 # Arquivo válido com magic bytes corretos
                 valid_pdf = b"%PDF-1.4 valid content"
@@ -375,7 +375,7 @@ class TestResourceService(unittest.TestCase):
                     file_type="video/mp4",
                 )
                 # Deve rejeitar arquivo com magic bytes inválidos
-                self.assertEqual(result, "invalid_file_format")
+                self.assertEqual(result, "file_type_mismatch")
 
                 # Arquivo válido com magic bytes de MP4
                 valid_mp4 = b"\x00\x00\x00\x20ftypisom\x00\x00\x00\x00isomiso2mp41"
