@@ -213,6 +213,64 @@ def _seed_incomplete_path() -> int:
     return asyncio.run(_insert())
 
 
+def _seed_path_with_optionless_exercise() -> dict:
+    """Path whose only item is an exercise with NO options (unanswerable quiz)."""
+
+    async def _insert():
+        async with engine.begin() as conn:
+            subject_id = (
+                await conn.execute(
+                    text("SELECT id FROM subjects WHERE slug = 'matematica-trail-test'")
+                )
+            ).scalar_one()
+            content_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO contents (subject_id, name, description) "
+                        "VALUES (:sid, :n, 'd') RETURNING id"
+                    ),
+                    {"sid": subject_id, "n": f"NoOpt Content {uuid.uuid4().hex[:6]}"},
+                )
+            ).scalar_one()
+            path_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO paths (contents_id, name, description) "
+                        "VALUES (:cid, :n, 'd') RETURNING id"
+                    ),
+                    {"cid": content_id, "n": f"NoOpt Trail {uuid.uuid4().hex[:6]}"},
+                )
+            ).scalar_one()
+            sub_path_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO sub_paths (path_id, difficulty) "
+                        "VALUES (:pid, 'EASY') RETURNING id"
+                    ),
+                    {"pid": path_id},
+                )
+            ).scalar_one()
+            exercise_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO exercises (contents_id, statement, difficulty) "
+                        "VALUES (:cid, 'no options here', 'EASY') RETURNING id"
+                    ),
+                    {"cid": content_id},
+                )
+            ).scalar_one()
+            await conn.execute(
+                text(
+                    "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                    "VALUES (:spid, 'EXERCISE', :eid)"
+                ),
+                {"spid": sub_path_id, "eid": exercise_id},
+            )
+            return {"path_id": path_id, "sub_path_id": sub_path_id}
+
+    return asyncio.run(_insert())
+
+
 class TestPathRouter(unittest.TestCase):
     def setUp(self):
         self.ctx = TestClient(app, raise_server_exceptions=False)
@@ -394,6 +452,23 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(body["correct"], 0)
         self.assertEqual(body["total"], 1)
         self.assertFalse(body["passed"])
+
+    def test_optionless_exercise_is_not_an_answerable_quiz(self):
+        p = _seed_path_with_optionless_exercise()
+        # hidden from the list (no usable item)
+        list_resp = self.client.get(
+            f"/api/student/{self.student_id}/trails",
+            headers=self.student_headers,
+        )
+        self.assertNotIn(str(p["path_id"]), {t["id"] for t in list_resp.json()})
+        # and its detail/question-flow expose no quiz (graceful, no 500)
+        flow = self.client.get(
+            f"/api/student/{self.student_id}/trails/{p['path_id']}"
+            f"/steps/{p['sub_path_id']}/questions",
+            headers=self.student_headers,
+        )
+        self.assertEqual(flow.status_code, 200)
+        self.assertEqual(flow.json()["questions"], [])
 
     def test_question_flow_empty_when_sub_path_has_no_exercises(self):
         s = self.seed

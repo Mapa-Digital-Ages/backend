@@ -3,7 +3,7 @@
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import (
@@ -68,6 +68,10 @@ class PathService:
                         .order_by(Option.id)
                     )
                 ).scalars().all()
+                # An exercise without options is unanswerable — treat it as absent
+                # rather than render a broken, ungradable quiz.
+                if not options:
+                    continue
                 quiz_questions.append({
                     "id": str(exercise.id),
                     "question": exercise.statement,
@@ -276,13 +280,22 @@ class PathService:
             .subquery()
         )
 
-        # A trail is "playable" only if it has at least one sub-path that contains
-        # at least one item. Empty/incomplete shells (no steps or no content) are
-        # hidden so the UI never shows a broken trail.
+        # A trail is "playable" only if it has at least one sub-path with a *usable*
+        # item: a resource, or an exercise that actually has answer options. Empty
+        # shells and option-less (ungradable) quizzes are hidden so the UI never
+        # shows a broken trail.
+        has_options = (
+            select(Option.id)
+            .where(Option.exercise_id == SubPathItem.item_id)
+            .exists()
+        )
         playable = (
-            select(SubPath.id)
-            .join(SubPathItem, SubPathItem.sub_path_id == SubPath.id)
-            .where(SubPath.path_id == Path.id)
+            select(SubPathItem.id)
+            .join(SubPath, SubPath.id == SubPathItem.sub_path_id)
+            .where(
+                SubPath.path_id == Path.id,
+                or_(SubPathItem.type_item == TypeItemEnum.RESOURCE, has_options),
+            )
             .exists()
         )
 
