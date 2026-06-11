@@ -1,6 +1,8 @@
 """Admin resource routes — metadata listing, detail, update, and delete."""
 
-from fastapi import APIRouter, Depends, Query, status
+import json
+
+from fastapi import APIRouter, Depends, Query, Response, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -71,8 +73,9 @@ async def create_resource(
     session.add(resource)
     await session.commit()
     await session.refresh(resource)
-    return JSONResponse(
-        content=service._resource_to_dict(resource),
+    return Response(
+        content=json.dumps(service._resource_to_dict(resource), default=str),
+        media_type="application/json",
         status_code=status.HTTP_201_CREATED,
     )
 
@@ -115,14 +118,18 @@ async def list_resources(
     stmt = stmt.order_by(Resource.id.desc()).offset((page - 1) * page_size).limit(page_size)
     rows = (await session.execute(stmt)).scalars().all()
 
-    return JSONResponse(
-        content={
-            "items": [service._resource_to_dict(r) for r in rows],
-            "page": page,
-            "page_size": page_size,
-            "total_items": total,
-            "total_pages": max(1, math.ceil(total / page_size)),
-        },
+    return Response(
+        content=json.dumps(
+            {
+                "items": [service._resource_to_dict(r) for r in rows],
+                "page": page,
+                "page_size": page_size,
+                "total_items": total,
+                "total_pages": max(1, math.ceil(total / page_size)),
+            },
+            default=str,
+        ),
+        media_type="application/json",
         status_code=status.HTTP_200_OK,
     )
 
@@ -144,7 +151,11 @@ async def get_resource(
             content={"detail": "Resource not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+    return Response(
+        content=json.dumps(result, default=str),
+        media_type="application/json",
+        status_code=status.HTTP_200_OK,
+    )
 
 
 @admin_resource_router.patch(
@@ -176,8 +187,9 @@ async def update_resource(
         resource.title = request.title.strip()
     await session.commit()
     await session.refresh(resource)
-    return JSONResponse(
-        content=service._resource_to_dict(resource),
+    return Response(
+        content=json.dumps(service._resource_to_dict(resource), default=str),
+        media_type="application/json",
         status_code=status.HTTP_200_OK,
     )
 
