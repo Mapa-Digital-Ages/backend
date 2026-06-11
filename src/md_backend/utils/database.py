@@ -45,25 +45,46 @@ async def _migrate_resources_table(conn: AsyncConnection) -> None:
     if conn.dialect.name != "postgresql":
         return
 
-    # Create the enum type if it doesn't exist yet
+    # Create the enum type if it doesn't exist yet. Labels match the SQLAlchemy
+    # enum (member names), which is how create_all emits this type.
     await conn.execute(
         text(
             "DO $$ BEGIN "
             "CREATE TYPE resource_type_enum AS ENUM "
-            "('video','pdf','presentation','link','document'); "
+            "('VIDEO','PDF','PRESENTATION','LINK','DOCUMENT'); "
             "EXCEPTION WHEN duplicate_object THEN NULL; "
             "END $$"
         )
     )
 
-    # Rename contents_id → content_id
-    await conn.execute(text("ALTER TABLE resources RENAME COLUMN contents_id TO content_id"))
-
-    # Convert type column from varchar to resource_type_enum
+    # Rename contents_id → content_id only when the legacy column is still present
+    # (a fresh create_all already produces content_id). Idempotent.
     await conn.execute(
         text(
-            "ALTER TABLE resources "
-            "ALTER COLUMN type TYPE resource_type_enum USING type::resource_type_enum"
+            "DO $$ BEGIN "
+            "IF EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='resources' AND column_name='contents_id') "
+            "AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_name='resources' AND column_name='content_id') "
+            "THEN ALTER TABLE resources RENAME COLUMN contents_id TO content_id; "
+            "END IF; END $$"
+        )
+    )
+
+    # Convert the type column to the enum only while it is still varchar, mapping
+    # legacy values (any case; 'text'/unknown → DOCUMENT) onto the enum labels.
+    await conn.execute(
+        text(
+            "DO $$ BEGIN "
+            "IF (SELECT data_type FROM information_schema.columns "
+            "WHERE table_name='resources' AND column_name='type') <> 'USER-DEFINED' "
+            "THEN ALTER TABLE resources ALTER COLUMN type TYPE resource_type_enum USING ("
+            "CASE upper(type::text) "
+            "WHEN 'VIDEO' THEN 'VIDEO' WHEN 'PDF' THEN 'PDF' "
+            "WHEN 'PRESENTATION' THEN 'PRESENTATION' WHEN 'LINK' THEN 'LINK' "
+            "WHEN 'DOCUMENT' THEN 'DOCUMENT' WHEN 'TEXT' THEN 'DOCUMENT' "
+            "ELSE 'DOCUMENT' END)::resource_type_enum; "
+            "END IF; END $$"
         )
     )
 
