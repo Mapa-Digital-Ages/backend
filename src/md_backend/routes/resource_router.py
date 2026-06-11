@@ -43,7 +43,7 @@ def get_storage_service(
 @resource_router.post("/{content_id}/resources")
 async def create_resource(
     content_id: int,
-    file: UploadFile = File(...),
+    file: UploadFile | None = File(default=None),
     title: str = Form(..., min_length=1),
     type: str = Form(
         ...,
@@ -123,7 +123,7 @@ async def create_resource(
         return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
     # For non-link types, file is required
-    if not file.filename or not file.size:
+    if not file or not getattr(file, "filename", None):
         return JSONResponse(
             content={"detail": "File is required for this resource type"},
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -135,6 +135,12 @@ async def create_resource(
     except Exception:
         return JSONResponse(
             content={"detail": "Failed to read file"},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    if not file_bytes:
+        return JSONResponse(
+            content={"detail": "File is required for this resource type"},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
 

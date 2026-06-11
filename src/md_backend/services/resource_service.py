@@ -129,12 +129,9 @@ class ResourceService:
 
         # Validate magic bytes to ensure file type matches declared type
         detected_mime = _detect_magic_type(file_bytes)
-        if detected_mime is None:
-            return "invalid_file_format"
-
-        # Verify the detected MIME type is acceptable for this resource type
         allowed_mimes_for_type = self._get_allowed_mimes(resource_type_enum)
-        if detected_mime not in allowed_mimes_for_type:
+        # Treat files with no detected signature as a type mismatch as well
+        if detected_mime is None or detected_mime not in allowed_mimes_for_type:
             return "file_type_mismatch"
 
         content = await session.get(Content, content_id)
