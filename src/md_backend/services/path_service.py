@@ -7,17 +7,101 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import (
     Content,
+    Exercise,
+    Option,
     Path,
     PathStatusEnum,
+    Resource,
+    ResourceTypeEnum,
     StudentPathProgress,
     SubPath,
     SubPathItem,
     Subject,
+    TypeItemEnum,
 )
 
 
 class PathService:
     """Read-only operations for adaptive learning paths."""
+
+    async def _build_sub_steps(
+        self,
+        session: AsyncSession,
+        sub_path_id: int,
+        step_status: str,
+        subject_payload: dict,
+    ) -> list[dict]:
+        """Build the UI sub-steps for a sub-path.
+
+        Resource items become individual video/text sub-steps; exercise items are
+        collapsed into a single trailing quiz sub-step (no answer key is exposed).
+        """
+        items = (
+            await session.execute(
+                select(SubPathItem)
+                .where(SubPathItem.sub_path_id == sub_path_id)
+                .order_by(SubPathItem.id)
+            )
+        ).scalars().all()
+
+        sub_steps: list[dict] = []
+        quiz_questions: list[dict] = []
+        order = 1
+
+        for item in items:
+            if item.type_item == TypeItemEnum.EXERCISE:
+                exercise = (
+                    await session.execute(
+                        select(Exercise).where(Exercise.id == item.item_id)
+                    )
+                ).scalar_one_or_none()
+                if exercise is None:
+                    continue
+                options = (
+                    await session.execute(
+                        select(Option)
+                        .where(Option.exercise_id == exercise.id)
+                        .order_by(Option.id)
+                    )
+                ).scalars().all()
+                quiz_questions.append({
+                    "id": str(exercise.id),
+                    "question": exercise.statement,
+                    "options": [{"id": str(o.id), "label": o.text} for o in options],
+                    "subject": subject_payload,
+                })
+            else:
+                resource = (
+                    await session.execute(
+                        select(Resource).where(Resource.id == item.item_id)
+                    )
+                ).scalar_one_or_none()
+                if resource is None:
+                    continue
+                kind = "video" if resource.type == ResourceTypeEnum.VIDEO else "text"
+                sub_steps.append({
+                    "id": str(resource.id),
+                    "kind": kind,
+                    "title": resource.title,
+                    "description": "",
+                    "order": order,
+                    "status": step_status,
+                    "questions": [],
+                })
+                order += 1
+
+        if quiz_questions:
+            sub_steps.append({
+                "id": f"quiz-{sub_path_id}",
+                "kind": "question",
+                "title": "Questões",
+                "description": "",
+                "order": order,
+                "status": step_status,
+                "questions": quiz_questions,
+            })
+
+        return sub_steps
 
     async def list_trails(
         self, session: AsyncSession, student_id: uuid.UUID
@@ -99,6 +183,12 @@ class PathService:
 
         path, content, subject = row
 
+        subject_payload = {
+            "id": str(subject.id),
+            "label": subject.name,
+            "color": subject.color,
+        }
+
         sub_paths = (
             await session.execute(
                 select(SubPath).where(SubPath.path_id == path_id).order_by(SubPath.id)
@@ -135,25 +225,12 @@ class PathService:
             else:
                 step_status = "locked"
 
-            items = (
-                await session.execute(
-                    select(SubPathItem)
-                    .where(SubPathItem.sub_path_id == sub_path.id)
-                    .order_by(SubPathItem.id)
-                )
-            ).scalars().all()
-
-            sub_steps = [
-                {
-                    "id": str(item.id),
-                    "kind": "question" if item.type_item == "exercise" else "resource",
-                    "title": f"Etapa {item.id}",
-                    "order": idx,
-                    "status": step_status,
-                    "questions": [],
-                }
-                for idx, item in enumerate(items, start=1)
-            ]
+            sub_steps = await self._build_sub_steps(
+                session=session,
+                sub_path_id=sub_path.id,
+                step_status=step_status,
+                subject_payload=subject_payload,
+            )
 
             steps.append({
                 "id": str(sub_path.id),

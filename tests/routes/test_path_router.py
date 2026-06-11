@@ -31,8 +31,12 @@ def _create_student(client, admin_headers):
     return student_id, {"Authorization": f"Bearer {token}"}
 
 
-def _seed_trail(student_id: str) -> int:
-    """Insert Path + Content + Subject + StudentPathProgress via SQL. Returns path_id."""
+def _seed_trail(student_id: str) -> dict:
+    """Seed a full trail (content, two sub-paths, a quiz, a transition, progress).
+
+    Returns a dict of ids: path_id, sub_path_id (the quiz step), next_sub_path_id,
+    resource_id, exercise_id, correct_option_id.
+    """
 
     async def _insert():
         async with engine.begin() as conn:
@@ -43,46 +47,112 @@ def _seed_trail(student_id: str) -> int:
                 ),
                 {"n": "Matemática Trail Test", "s": "matematica-trail-test", "c": "#FF0000"},
             )
-            subject_row = await conn.execute(
-                text("SELECT id FROM subjects WHERE slug = 'matematica-trail-test'")
-            )
-            subject_id = subject_row.scalar_one()
+            subject_id = (
+                await conn.execute(
+                    text("SELECT id FROM subjects WHERE slug = 'matematica-trail-test'")
+                )
+            ).scalar_one()
 
             content_name = f"Álgebra Trail Test {uuid.uuid4().hex[:6]}"
-            await conn.execute(
-                text(
-                    "INSERT INTO contents (subject_id, name, description) "
-                    "VALUES (:sid, :n, :d)"
-                ),
-                {"sid": subject_id, "n": content_name, "d": "desc"},
-            )
-            content_row = await conn.execute(
-                text("SELECT id FROM contents WHERE name = :n"), {"n": content_name}
-            )
-            content_id = content_row.scalar_one()
+            content_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO contents (subject_id, name, description) "
+                        "VALUES (:sid, :n, :d) RETURNING id"
+                    ),
+                    {"sid": subject_id, "n": content_name, "d": "desc"},
+                )
+            ).scalar_one()
 
             path_name = f"Trilha de Álgebra {uuid.uuid4().hex[:6]}"
+            path_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO paths (contents_id, name, description) "
+                        "VALUES (:cid, :n, :d) RETURNING id"
+                    ),
+                    {"cid": content_id, "n": path_name, "d": "trilha desc"},
+                )
+            ).scalar_one()
+
+            sub_path_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO sub_paths (path_id, difficulty) "
+                        "VALUES (:pid, 'EASY') RETURNING id"
+                    ),
+                    {"pid": path_id},
+                )
+            ).scalar_one()
+            next_sub_path_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO sub_paths (path_id, difficulty) "
+                        "VALUES (:pid, 'MEDIUM') RETURNING id"
+                    ),
+                    {"pid": path_id},
+                )
+            ).scalar_one()
+
+            resource_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO resources (content_id, type, title, file_url) "
+                        "VALUES (:cid, 'VIDEO', :t, :u) RETURNING id"
+                    ),
+                    {"cid": content_id, "t": "Vídeo de Introdução", "u": "https://e.com/v.mp4"},
+                )
+            ).scalar_one()
+
+            exercise_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO exercises (contents_id, statement, difficulty) "
+                        "VALUES (:cid, :s, 'EASY') RETURNING id"
+                    ),
+                    {"cid": content_id, "s": "Quanto é 2x+4=10?"},
+                )
+            ).scalar_one()
             await conn.execute(
                 text(
-                    "INSERT INTO paths (contents_id, name, description) "
-                    "VALUES (:cid, :n, :d)"
+                    "INSERT INTO options (exercise_id, text, correct) "
+                    "VALUES (:eid, 'x=2', false)"
                 ),
-                {"cid": content_id, "n": path_name, "d": "trilha desc"},
+                {"eid": exercise_id},
             )
-            path_row = await conn.execute(
-                text("SELECT id FROM paths WHERE name = :n"), {"n": path_name}
-            )
-            path_id = path_row.scalar_one()
+            correct_option_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO options (exercise_id, text, correct) "
+                        "VALUES (:eid, 'x=3', true) RETURNING id"
+                    ),
+                    {"eid": exercise_id},
+                )
+            ).scalar_one()
 
             await conn.execute(
-                text("INSERT INTO sub_paths (path_id) VALUES (:pid)"),
-                {"pid": path_id},
+                text(
+                    "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                    "VALUES (:spid, 'RESOURCE', :rid)"
+                ),
+                {"spid": sub_path_id, "rid": resource_id},
             )
-            sub_path_row = await conn.execute(
-                text("SELECT id FROM sub_paths WHERE path_id = :pid ORDER BY id LIMIT 1"),
-                {"pid": path_id},
+            await conn.execute(
+                text(
+                    "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                    "VALUES (:spid, 'EXERCISE', :eid)"
+                ),
+                {"spid": sub_path_id, "eid": exercise_id},
             )
-            sub_path_id = sub_path_row.scalar_one()
+
+            await conn.execute(
+                text(
+                    "INSERT INTO path_transition "
+                    "(sub_path_origin_id, sub_path_destination_id, rule_type) "
+                    "VALUES (:o, :d, 'STANDARD')"
+                ),
+                {"o": sub_path_id, "d": next_sub_path_id},
+            )
 
             await conn.execute(
                 text(
@@ -94,7 +164,14 @@ def _seed_trail(student_id: str) -> int:
                 {"sid": student_id, "pid": path_id, "spid": sub_path_id},
             )
 
-            return path_id
+            return {
+                "path_id": path_id,
+                "sub_path_id": sub_path_id,
+                "next_sub_path_id": next_sub_path_id,
+                "resource_id": resource_id,
+                "exercise_id": exercise_id,
+                "correct_option_id": correct_option_id,
+            }
 
     return asyncio.run(_insert())
 
@@ -107,7 +184,8 @@ class TestPathRouter(unittest.TestCase):
         self.student_id, self.student_headers = _create_student(
             self.client, self.admin_headers
         )
-        self.path_id = _seed_trail(self.student_id)
+        self.seed = _seed_trail(self.student_id)
+        self.path_id = self.seed["path_id"]
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -140,6 +218,30 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(data["id"], str(self.path_id))
         self.assertIn("steps", data)
         self.assertIn("subject", data)
+
+    def test_detail_returns_real_titles_and_questions_without_answer_key(self):
+        resp = self.client.get(
+            f"/api/student/{self.student_id}/trails/{self.path_id}",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        steps = resp.json()["steps"]
+        sub_steps = next(
+            s["sub_steps"] for s in steps if str(s["id"]) == str(self.seed["sub_path_id"])
+        )
+        video = next(ss for ss in sub_steps if ss["kind"] == "video")
+        self.assertEqual(video["title"], "Vídeo de Introdução")
+        self.assertEqual(video["questions"], [])
+
+        quiz = next(ss for ss in sub_steps if ss["kind"] == "question")
+        self.assertEqual(quiz["id"], f"quiz-{self.seed['sub_path_id']}")
+        self.assertEqual(len(quiz["questions"]), 1)
+        question = quiz["questions"][0]
+        self.assertEqual(question["question"], "Quanto é 2x+4=10?")
+        self.assertEqual({o["label"] for o in question["options"]}, {"x=2", "x=3"})
+        self.assertNotIn("correctOptionId", question)
+        for opt in question["options"]:
+            self.assertNotIn("correct", opt)
 
     def test_get_trail_detail_returns_404_for_unknown_path(self):
         resp = self.client.get(
