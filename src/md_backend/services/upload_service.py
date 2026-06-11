@@ -63,7 +63,7 @@ def _detect_mime(data: bytes) -> str | None:
 
 
 def _sanitize_filename(filename: str) -> str:
-    name = (filename or "")
+    name = filename or ""
     # Remove backslashes immediately (invalid chars)
     name = name.replace("\\", "")
     # Extract basename to remove path prefixes like ../../etc/
