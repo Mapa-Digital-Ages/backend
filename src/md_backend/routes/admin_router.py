@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import UpdateStatusRequest
+from md_backend.routes.admin_resource_router import admin_resource_router
 from md_backend.routes.content_router import content_router
 from md_backend.routes.subject_router import subject_router
 from md_backend.routes.upload_router import admin_upload_router
@@ -76,3 +77,4 @@ async def update_user_status(
 admin_router.include_router(subject_router)
 admin_router.include_router(content_router, prefix="/content")
 admin_router.include_router(admin_upload_router, prefix="/uploads")
+admin_router.include_router(admin_resource_router, prefix="/resources")

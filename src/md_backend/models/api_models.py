@@ -488,3 +488,13 @@ class CalendarUpsertRequest(BaseModel):
     """Request body for upserting a student's full task list for a given date."""
 
     tasks: list[CalendarTaskUpsertItem]
+
+
+class ResourceUpdateRequest(BaseModel):
+    """Request body for partially updating a resource's metadata.
+
+    File replacement is intentionally excluded — to swap the physical file,
+    delete the resource and create a new one via the upload endpoint.
+    """
+
+    title: str | None = Field(default=None, min_length=1)
