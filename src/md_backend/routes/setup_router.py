@@ -5,7 +5,6 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import SetupRequest
-from md_backend.services.path_service import seed_default_trails
 from md_backend.services.setup_service import SetupService
 from md_backend.services.subject_service import seed_default_subjects
 from md_backend.utils.database import get_db_session
@@ -47,7 +46,6 @@ async def setup(
         )
 
     await seed_default_subjects(session)
-    await seed_default_trails(session)
     await session.commit()
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
 
@@ -63,23 +61,5 @@ async def setup_subjects(
     await session.commit()
     return JSONResponse(
         content={"subjects_created": created},
-        status_code=status.HTTP_201_CREATED,
-    )
-
-
-@setup_router.post("/trails")
-async def setup_trails(
-    session: AsyncSession = Depends(get_db_session),
-    x_setup_token: str | None = Header(default=None, alias="X-Setup-Token"),
-):
-    """Seed the default trail catalog. Idempotent — skips trails that already exist.
-
-    Requires subjects to be seeded first (POST /setup/subjects).
-    """
-    _require_setup_token(x_setup_token)
-    created = await seed_default_trails(session)
-    await session.commit()
-    return JSONResponse(
-        content={"trails_created": created},
         status_code=status.HTTP_201_CREATED,
     )
