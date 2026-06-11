@@ -309,6 +309,27 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["path_status"], "completed")
 
+    def test_list_reports_partial_progress_after_advancing(self):
+        s = self.seed
+        # complete the first sub-path -> advances to the second (1 of 2 done)
+        self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/complete",
+            headers=self.student_headers,
+            json={"answers": [
+                {"exercise_id": s["exercise_id"], "option_id": s["correct_option_id"]}
+            ]},
+        )
+        resp = self.client.get(
+            f"/api/student/{self.student_id}/trails",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        trail = next(t for t in resp.json() if t["id"] == str(s["path_id"]))
+        self.assertEqual(trail["steps"], 2)
+        self.assertEqual(trail["completed"], 1)
+        self.assertEqual(trail["progress"], 50)
+
     def test_complete_step_403_for_other_student(self):
         other_id, _ = _create_student(self.client, self.admin_headers)
         s = self.seed

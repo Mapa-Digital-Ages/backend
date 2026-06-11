@@ -308,8 +308,15 @@ class PathService:
                 completed = total
                 pct = 100
             else:
-                completed = 0
-                pct = 0
+                completed = (
+                    await session.execute(
+                        select(func.count(SubPath.id)).where(
+                            SubPath.path_id == path.id,
+                            SubPath.id < progress_record.current_sub_path,
+                        )
+                    )
+                ).scalar_one() or 0
+                pct = round((completed / total) * 100) if total > 0 else 0
 
             result.append({
                 "id": str(path.id),
