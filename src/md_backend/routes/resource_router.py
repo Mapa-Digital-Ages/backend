@@ -56,15 +56,15 @@ async def create_resource(
     current_user: dict = Depends(get_current_superadmin),
 ):
     """Create and upload a resource for content.
-    
+
     POST /admin/contents/{content_id}/resources
-    
+
     ## Request Body (multipart/form-data)
     - **file** (File): The resource file (required for pdf, video, document, presentation)
     - **title** (str): Resource title (required, min_length=1)
     - **type** (str): Resource type - one of: video, pdf, presentation, link, document (required)
     - **url_or_contents** (str): URL for link type or additional content (required for link type)
-    
+
     ## Validation Rules
     - If type='link': file must NOT be provided, url_or_contents is required
     - If type='pdf'|'video'|'document'|'presentation': file is required
@@ -72,7 +72,7 @@ async def create_resource(
     - Size limits:
       - Documents/PDFs/Presentations: 50MB max
       - Videos: 500MB max
-    
+
     ## Response
     - **201 Created**: Resource successfully uploaded with metadata
     - **400 Bad Request**: Validation error (invalid type, missing file, magic bytes mismatch)
@@ -82,7 +82,7 @@ async def create_resource(
     """
     # Validate type-specific requirements
     resource_type = type.lower().strip()
-    
+
     if resource_type == "link":
         # For links, file should not be provided
         # Check if file was actually uploaded (not just empty placeholder)
@@ -95,7 +95,7 @@ async def create_resource(
                 )
             # Reset file pointer in case we need it elsewhere
             await file.seek(0)
-        
+
         # Require url_or_contents for links
         if not url_or_contents or not url_or_contents.strip():
             return JSONResponse(
@@ -121,14 +121,14 @@ async def create_resource(
                 status_code=status.HTTP_400_BAD_REQUEST,
             )
         return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
-    
+
     # For non-link types, file is required
     if not file.filename or not file.size:
         return JSONResponse(
             content={"detail": "File is required for this resource type"},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
-    
+
     # Read file bytes
     try:
         file_bytes = await file.read()
@@ -137,7 +137,7 @@ async def create_resource(
             content={"detail": "Failed to read file"},
             status_code=status.HTTP_400_BAD_REQUEST,
         )
-    
+
     # Upload file resource
     service = ResourceService(storage=storage)
     result = await service.upload_resource(
@@ -149,7 +149,7 @@ async def create_resource(
         file_name=file.filename or title,
         file_type=file.content_type or "application/octet-stream",
     )
-    
+
     if isinstance(result, str):
         # Map service errors to HTTP status codes
         error_code_map = {
@@ -160,14 +160,17 @@ async def create_resource(
             "invalid_file": (400, "File is empty"),
             "file_too_large": (400, "File size exceeds limit"),
             "invalid_file_format": (400, "File format is invalid or corrupted"),
-            "file_type_mismatch": (400, "File content does not match declared type (magic bytes check failed)"),
+            "file_type_mismatch": (
+                400,
+                "File content does not match declared type (magic bytes check failed)",
+            ),
             "storage_error": (503, "Storage service error"),
         }
-        
+
         status_code, detail = error_code_map.get(result, (400, result))
         return JSONResponse(
             content={"detail": detail},
             status_code=status_code,
         )
-    
+
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)

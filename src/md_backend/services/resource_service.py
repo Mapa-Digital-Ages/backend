@@ -26,7 +26,10 @@ _DOCUMENT_RESOURCE_TYPES = {
 _MAGIC_BYTES_MAP: list[tuple[bytes, str]] = [
     (b"%PDF", "application/pdf"),
     (b"\xd0\xcf\x11\xe0", "application/msword"),  # DOC
-    (b"PK\x03\x04", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),  # DOCX
+    (
+        b"PK\x03\x04",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    ),  # DOCX
     (b"\xff\xd8\xff", "image/jpeg"),
     (b"\x89PNG\r\n\x1a\n", "image/png"),
     (b"\x00\x00\x00\x18ftypmp42", "video/mp4"),  # MP4
@@ -38,17 +41,20 @@ _MAGIC_BYTES_MAP: list[tuple[bytes, str]] = [
 
 def _detect_magic_type(data: bytes) -> str | None:
     """Detect MIME type based on magic bytes signature.
-    
+
     Args:
         data: File bytes to check
-        
+
     Returns:
         MIME type string or None if not detected
     """
     for magic, mime_type in _MAGIC_BYTES_MAP:
         if data[: len(magic)] == magic:
             # Extra validation for DOCX/XLSX files
-            if mime_type == "application/vnd.openxmlformats-officedocument.wordprocessingml.document":
+            if (
+                mime_type
+                == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            ):
                 try:
                     with zipfile.ZipFile(io.BytesIO(data)) as zf:
                         if "[Content_Types].xml" not in zf.namelist():
@@ -91,7 +97,7 @@ class ResourceService:
         file_type: str,
     ) -> dict | str:
         """Upload a resource file, persist it to storage and save metadata.
-        
+
         Performs strict security validations:
         - Magic byte verification to ensure file type matches declared type
         - Size limits based on resource type
@@ -125,7 +131,7 @@ class ResourceService:
         detected_mime = _detect_magic_type(file_bytes)
         if detected_mime is None:
             return "invalid_file_format"
-        
+
         # Verify the detected MIME type is acceptable for this resource type
         allowed_mimes_for_type = self._get_allowed_mimes(resource_type_enum)
         if detected_mime not in allowed_mimes_for_type:
@@ -189,26 +195,26 @@ class ResourceService:
         url: str,
     ) -> dict | str:
         """Create a link-type resource without file upload.
-        
+
         Args:
             session: Database session
             content_id: Content ID to associate with
             title: Resource title
             url: URL to store
-            
+
         Returns:
             Resource dict on success, error string on failure
         """
         if not title:
             return "title_required"
-        
+
         if not url:
             return "url_required"
-        
+
         content = await session.get(Content, content_id)
         if content is None:
             return "invalid_content_id"
-        
+
         resource = Resource(
             content_id=content_id,
             type=ResourceTypeEnum.LINK,
@@ -220,13 +226,13 @@ class ResourceService:
             file_url=url,
         )
         session.add(resource)
-        
+
         try:
             await session.commit()
         except Exception:
             await session.rollback()
             raise
-        
+
         await session.refresh(resource)
         return self._resource_to_dict(resource)
 
@@ -288,10 +294,10 @@ class ResourceService:
 
     def _get_allowed_mimes(self, resource_type: ResourceTypeEnum) -> set[str]:
         """Return allowed MIME types for a given resource type.
-        
+
         Args:
             resource_type: The ResourceTypeEnum to validate MIME types for
-            
+
         Returns:
             Set of allowed MIME types
         """

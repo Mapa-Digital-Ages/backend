@@ -302,6 +302,7 @@ class TestResourceService(unittest.TestCase):
 
     def test_upload_resource_validates_magic_bytes_pdf(self):
         """Test that PDF files with invalid magic bytes are rejected."""
+
         async def run_test():
             session, engine = await _create_session()
             async with session as db_session:
@@ -348,6 +349,7 @@ class TestResourceService(unittest.TestCase):
 
     def test_upload_resource_validates_magic_bytes_video(self):
         """Test that video files with invalid magic bytes are rejected."""
+
         async def run_test():
             session, engine = await _create_session()
             async with session as db_session:
@@ -394,6 +396,7 @@ class TestResourceService(unittest.TestCase):
 
     def test_upload_resource_rejects_file_for_link_type(self):
         """Test that file upload is rejected when type='link'."""
+
         async def run_test():
             session, engine = await _create_session()
             async with session as db_session:

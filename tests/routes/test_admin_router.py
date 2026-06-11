@@ -485,7 +485,9 @@ class TestAdminRouter(unittest.TestCase):
     def test_create_resource_without_authorization(self):
         """Test that non-admin users cannot create resources."""
         # Create a non-admin user
-        token = create_approved_user(self.test_client, self.admin_headers, "nonadm_resource@test.com")
+        token = create_approved_user(
+            self.test_client, self.admin_headers, "nonadm_resource@test.com"
+        )
         user_headers = {"Authorization": f"Bearer {token}"}
 
         # Get a subject and content
@@ -512,4 +514,3 @@ class TestAdminRouter(unittest.TestCase):
             headers=user_headers,
         )
         self.assertEqual(response.status_code, 403)
-
