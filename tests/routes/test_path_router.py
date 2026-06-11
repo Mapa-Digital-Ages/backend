@@ -176,6 +176,43 @@ def _seed_trail(student_id: str) -> dict:
     return asyncio.run(_insert())
 
 
+def _seed_incomplete_path() -> int:
+    """Insert a path with one sub-path but NO items (not playable). Returns path_id."""
+
+    async def _insert():
+        async with engine.begin() as conn:
+            subject_id = (
+                await conn.execute(
+                    text("SELECT id FROM subjects WHERE slug = 'matematica-trail-test'")
+                )
+            ).scalar_one()
+            content_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO contents (subject_id, name, description) "
+                        "VALUES (:sid, :n, 'd') RETURNING id"
+                    ),
+                    {"sid": subject_id, "n": f"Empty Content {uuid.uuid4().hex[:6]}"},
+                )
+            ).scalar_one()
+            path_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO paths (contents_id, name, description) "
+                        "VALUES (:cid, :n, 'd') RETURNING id"
+                    ),
+                    {"cid": content_id, "n": f"Empty Trail {uuid.uuid4().hex[:6]}"},
+                )
+            ).scalar_one()
+            await conn.execute(
+                text("INSERT INTO sub_paths (path_id, difficulty) VALUES (:pid, 'EASY')"),
+                {"pid": path_id},
+            )
+            return path_id
+
+    return asyncio.run(_insert())
+
+
 class TestPathRouter(unittest.TestCase):
     def setUp(self):
         self.ctx = TestClient(app, raise_server_exceptions=False)
@@ -329,6 +366,55 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(trail["steps"], 2)
         self.assertEqual(trail["completed"], 1)
         self.assertEqual(trail["progress"], 50)
+
+    def test_list_excludes_incomplete_trails(self):
+        incomplete_id = _seed_incomplete_path()
+        resp = self.client.get(
+            f"/api/student/{self.student_id}/trails",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        ids = {t["id"] for t in resp.json()}
+        self.assertIn(str(self.path_id), ids)  # complete trail is shown
+        self.assertNotIn(str(incomplete_id), ids)  # empty trail is hidden
+
+    def test_complete_step_wrong_answer_scores_zero(self):
+        s = self.seed
+        # a foreign/incorrect option id must not count as correct
+        resp = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/complete",
+            headers=self.student_headers,
+            json={"answers": [
+                {"exercise_id": s["exercise_id"], "option_id": 999999}
+            ]},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["correct"], 0)
+        self.assertEqual(body["total"], 1)
+        self.assertFalse(body["passed"])
+
+    def test_question_flow_empty_when_sub_path_has_no_exercises(self):
+        s = self.seed
+        # the second sub-path has no items at all -> graceful empty quiz
+        resp = self.client.get(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['next_sub_path_id']}/questions",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["questions"], [])
+
+    def test_detail_of_incomplete_trail_is_graceful(self):
+        incomplete_id = _seed_incomplete_path()
+        resp = self.client.get(
+            f"/api/student/{self.student_id}/trails/{incomplete_id}",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        steps = resp.json()["steps"]
+        self.assertTrue(all(st["sub_steps"] == [] for st in steps))
 
     def test_complete_step_403_for_other_student(self):
         other_id, _ = _create_student(self.client, self.admin_headers)

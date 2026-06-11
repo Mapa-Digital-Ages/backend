@@ -276,11 +276,22 @@ class PathService:
             .subquery()
         )
 
+        # A trail is "playable" only if it has at least one sub-path that contains
+        # at least one item. Empty/incomplete shells (no steps or no content) are
+        # hidden so the UI never shows a broken trail.
+        playable = (
+            select(SubPath.id)
+            .join(SubPathItem, SubPathItem.sub_path_id == SubPath.id)
+            .where(SubPath.path_id == Path.id)
+            .exists()
+        )
+
         stmt = (
             select(Path, Content, Subject, sub_path_count_sq.c.total)
             .join(Content, Path.contents_id == Content.id)
             .join(Subject, Content.subject_id == Subject.id)
             .outerjoin(sub_path_count_sq, Path.id == sub_path_count_sq.c.path_id)
+            .where(playable)
         )
         rows = (await session.execute(stmt)).all()
 
