@@ -62,3 +62,32 @@ async def get_trail_detail(
         )
 
     return JSONResponse(content=detail, status_code=status.HTTP_200_OK)
+
+
+@path_router.get("/{path_id}/steps/{sub_path_id}/questions")
+async def get_step_questions(
+    student_id: uuid.UUID,
+    path_id: int,
+    sub_path_id: int,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the quiz question flow for one sub-path."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if not allowed:
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    flow = await _path_service.get_question_flow(
+        session=session, path_id=path_id, sub_path_id=sub_path_id
+    )
+    if flow is None:
+        return JSONResponse(
+            content={"detail": "Trail not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return JSONResponse(content=flow, status_code=status.HTTP_200_OK)

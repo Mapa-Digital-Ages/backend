@@ -253,3 +253,25 @@ class TestPathRouter(unittest.TestCase):
     def test_list_trails_returns_401_without_auth(self):
         resp = self.client.get(f"/api/student/{self.student_id}/trails")
         self.assertEqual(resp.status_code, 401)
+
+    def test_question_flow_returns_questions(self):
+        sub_path_id = self.seed["sub_path_id"]
+        resp = self.client.get(
+            f"/api/student/{self.student_id}/trails/{self.path_id}"
+            f"/steps/{sub_path_id}/questions",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["stepId"], str(sub_path_id))
+        self.assertEqual(body["subStepId"], f"quiz-{sub_path_id}")
+        self.assertGreaterEqual(len(body["questions"]), 1)
+
+    def test_question_flow_403_for_other_student(self):
+        other_id, _ = _create_student(self.client, self.admin_headers)
+        sub_path_id = self.seed["sub_path_id"]
+        resp = self.client.get(
+            f"/api/student/{other_id}/trails/{self.path_id}/steps/{sub_path_id}/questions",
+            headers=self.student_headers,
+        )
+        self.assertEqual(resp.status_code, 403)

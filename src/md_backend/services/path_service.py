@@ -103,6 +103,44 @@ class PathService:
 
         return sub_steps
 
+    async def get_question_flow(
+        self, session: AsyncSession, path_id: int, sub_path_id: int
+    ) -> dict | None:
+        """Return the quiz question flow for one sub-path (no answer key)."""
+        subject = (
+            await session.execute(
+                select(Subject)
+                .join(Content, Content.subject_id == Subject.id)
+                .join(Path, Path.contents_id == Content.id)
+                .where(Path.id == path_id)
+            )
+        ).scalar_one_or_none()
+        if subject is None:
+            return None
+        subject_payload = {
+            "id": str(subject.id),
+            "label": subject.name,
+            "color": subject.color,
+        }
+
+        sub_steps = await self._build_sub_steps(
+            session=session,
+            sub_path_id=sub_path_id,
+            step_status="available",
+            subject_payload=subject_payload,
+        )
+        quiz = next((s for s in sub_steps if s["kind"] == "question"), None)
+        questions = quiz["questions"] if quiz else []
+
+        return {
+            "assessmentId": str(sub_path_id),
+            "trailId": str(path_id),
+            "stepId": str(sub_path_id),
+            "subStepId": f"quiz-{sub_path_id}",
+            "stepTitle": "Questões",
+            "questions": questions,
+        }
+
     async def list_trails(
         self, session: AsyncSession, student_id: uuid.UUID
     ) -> list[dict]:
