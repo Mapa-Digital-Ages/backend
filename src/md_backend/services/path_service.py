@@ -11,8 +11,10 @@ from md_backend.models.db_models import (
     Option,
     Path,
     PathStatusEnum,
+    PathTransition,
     Resource,
     ResourceTypeEnum,
+    RuleTypeEnum,
     StudentPathProgress,
     SubPath,
     SubPathItem,
@@ -102,6 +104,52 @@ class PathService:
             })
 
         return sub_steps
+
+    async def _resolve_next_sub_path(
+        self,
+        session: AsyncSession,
+        path_id: int,
+        sub_path_id: int,
+        score: int | None,
+    ) -> int | None:
+        """Pick the next sub-path from PathTransition rules, given the quiz score.
+
+        Conditional rules (bigger/smaller than) are evaluated first in row order;
+        the first match wins. Otherwise a STANDARD rule is used; otherwise the next
+        sub-path by id; otherwise None (trail completed).
+        """
+        transitions = (
+            await session.execute(
+                select(PathTransition)
+                .where(PathTransition.sub_path_origin_id == sub_path_id)
+                .order_by(PathTransition.id)
+            )
+        ).scalars().all()
+
+        standard_dest: int | None = None
+        for t in transitions:
+            if t.rule_type == RuleTypeEnum.STANDARD:
+                if standard_dest is None:
+                    standard_dest = t.sub_path_destination_id
+                continue
+            if score is None or t.rule_value is None:
+                continue
+            if t.rule_type == RuleTypeEnum.BIGGER_THAN and score > t.rule_value:
+                return t.sub_path_destination_id
+            if t.rule_type == RuleTypeEnum.SMALLER_THAN and score < t.rule_value:
+                return t.sub_path_destination_id
+
+        if standard_dest is not None:
+            return standard_dest
+
+        next_id = (
+            await session.execute(
+                select(func.min(SubPath.id)).where(
+                    SubPath.path_id == path_id, SubPath.id > sub_path_id
+                )
+            )
+        ).scalar_one_or_none()
+        return next_id
 
     async def get_question_flow(
         self, session: AsyncSession, path_id: int, sub_path_id: int

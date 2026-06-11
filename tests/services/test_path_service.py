@@ -227,3 +227,95 @@ class TestPathServiceGetTrailDetail(unittest.TestCase):
 
         self.assertEqual(result["steps"][0]["status"], "available")
         self.assertEqual(result["steps"][1]["status"], "locked")
+
+
+class TestResolveNextSubPath(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        from md_backend.utils.database import init_db
+
+        await init_db()
+        self.service = PathService()
+
+    async def _make_path_with_three_sub_paths(self, session):
+        from md_backend.models.db_models import (
+            Content,
+            DifficultyEnum,
+            Path,
+            SubPath,
+            Subject,
+        )
+
+        suffix = uuid.uuid4().hex[:8]
+        subject = Subject(name=f"S{suffix}", slug=f"s{suffix}", color="#000")
+        session.add(subject)
+        await session.flush()
+        content = Content(subject_id=subject.id, name=f"C{suffix}", description="d")
+        session.add(content)
+        await session.flush()
+        path = Path(contents_id=content.id, name=f"P{suffix}", description="d")
+        session.add(path)
+        await session.flush()
+        sps = [SubPath(path_id=path.id, difficulty=DifficultyEnum.EASY) for _ in range(3)]
+        session.add_all(sps)
+        await session.flush()
+        return path, sps
+
+    async def test_bigger_than_rule_picks_destination(self):
+        from md_backend.models.db_models import PathTransition, RuleTypeEnum
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            path, sps = await self._make_path_with_three_sub_paths(session)
+            session.add(PathTransition(
+                sub_path_origin_id=sps[0].id, sub_path_destination_id=sps[2].id,
+                rule_type=RuleTypeEnum.BIGGER_THAN, rule_value=1,
+            ))
+            await session.commit()
+            nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=2)
+            self.assertEqual(nxt, sps[2].id)
+
+    async def test_smaller_than_rule_picks_destination(self):
+        from md_backend.models.db_models import PathTransition, RuleTypeEnum
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            path, sps = await self._make_path_with_three_sub_paths(session)
+            session.add(PathTransition(
+                sub_path_origin_id=sps[0].id, sub_path_destination_id=sps[1].id,
+                rule_type=RuleTypeEnum.SMALLER_THAN, rule_value=2,
+            ))
+            await session.commit()
+            nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=1)
+            self.assertEqual(nxt, sps[1].id)
+
+    async def test_standard_rule_used_when_no_conditional_matches(self):
+        from md_backend.models.db_models import PathTransition, RuleTypeEnum
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            path, sps = await self._make_path_with_three_sub_paths(session)
+            session.add(PathTransition(
+                sub_path_origin_id=sps[0].id, sub_path_destination_id=sps[1].id,
+                rule_type=RuleTypeEnum.STANDARD, rule_value=None,
+            ))
+            await session.commit()
+            nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=0)
+            self.assertEqual(nxt, sps[1].id)
+
+    async def test_falls_back_to_next_by_id_when_no_transitions(self):
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            path, sps = await self._make_path_with_three_sub_paths(session)
+            await session.commit()
+            nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=None)
+            self.assertEqual(nxt, sps[1].id)
+
+    async def test_returns_none_on_last_sub_path(self):
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as session:
+            path, sps = await self._make_path_with_three_sub_paths(session)
+            await session.commit()
+            nxt = await self.service._resolve_next_sub_path(session, path.id, sps[2].id, score=None)
+            self.assertIsNone(nxt)
