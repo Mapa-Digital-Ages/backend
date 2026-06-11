@@ -1,210 +1,205 @@
-"""Resource service — student-facing read operations and admin CRUD."""
+"""Business logic for resource uploads and storage metadata."""
 
-import math
+import os
+import re
+import uuid
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.db_models import Resource, ResourceTypeEnum
+from md_backend.models.db_models import Content, Resource, ResourceTypeEnum
 from md_backend.services.storage_service import StorageService
+from md_backend.utils.settings import settings
 
-# Types that require a presigned URL instead of the raw file_url
-_CLOSED_TYPES = {
+MAX_DOCUMENT_SIZE_BYTES = 50 * 1024 * 1024
+MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024
+
+_DOCUMENT_RESOURCE_TYPES = {
     ResourceTypeEnum.PDF,
-    ResourceTypeEnum.VIDEO,
-    ResourceTypeEnum.PRESENTATION,
     ResourceTypeEnum.DOCUMENT,
+    ResourceTypeEnum.PRESENTATION,
 }
 
-PRESIGNED_URL_EXPIRES_IN = 300  # seconds
+
+def _sanitize_filename(filename: str) -> str:
+    name = (filename or "")
+    # Remove backslashes immediately (invalid chars)
+    name = name.replace("\\", "")
+    # Extract basename to remove path prefixes like ../../etc/
+    name = os.path.basename(name)
+    # Remove control chars and quotes
+    name = re.sub(r"[\x00-\x1f\x7f\"']", "", name)
+    return name[:255] or "resource"
+
+
+def _upload_id_for_storage_key(storage_key: str) -> uuid.UUID:
+    return uuid.uuid5(uuid.NAMESPACE_URL, storage_key)
 
 
 class ResourceService:
-    """Resource queries for both student access and admin management."""
+    """Service layer for resource persistence and storage orchestration."""
 
-    # Student-facing (read-only)
-    async def list_resources_by_content(
-        self,
-        session: AsyncSession,
-        content_id: int,
-    ) -> list[dict]:
-        """Return the lightweight resource list for a content block."""
-        rows = (
-            (
-                await session.execute(
-                    select(Resource)
-                    .where(Resource.content_id == content_id)
-                    .order_by(Resource.id.asc())
-                )
-            )
-            .scalars()
-            .all()
-        )
+    def __init__(self, storage: StorageService) -> None:
+        """Initialize ResourceService with a StorageService implementation.
 
-        return [_serialize_summary(r) for r in rows]
-
-    async def get_download_url(
-        self,
-        session: AsyncSession,
-        resource_id: int,
-        storage: StorageService,
-    ) -> dict | None:
-        """Return the access URL for a resource.
-
-        - External links (type=link): return ``file_url`` as-is.
-        - Closed files (pdf, video, …): generate a presigned URL via the
-          storage backend; fall back to ``file_url`` when the backend does
-          not support presigned URLs (e.g. Postgres blob storage).
-        Returns ``None`` when the resource does not exist.
+        The provided `storage` is used for all storage operations (upload/delete)
+        and is injected to keep the service implementation testable and backend-agnostic.
         """
+        self.storage = storage
+
+    async def upload_resource(
+        self,
+        session: AsyncSession,
+        file_bytes: bytes,
+        title: str,
+        resource_type: str,
+        content_id: int,
+        file_name: str,
+        file_type: str,
+    ) -> dict | str:
+        """Upload a resource file, persist it to storage and save metadata."""
+        if not title:
+            return "title_required"
+
+        if not file_type:
+            return "invalid_file_type"
+
+        try:
+            resource_type_enum = ResourceTypeEnum(resource_type.strip().lower())
+        except Exception:
+            return "invalid_resource_type"
+
+        if resource_type_enum == ResourceTypeEnum.VIDEO:
+            max_size = MAX_VIDEO_SIZE_BYTES
+        elif resource_type_enum in _DOCUMENT_RESOURCE_TYPES:
+            max_size = MAX_DOCUMENT_SIZE_BYTES
+        else:
+            return "invalid_resource_type"
+
+        if len(file_bytes) == 0:
+            return "invalid_file"
+
+        if len(file_bytes) > max_size:
+            return "file_too_large"
+
+        content = await session.get(Content, content_id)
+        if content is None:
+            return "invalid_content_id"
+
+        safe_file_name = _sanitize_filename(file_name or title)
+        storage_key = f"resources/{content_id}/{uuid.uuid4()}/{safe_file_name}"
+        upload_id = _upload_id_for_storage_key(storage_key)
+
+        if settings.STORAGE_BACKEND == "s3":
+            base_url = settings.CLOUDFRONT_URL or ""
+            file_url = f"{base_url}/{storage_key}"
+        else:
+            file_url = f"/api/resources/{storage_key}"
+
+        try:
+            await self.storage.upload_file(
+                upload_id=upload_id,
+                storage_key=storage_key,
+                file_bytes=file_bytes,
+                content_type=file_type,
+            )
+        except Exception:
+            await session.rollback()
+            return "storage_error"
+
+        resource = Resource(
+            content_id=content_id,
+            type=resource_type_enum,
+            title=title,
+            file_name=safe_file_name,
+            file_type=file_type,
+            file_size_bytes=len(file_bytes),
+            storage_key=storage_key,
+            file_url=file_url,
+        )
+        session.add(resource)
+
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            try:
+                await self.storage.delete_file(upload_id=upload_id, storage_key=storage_key)
+            except Exception:
+                pass
+            raise
+
+        await session.refresh(resource)
+        return self._resource_to_dict(resource)
+
+    async def get_resource(self, session: AsyncSession, resource_id: int) -> dict | None:
+        """Return resource metadata by its database identifier."""
         resource = await session.get(Resource, resource_id)
         if resource is None:
             return None
+        return self._resource_to_dict(resource)
 
-        if resource.type == ResourceTypeEnum.LINK:
-            return {"url": resource.file_url, "expires_in": None}
-
-        # Closed file — attempt a presigned URL
-        presigned: str | None = None
-        if resource.storage_key:
-            import uuid as _uuid
-
-            presigned = await storage.generate_download_url(
-                upload_id=_uuid.UUID(int=0),  # unused by S3 impl, key is enough
-                storage_key=resource.storage_key,
-                expires_in=PRESIGNED_URL_EXPIRES_IN,
-            )
-
-        url = presigned if presigned else resource.file_url
-        expires_in = PRESIGNED_URL_EXPIRES_IN if presigned else None
-        return {"url": url, "expires_in": expires_in}
-
-    # Admin-facing
     async def list_resources(
         self,
         session: AsyncSession,
+        content_id: int,
         page: int = 1,
         page_size: int = 10,
-        content_id: int | None = None,
-        query: str | None = None,
     ) -> dict:
-        """Return a paginated list of resources with optional filters."""
-        stmt = select(Resource)
-
-        if content_id is not None:
-            stmt = stmt.where(Resource.content_id == content_id)
-
-        if query:
-            pattern = f"%{query.strip().lower()}%"
-            stmt = stmt.where(func.lower(Resource.title).like(pattern))
-
+        """List resources for a given content_id with pagination."""
         total = (
-            await session.execute(select(func.count()).select_from(stmt.subquery()))
+            await session.execute(
+                select(func.count()).select_from(Resource).where(Resource.content_id == content_id)
+            )
         ).scalar_one()
-
-        stmt = stmt.order_by(Resource.id.desc()).offset((page - 1) * page_size).limit(page_size)
-        rows = (await session.execute(stmt)).scalars().all()
-
+        result = await session.execute(
+            select(Resource)
+            .where(Resource.content_id == content_id)
+            .order_by(Resource.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        resources = result.scalars().all()
         return {
-            "items": [_serialize_full(r) for r in rows],
+            "items": [self._resource_to_dict(resource) for resource in resources],
             "page": page,
             "page_size": page_size,
-            "total_items": total,
-            "total_pages": max(1, math.ceil(total / page_size)) if total else 1,
+            "total": total,
         }
 
-    async def get_resource(self, session: AsyncSession, resource_id: int) -> dict | None:
-        """Fetch the full detail of a single resource."""
+    async def delete_resource(self, session: AsyncSession, resource_id: int) -> bool:
+        """Delete a resource from storage and remove its database record."""
         resource = await session.get(Resource, resource_id)
         if resource is None:
-            return None
-        return _serialize_full(resource)
+            return False
 
-    async def update_resource(
-        self,
-        session: AsyncSession,
-        resource_id: int,
-        title: str | None = None,
-    ) -> dict | None:
-        """Update metadata-only fields of a resource.
-
-        Storage fields (``storage_key``, ``file_url``, ``file_name``,
-        ``file_type``, ``file_size_bytes``) are never touched here.
-        Returns ``None`` when the resource does not exist.
-        """
-        resource = await session.get(Resource, resource_id)
-        if resource is None:
-            return None
-
-        if title is not None:
-            resource.title = title.strip()
-
-        await session.commit()
-        await session.refresh(resource)
-        return _serialize_full(resource)
-
-    async def delete_resource(
-        self,
-        session: AsyncSession,
-        resource_id: int,
-        storage: StorageService,
-    ) -> dict:
-        """Delete a resource — cloud file first, then DB row.
-
-        Returns a result dict with key ``status``:
-        - ``"deleted"``  → success (200)
-        - ``"not_found"`` → resource does not exist (404)
-        - ``"storage_error"`` → cloud deletion raised an unexpected exception (500)
-
-        The DB row is only removed after the storage deletion completes without
-        error, preventing orphaned files in the cloud.
-        Links (type=link) have no physical file; storage deletion is skipped.
-        """
-        import uuid as _uuid
-
-        resource = await session.get(Resource, resource_id)
-        if resource is None:
-            return {"status": "not_found"}
-
-        # Only attempt cloud deletion for resources that own a physical file
-        if resource.storage_key:
+        if resource.storage_key is not None:
+            upload_id = _upload_id_for_storage_key(resource.storage_key)
             try:
-                await storage.delete_file(
-                    upload_id=_uuid.UUID(int=0),
-                    storage_key=resource.storage_key,
-                )
-            except Exception as exc:
-                # Bubble up so the row is NOT deleted — file would become orphaned
-                return {"status": "storage_error", "detail": str(exc)}
+                await self.storage.delete_file(upload_id=upload_id, storage_key=resource.storage_key)
+            except Exception:
+                await session.rollback()
+                return False
 
         await session.delete(resource)
-        await session.commit()
-        return {"status": "deleted"}
+        try:
+            await session.commit()
+        except Exception:
+            await session.rollback()
+            raise
+        return True
 
-
-# Serialisers
-def _serialize_summary(resource: Resource) -> dict:
-    """Lightweight payload: id, title, type, created_at only."""
-    return {
-        "id": resource.id,
-        "title": resource.title,
-        "type": resource.type,
-        "created_at": resource.created_at.isoformat() if resource.created_at else None,
-    }
-
-
-def _serialize_full(resource: Resource) -> dict:
-    """Full admin payload including all metadata fields."""
-    return {
-        "id": resource.id,
-        "content_id": resource.content_id,
-        "type": resource.type,
-        "title": resource.title,
-        "file_name": resource.file_name,
-        "file_type": resource.file_type,
-        "file_size_bytes": resource.file_size_bytes,
-        "storage_key": resource.storage_key,
-        "file_url": resource.file_url,
-        "created_at": resource.created_at.isoformat() if resource.created_at else None,
-        "updated_at": resource.updated_at.isoformat() if resource.updated_at else None,
-    }
+    def _resource_to_dict(self, resource: Resource) -> dict:
+        return {
+            "id": resource.id,
+            "content_id": resource.content_id,
+            "type": resource.type.value,
+            "title": resource.title,
+            "file_name": resource.file_name,
+            "file_type": resource.file_type,
+            "file_size_bytes": resource.file_size_bytes,
+            "storage_key": resource.storage_key,
+            "file_url": resource.file_url,
+            "created_at": resource.created_at.isoformat() if resource.created_at else None,
+            "updated_at": resource.updated_at.isoformat() if resource.updated_at else None,
+        }

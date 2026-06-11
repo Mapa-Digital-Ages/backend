@@ -31,34 +31,20 @@ def _make_content(client, admin_headers, subject_id):
 
 
 def _make_resource(client, admin_headers, content_id, title="Test Resource", rtype="link"):
-    """Create a resource directly in DB via the upload endpoint stub.
-
-    Because the project has no admin POST /resources endpoint yet, we insert
-    a Resource row via SQLAlchemy inside the test process.
-    """
-    import asyncio
-
-    from sqlalchemy.ext.asyncio import AsyncSession
-
-    from md_backend.models.db_models import Resource
-    from md_backend.utils.database import get_db_session
-
-    async def _insert():
-        from md_backend.utils.database import engine
-
-        async with AsyncSession(engine) as session:
-            r = Resource(
-                content_id=content_id,
-                type=rtype,
-                title=title,
-                file_url="https://example.com/resource",
-            )
-            session.add(r)
-            await session.commit()
-            await session.refresh(r)
-            return r.id
-
-    return asyncio.get_event_loop().run_until_complete(_insert())
+    """Create a resource via the admin API endpoint."""
+    resp = client.post(
+        "/api/admin/resources",
+        json={
+            "content_id": content_id,
+            "type": rtype,
+            "title": title,
+            "file_url": "https://example.com/resource",
+        },
+        headers=admin_headers,
+    )
+    if resp.status_code != 201:
+        raise RuntimeError(f"Failed to create resource: {resp.status_code} - {resp.text}")
+    return resp.json()["id"]
 
 
 # 401 — student endpoints without token

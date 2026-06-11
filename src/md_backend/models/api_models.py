@@ -498,3 +498,16 @@ class ResourceUpdateRequest(BaseModel):
     """
 
     title: str | None = Field(default=None, min_length=1)
+
+
+class ResourceCreateRequest(BaseModel):
+    """Request body for creating a metadata-only resource record.
+
+    This is used by admin endpoints which create a Resource row pointing to an
+    existing stored file or external URL.
+    """
+
+    content_id: int
+    type: str = Field(min_length=1)
+    title: str = Field(min_length=1)
+    file_url: str
