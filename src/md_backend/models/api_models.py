@@ -284,6 +284,20 @@ class ContentUpsertRequest(BaseModel):
     description: str | None = None
 
 
+class ResourceUploadRequest(BaseModel):
+    """Request body for uploading a resource file to content."""
+
+    title: str = Field(min_length=1, description="Resource title")
+    type: str = Field(
+        pattern=r"^(video|pdf|presentation|link|document)$",
+        description="Resource type",
+    )
+    url_or_contents: str | None = Field(
+        default=None,
+        description="URL for link type resources or additional content",
+    )
+
+
 class UpdateUploadRequest(BaseModel):
     """Request body for updating an upload's activity type, status, and/or subject."""
 
