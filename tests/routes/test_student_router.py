@@ -1235,8 +1235,14 @@ class TestWellBeingAuthorizationAndHistory(unittest.TestCase):
         today = datetime.date.today()
         params = {"from": today.isoformat(), "to": today.isoformat()}
 
+        response = self.client.get(
+            f"/api/student/{self.student_id}/well-being/history",
+            params=params,
+            headers=self._auth_headers(self.student_token),
+        )
+        self.assertEqual(response.status_code, 200)
+
         for headers in (
-            self._auth_headers(self.student_token),
             self._auth_headers(self.other_student_token),
             self._auth_headers(self.other_guardian_token),
         ):
