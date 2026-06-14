@@ -11,6 +11,10 @@ from md_backend.models.db_models import (
     CompanyProfile,
     GuardianProfile,
     GuardianStatusEnum,
+    PartnershipStatusEnum,
+    SchoolCompanyPartnership,
+    SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
     StudentProfile,
     UserProfile,
 )
@@ -128,3 +132,105 @@ class AdminService:
         await session.commit()
 
         return _serialize_user(user)
+
+    async def list_partnerships(
+        self,
+        session: AsyncSession,
+        status_filter: str | None = None,
+    ) -> dict:
+        """List all SchoolCompanyPartnership records, optionally filtered by status."""
+        query = select(SchoolCompanyPartnership).order_by(
+            SchoolCompanyPartnership.created_at.desc()
+        )
+
+        if status_filter is not None:
+            query = query.where(
+                SchoolCompanyPartnership.status == PartnershipStatusEnum(status_filter)
+            )
+
+        result = await session.execute(query)
+        partnerships = result.scalars().all()
+
+        items = [
+            {
+                "id": str(p.id),
+                "school_id": str(p.school_id),
+                "company_id": str(p.company_id),
+                "request_id": str(p.request_id),
+                "granted_spots": p.granted_spots,
+                "status": p.status,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in partnerships
+        ]
+
+        return {"items": items, "total": len(items)}
+
+    async def update_partnership_status(
+        self,
+        session: AsyncSession,
+        partnership_id: uuid.UUID,
+        new_status: str,
+    ) -> dict | None | str:
+        """Approve or reject a partnership inside a single database transaction.
+
+        Returns:
+            dict  — success, the updated partnership.
+            None  — partnership not found.
+            "request_not_found" — linked SponsorshipRequest missing (data integrity issue).
+        """
+        async with session.begin_nested():
+            # Lock the partnership row
+            partnership_result = await session.execute(
+                select(SchoolCompanyPartnership)
+                .where(SchoolCompanyPartnership.id == partnership_id)
+                .with_for_update()
+            )
+            partnership = partnership_result.scalar_one_or_none()
+
+            if partnership is None:
+                return None
+
+            # Lock the linked sponsorship request row
+            req_result = await session.execute(
+                select(SponsorshipRequest)
+                .where(SponsorshipRequest.id == partnership.request_id)
+                .with_for_update()
+            )
+            sponsorship = req_result.scalar_one_or_none()
+
+            if sponsorship is None:
+                return "request_not_found"
+
+            if new_status == "APPROVED":
+                partnership.status = PartnershipStatusEnum.APPROVED
+
+                if sponsorship.remaining_spots == 0:
+                    sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
+                else:
+                    sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+
+            elif new_status == "REJECTED":
+                partnership.status = PartnershipStatusEnum.REJECTED
+
+                # Return the reserved spots
+                sponsorship.remaining_spots += partnership.granted_spots
+
+                # Re-evaluate the request status
+                if sponsorship.remaining_spots >= sponsorship.requested_spots:
+                    sponsorship.status = SponsorshipRequestStatusEnum.OPEN
+                elif sponsorship.remaining_spots > 0:
+                    sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+                # If remaining_spots == 0, status remains unchanged.
+
+        await session.commit()
+
+        return {
+            "id": str(partnership.id),
+            "school_id": str(partnership.school_id),
+            "company_id": str(partnership.company_id),
+            "request_id": str(partnership.request_id),
+            "granted_spots": partnership.granted_spots,
+            "status": partnership.status,
+            "created_at": partnership.created_at.isoformat(),
+        }

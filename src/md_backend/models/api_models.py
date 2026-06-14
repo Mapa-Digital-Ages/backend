@@ -501,3 +501,26 @@ class StepCompleteRequest(BaseModel):
     """Payload to complete a sub-path (optionally grading a quiz)."""
 
     answers: list[StepAnswer] = []
+class PartnershipStatusUpdateRequest(BaseModel):
+    """Request body for PATCH /admin/partnerships/{id}/status."""
+
+    status: str = Field(pattern=r"^(APPROVED|REJECTED)$")
+
+
+class PartnershipAdminResponse(BaseModel):
+    """Response model for a partnership in the admin listing."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class PartnershipAdminListResponse(BaseModel):
+    """Paginated list of partnerships for admin auditing."""
+
+    items: list[PartnershipAdminResponse]
+    total: int

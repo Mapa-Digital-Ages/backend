@@ -64,7 +64,10 @@ async def _can_read_well_being_history(
         return True
 
     user_id = uuid.UUID(current_user["user_id"])
-    return await guardian_owns_student(session, user_id, student_id)
+    if await guardian_owns_student(session, user_id, student_id):
+        return True
+
+    return user_id == student_id and await is_active_student(session, user_id)
 
 
 async def _can_write_well_being(
