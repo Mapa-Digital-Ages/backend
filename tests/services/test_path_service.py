@@ -9,7 +9,9 @@ import tests.keys_test  # noqa: F401
 from md_backend.services.path_service import PathService
 
 
-def _make_row(path_id, path_name, content_name, subject_id, subject_name, subject_color, total_sub_paths):
+def _make_row(
+    path_id, path_name, content_name, subject_id, subject_name, subject_color, total_sub_paths
+):
     path = MagicMock()
     path.id = path_id
     path.name = path_name
@@ -122,9 +124,17 @@ class TestPathServiceGetTrailDetail(unittest.TestCase):
         """Build an AsyncMock session returning fixed data for get_trail_detail."""
         mock_session = AsyncMock()
 
-        path = MagicMock(); path.id = 1; path.name = path_name; path.description = "desc"
-        content = MagicMock(); content.name = "Conteúdo"; content.description = "cdesc"
-        subject = MagicMock(); subject.id = 2; subject.name = "Matemática"; subject.color = "#F00"
+        path = MagicMock()
+        path.id = 1
+        path.name = path_name
+        path.description = "desc"
+        content = MagicMock()
+        content.name = "Conteúdo"
+        content.description = "cdesc"
+        subject = MagicMock()
+        subject.id = 2
+        subject.name = "Matemática"
+        subject.color = "#F00"
 
         q1_result = MagicMock()
         q1_result.one_or_none.return_value = (path, content, subject)
@@ -175,7 +185,9 @@ class TestPathServiceGetTrailDetail(unittest.TestCase):
     def test_step_status_is_available_when_student_is_on_that_sub_path(self):
         from md_backend.models.db_models import PathStatusEnum
 
-        sub = MagicMock(); sub.id = 10; sub.difficulty = None
+        sub = MagicMock()
+        sub.id = 10
+        sub.difficulty = None
 
         progress = MagicMock()
         progress.current_sub_path = 10
@@ -195,8 +207,12 @@ class TestPathServiceGetTrailDetail(unittest.TestCase):
     def test_step_before_current_is_completed(self):
         from md_backend.models.db_models import PathStatusEnum
 
-        sub1 = MagicMock(); sub1.id = 10; sub1.difficulty = None
-        sub2 = MagicMock(); sub2.id = 20; sub2.difficulty = None
+        sub1 = MagicMock()
+        sub1.id = 10
+        sub1.difficulty = None
+        sub2 = MagicMock()
+        sub2.id = 20
+        sub2.difficulty = None
 
         progress = MagicMock()
         progress.current_sub_path = 20
@@ -214,8 +230,12 @@ class TestPathServiceGetTrailDetail(unittest.TestCase):
         self.assertEqual(result["steps"][1]["status"], "available")
 
     def test_step_after_current_is_locked_when_no_progress(self):
-        sub1 = MagicMock(); sub1.id = 10; sub1.difficulty = None
-        sub2 = MagicMock(); sub2.id = 20; sub2.difficulty = None
+        sub1 = MagicMock()
+        sub1.id = 10
+        sub1.difficulty = None
+        sub2 = MagicMock()
+        sub2.id = 20
+        sub2.difficulty = None
 
         mock_session = self._mock_session_for_detail(
             sub_paths=[sub1, sub2], sub_path_items=[], progress=None
@@ -241,8 +261,8 @@ class TestResolveNextSubPath(unittest.IsolatedAsyncioTestCase):
             Content,
             DifficultyEnum,
             Path,
-            SubPath,
             Subject,
+            SubPath,
         )
 
         suffix = uuid.uuid4().hex[:8]
@@ -266,10 +286,14 @@ class TestResolveNextSubPath(unittest.IsolatedAsyncioTestCase):
 
         async with AsyncSessionLocal() as session:
             path, sps = await self._make_path_with_three_sub_paths(session)
-            session.add(PathTransition(
-                sub_path_origin_id=sps[0].id, sub_path_destination_id=sps[2].id,
-                rule_type=RuleTypeEnum.BIGGER_THAN, rule_value=1,
-            ))
+            session.add(
+                PathTransition(
+                    sub_path_origin_id=sps[0].id,
+                    sub_path_destination_id=sps[2].id,
+                    rule_type=RuleTypeEnum.BIGGER_THAN,
+                    rule_value=1,
+                )
+            )
             await session.commit()
             nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=2)
             self.assertEqual(nxt, sps[2].id)
@@ -280,10 +304,14 @@ class TestResolveNextSubPath(unittest.IsolatedAsyncioTestCase):
 
         async with AsyncSessionLocal() as session:
             path, sps = await self._make_path_with_three_sub_paths(session)
-            session.add(PathTransition(
-                sub_path_origin_id=sps[0].id, sub_path_destination_id=sps[1].id,
-                rule_type=RuleTypeEnum.SMALLER_THAN, rule_value=2,
-            ))
+            session.add(
+                PathTransition(
+                    sub_path_origin_id=sps[0].id,
+                    sub_path_destination_id=sps[1].id,
+                    rule_type=RuleTypeEnum.SMALLER_THAN,
+                    rule_value=2,
+                )
+            )
             await session.commit()
             nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=1)
             self.assertEqual(nxt, sps[1].id)
@@ -294,10 +322,14 @@ class TestResolveNextSubPath(unittest.IsolatedAsyncioTestCase):
 
         async with AsyncSessionLocal() as session:
             path, sps = await self._make_path_with_three_sub_paths(session)
-            session.add(PathTransition(
-                sub_path_origin_id=sps[0].id, sub_path_destination_id=sps[1].id,
-                rule_type=RuleTypeEnum.STANDARD, rule_value=None,
-            ))
+            session.add(
+                PathTransition(
+                    sub_path_origin_id=sps[0].id,
+                    sub_path_destination_id=sps[1].id,
+                    rule_type=RuleTypeEnum.STANDARD,
+                    rule_value=None,
+                )
+            )
             await session.commit()
             nxt = await self.service._resolve_next_sub_path(session, path.id, sps[0].id, score=0)
             self.assertEqual(nxt, sps[1].id)

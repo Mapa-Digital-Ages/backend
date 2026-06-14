@@ -36,6 +36,36 @@ async def list_trails(
     return JSONResponse(content=trails, status_code=status.HTTP_200_OK)
 
 
+@path_router.get("/subjects/{subject_id}")
+async def list_subject_trails(
+    student_id: uuid.UUID,
+    subject_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return all adaptive learning trail details for one subject."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if not allowed:
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    trails = await _path_service.list_subject_trail_details(
+        session=session,
+        student_id=student_id,
+        subject_id=subject_id,
+    )
+    if trails is None:
+        return JSONResponse(
+            content={"detail": "Subject not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return JSONResponse(content=trails, status_code=status.HTTP_200_OK)
+
+
 @path_router.get("/{path_id}")
 async def get_trail_detail(
     student_id: uuid.UUID,
@@ -92,6 +122,40 @@ async def get_step_questions(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     return JSONResponse(content=flow, status_code=status.HTTP_200_OK)
+
+
+@path_router.post("/{path_id}/items/{item_id}/complete")
+async def complete_item(
+    student_id: uuid.UUID,
+    path_id: int,
+    item_id: int,
+    request: StepCompleteRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Complete a single sub-path item and return the updated trail detail."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if not allowed:
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await _path_service.complete_item(
+        session=session,
+        student_id=student_id,
+        path_id=path_id,
+        item_id=item_id,
+        answers=[a.model_dump() for a in request.answers],
+    )
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Trail item not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
 @path_router.post("/{path_id}/steps/{sub_path_id}/complete")

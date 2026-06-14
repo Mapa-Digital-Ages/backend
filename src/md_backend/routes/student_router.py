@@ -7,7 +7,6 @@ from fastapi import APIRouter, Depends, Query, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.routes.path_router import path_router
 from md_backend.models.api_models import (
     CalendarTaskSyncItemRequest,
     CalendarUpsertRequest,
@@ -20,6 +19,7 @@ from md_backend.models.api_models import (
     WellBeingResponse,
 )
 from md_backend.models.db_models import HumorEnum
+from md_backend.routes.path_router import path_router
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
 from md_backend.utils.access_control import (

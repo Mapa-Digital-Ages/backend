@@ -17,6 +17,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -350,6 +351,12 @@ class PathStatusEnum(enum.StrEnum):
     PAUSED = "paused"
 
 
+class ItemProgressStatusEnum(enum.StrEnum):
+    """Sub-path item progress status."""
+
+    COMPLETED = "completed"
+
+
 class TypeItemEnum(enum.StrEnum):
     """Sub-path item type."""
 
@@ -547,6 +554,38 @@ class StudentPathProgress(Base):
     )
     path_status: Mapped[PathStatusEnum | None] = mapped_column(
         Enum(PathStatusEnum, name="path_status_enum"), nullable=True
+    )
+    updated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class StudentSubPathItemProgress(Base):
+    """Student progress tracking for individual sub-path items."""
+
+    __tablename__ = "student_sub_path_item_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "sub_path_item_id",
+            name="uq_student_sub_path_item_progress_student_item",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
+    )
+    path_id: Mapped[int] = mapped_column(Integer, ForeignKey("paths.id"), nullable=False)
+    sub_path_id: Mapped[int] = mapped_column(Integer, ForeignKey("sub_paths.id"), nullable=False)
+    sub_path_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sub_paths_item.id"), nullable=False
+    )
+    status: Mapped[ItemProgressStatusEnum] = mapped_column(
+        Enum(ItemProgressStatusEnum, name="item_progress_status_enum"), nullable=False
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     updated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

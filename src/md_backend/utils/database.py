@@ -1,8 +1,9 @@
 """Database connection and session management."""
 
 from collections.abc import AsyncGenerator
+from typing import cast
 
-from sqlalchemy import text
+from sqlalchemy import Table, text
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
     AsyncSession,
@@ -11,7 +12,7 @@ from sqlalchemy.ext.asyncio import (
 )
 from sqlalchemy.pool import StaticPool
 
-from md_backend.models.db_models import Base
+from md_backend.models.db_models import Base, StudentSubPathItemProgress
 from md_backend.utils.settings import settings
 
 _engine_kwargs: dict = {"echo": False}
@@ -167,10 +168,17 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
         pass
 
 
+async def _ensure_item_progress_table(conn: AsyncConnection) -> None:
+    """Create item-level progress table for existing databases."""
+    table = cast(Table, StudentSubPathItemProgress.__table__)
+    await conn.run_sync(lambda sync_conn: table.create(sync_conn, checkfirst=True))
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await _ensure_item_progress_table(conn)
         await _ensure_user_last_name_nullable(conn)
         await _migrate_resources_table(conn)
         await _migrate_sponsorship_tables(conn)
