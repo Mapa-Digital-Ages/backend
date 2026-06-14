@@ -2,6 +2,7 @@
 
 import datetime
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -501,6 +502,8 @@ class StepCompleteRequest(BaseModel):
     """Payload to complete a sub-path (optionally grading a quiz)."""
 
     answers: list[StepAnswer] = []
+
+
 class PartnershipStatusUpdateRequest(BaseModel):
     """Request body for PATCH /admin/partnerships/{id}/status."""
 
@@ -524,3 +527,29 @@ class PartnershipAdminListResponse(BaseModel):
 
     items: list[PartnershipAdminResponse]
     total: int
+
+
+class IniciarTrilhaRequest(BaseModel):
+    """Request body for starting a new question trail."""
+
+    materia: str = Field(min_length=1)
+    conteudo: str = Field(min_length=1)
+    eixo: list[str] = Field(min_length=1)
+
+
+class PerguntaResponse(BaseModel):
+    """Response model for a trail question."""
+
+    trilha_id: str
+    pergunta_id: str
+    pergunta: str
+    respostas: dict[str, str]
+    dificuldade: int
+    tentativas_restantes: int
+
+
+class ResponderPerguntaRequest(BaseModel):
+    """Request body for submitting an answer in a trail."""
+
+    pergunta_id: str
+    resposta: Literal["a", "b", "c", "d"]
