@@ -92,7 +92,7 @@ class TestResourceService(unittest.TestCase):
                 self.assertIn("id", result)
                 self.assertEqual(result["file_name"], "lesson.pdf")
                 self.assertEqual(result["type"], "pdf")
-                self.assertEqual(result["created_at"].__class__.__name__, "datetime")
+                self.assertIsInstance(result["created_at"], str)
                 self.assertEqual(len(storage.store), 1)
                 upper_case_result = await service.upload_resource(
                     session=db_session,
