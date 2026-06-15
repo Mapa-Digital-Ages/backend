@@ -51,5 +51,16 @@ class Settings(BaseSettings):
     # Cloudfront
     CLOUDFRONT_URL: str | None = None
 
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # LLM (Google Gemini)
+    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GOOGLE_API_KEY: str = ""
+    LLM_TEMPERATURE: float = 0.7
+
+    # Trilha (adaptive trail)
+    TRILHA_TTL_SECONDS: int = 3600
+
 
 settings = Settings()  # type: ignore

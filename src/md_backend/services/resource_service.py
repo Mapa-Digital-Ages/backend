@@ -153,7 +153,7 @@ class ResourceService:
                 upload_id=upload_id,
                 storage_key=storage_key,
                 file_bytes=file_bytes,
-                content_type=detected_mime,
+                content_type=file_type,
             )
         except Exception:
             await session.rollback()
