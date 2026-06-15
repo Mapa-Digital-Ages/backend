@@ -1,0 +1,168 @@
+@BaseUrl = http://localhost:8000/api
+
+# Atualizar antes de cada "Responder pergunta" (copiar do evento proxima_pergunta no SSE):
+@PERGUNTA_ID = p_COLE-AQUI
+
+###############################################################################
+# SETUP — rodar só na primeira vez
+###############################################################################
+
+### Criar superadmin
+POST {{BaseUrl}}/setup
+Content-Type: application/json
+X-Setup-Token: 4ba37149c008bfb3f050acd1c6f1760c5beb00f282d73f8f
+
+{
+    "first_name": "Admin",
+    "email": "admin@test.com",
+    "password": "adminpass123"
+}
+
+###############################################################################
+# LOGIN — admin
+###############################################################################
+
+### Login admin
+# @name adminLogin
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "admin@test.com",
+    "password": "adminpass123"
+}
+
+###############################################################################
+# PRÉ-REQUISITOS — criar, aprovar e vincular usuários
+###############################################################################
+
+### 1. Registrar responsável
+# @name registerGuardian
+POST {{BaseUrl}}/register/guardian
+Content-Type: application/json
+
+{
+    "first_name": "Maria",
+    "last_name": "Silva",
+    "email": "maria@test.com",
+    "password": "senha12345"
+}
+
+### 2. Registrar aluno
+# @name registerStudent
+POST {{BaseUrl}}/register/student
+Content-Type: application/json
+
+{
+    "first_name": "João",
+    "last_name": "Silva",
+    "email": "joao@test.com",
+    "password": "alunopass123",
+    "birth_date": "2012-05-10",
+    "student_class": "7th class"
+}
+
+### 3. Aprovar responsável
+PATCH {{BaseUrl}}/admin/users/{{registerGuardian.response.body.id}}/status
+Content-Type: application/json
+Authorization: Bearer {{adminLogin.response.body.token}}
+
+{
+    "status": "approved"
+}
+
+### 4. Vincular aluno ao responsável
+POST {{BaseUrl}}/guardian/{{registerGuardian.response.body.id}}/students/{{registerStudent.response.body.id}}
+Authorization: Bearer {{adminLogin.response.body.token}}
+
+###############################################################################
+# LOGIN — aluno
+###############################################################################
+
+### Login aluno
+# @name alunoLogin
+POST {{BaseUrl}}/login
+Content-Type: application/json
+
+{
+    "email": "joao@test.com",
+    "password": "alunopass123"
+}
+
+###############################################################################
+# TRILHA
+# Fluxo: Iniciar → cole @PERGUNTA_ID do topo → Responder → repita
+###############################################################################
+
+### Iniciar trilha
+# @name iniciarTrilha
+POST {{BaseUrl}}/trilha/iniciar
+Content-Type: application/json
+Authorization: Bearer {{alunoLogin.response.body.token}}
+
+{
+    "materia": "Matemática",
+    "conteudo": "Frações",
+    "eixo": ["raciocínio lógico", "interpretação"]
+}
+
+### Responder pergunta
+# ⚠ REST Client não exibe SSE — a aba response fica em branco. Use curl para ver os eventos:
+#
+curl -N -X POST http://localhost:8000/api/trilha/t_ec7d12d7-534a-43fa-8be1-0a966ec00a02/responder \
+-H "Content-Type: application/json" \
+-H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyM2E1YzFhZi00NmFiLTQ1YmQtYTVmMy05NDBhODM5ZTNhNTgiLCJ1c2VyX2lkIjoiMjNhNWMxYWYtNDZhYi00NWJkLWE1ZjMtOTQwYTgzOWUzYTU4IiwiZXhwIjoxNzc5ODMxMzgzLCJpYXQiOjE3Nzk4Mjk1ODMsImp0aSI6ImRjNjJmZGQ3LTkwMGMtNGMxYi05ODAzLTU4NzEwZGJiMjE2NCJ9.BQ5YxH7guRusI2sfsllbMfFjL9Sjy8IAmDekTHihfbo" \
+-d '{"pergunta_id": "p_a6f86b28-36f6-44d9-878f-18721482e869", "resposta": "a"}'
+#
+# SSE retorna dois eventos:
+#   event: resultado        → { correto, status, tentativas_restantes }
+#   event: proxima_pergunta → { pergunta_id, pergunta, respostas, ... }
+# Após cada resposta: cole o pergunta_id de proxima_pergunta em @PERGUNTA_ID no topo e rode de novo.
+POST {{BaseUrl}}/trilha/{{iniciarTrilha.response.body.trilha_id}}/responder
+Content-Type: application/json
+Authorization: Bearer {{alunoLogin.response.body.token}}
+
+{
+    "pergunta_id": "{{PERGUNTA_ID}}",
+    "resposta": "a"
+}
+
+
+# Fluxo funcional testado:
+
+# % curl -N -X POST http://localhost:8000/api/trilha/t_ec7d12d7-534a-43fa-8be1-0a966ec00a02/responder \ 
+# -H "Content-Type: application/json" \
+# -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyM2E1YzFhZi00NmFiLTQ1YmQtYTVmMy05NDBhODM5ZTNhNTgiLCJ1c2VyX2lkIjoiMjNhNWMxYWYtNDZhYi00NWJkLWE1ZjMtOTQwYTgzOWUzYTU4IiwiZXhwIjoxNzc5NzYxNzcxLCJpYXQiOjE3Nzk3NTk5NzEsImp0aSI6IjY0YjIxM2YxLWM4YTMtNDI2Ny05MmJkLWFlZTE5ZDE0ZjI3NyJ9.BYaumVkjFEpcQJcWR5unsX6qTp9mr3YSLwveRkl8B9g" \
+# -d '{"pergunta_id": "p_a6f86b28-36f6-44d9-878f-18721482e869", "resposta": "a"}'
+# event: resultado
+# data: {"correto": false, "status": "in_progress", "tentativas_restantes": 4}
+
+# event: proxima_pergunta
+# data: {"trilha_id": "t_ec7d12d7-534a-43fa-8be1-0a966ec00a02", "pergunta_id": "p_d130c7f1-4116-47f8-bfaa-c3cd7a5fa95c", "pergunta": "Uma barra de chocolate foi dividida em 6 pedaços iguais. Se Mariana comeu 2 desses pedaços, qual fração representa a parte do chocolate que ainda sobrou?", "respostas": {"a": "2/6", "b": "4/6", "c": "6/2", "d": "1/6"}, "dificuldade": 1, "tentativas_restantes": 4}
+
+# nicolasfonseca@POATEK-MBP-Nicolas-Fonseca-Docolas Desktop % curl -N -X POST http://localhost:8000/api/trilha/t_ec7d12d7-534a-43fa-8be1-0a966ec00a02/responder \ 
+# -H "Content-Type: application/json" \
+# -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyM2E1YzFhZi00NmFiLTQ1YmQtYTVmMy05NDBhODM5ZTNhNTgiLCJ1c2VyX2lkIjoiMjNhNWMxYWYtNDZhYi00NWJkLWE1ZjMtOTQwYTgzOWUzYTU4IiwiZXhwIjoxNzc5NzYxNzcxLCJpYXQiOjE3Nzk3NTk5NzEsImp0aSI6IjY0YjIxM2YxLWM4YTMtNDI2Ny05MmJkLWFlZTE5ZDE0ZjI3NyJ9.BYaumVkjFEpcQJcWR5unsX6qTp9mr3YSLwveRkl8B9g" \
+# -d '{"pergunta_id": "p_d130c7f1-4116-47f8-bfaa-c3cd7a5fa95c", "resposta": "b"}'
+# event: resultado
+# data: {"correto": true, "status": "in_progress", "tentativas_restantes": 3}
+
+# event: proxima_pergunta
+# data: {"trilha_id": "t_ec7d12d7-534a-43fa-8be1-0a966ec00a02", "pergunta_id": "p_205289f5-33a6-4099-bcae-2fae2ec0b983", "pergunta": "Mariana tinha uma barra de chocolate com 24 quadradinhos. Ela comeu 1/4 da barra pela manhã. À tarde, ela comeu a metade do que havia sobrado. Quantos quadradinhos de chocolate ainda restam?", "respostas": {"a": "6", "b": "9", "c": "12", "d": "18"}, "dificuldade": 2, "tentativas_restantes": 3}
+
+# nicolasfonseca@POATEK-MBP-Nicolas-Fonseca-Docolas Desktop % curl -N -X POST http://localhost:8000/api/trilha/t_ec7d12d7-534a-43fa-8be1-0a966ec00a02/responder \ 
+# -H "Content-Type: application/json" \
+# -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyM2E1YzFhZi00NmFiLTQ1YmQtYTVmMy05NDBhODM5ZTNhNTgiLCJ1c2VyX2lkIjoiMjNhNWMxYWYtNDZhYi00NWJkLWE1ZjMtOTQwYTgzOWUzYTU4IiwiZXhwIjoxNzc5NzYxNzcxLCJpYXQiOjE3Nzk3NTk5NzEsImp0aSI6IjY0YjIxM2YxLWM4YTMtNDI2Ny05MmJkLWFlZTE5ZDE0ZjI3NyJ9.BYaumVkjFEpcQJcWR5unsX6qTp9mr3YSLwveRkl8B9g" \
+# -d '{"pergunta_id": "p_205289f5-33a6-4099-bcae-2fae2ec0b983", "resposta": "b"}'
+# event: resultado
+# data: {"correto": true, "status": "in_progress", "tentativas_restantes": 2}
+
+# event: proxima_pergunta
+# data: {"trilha_id": "t_ec7d12d7-534a-43fa-8be1-0a966ec00a02", "pergunta_id": "p_ae2c0c45-69db-4963-9b74-45f4e5e0cda8", "pergunta": "Lucas decidiu organizar suas figurinhas repetidas. Primeiro, ele deu 1/3 do total para seu irmão. Depois, ele deu 1/4 do que sobrou para seu melhor amigo. Ao final, Lucas ainda ficou com 18 figurinhas. Quantas figurinhas ele tinha inicialmente?", "respostas": {"a": "36", "b": "48", "c": "54", "d": "72"}, "dificuldade": 3, "tentativas_restantes": 2}
+
+# nicolasfonseca@POATEK-MBP-Nicolas-Fonseca-Docolas Desktop % curl -N -X POST http://localhost:8000/api/trilha/t_ec7d12d7-534a-43fa-8be1-0a966ec00a02/responder \ 
+# -H "Content-Type: application/json" \
+# -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIyM2E1YzFhZi00NmFiLTQ1YmQtYTVmMy05NDBhODM5ZTNhNTgiLCJ1c2VyX2lkIjoiMjNhNWMxYWYtNDZhYi00NWJkLWE1ZjMtOTQwYTgzOWUzYTU4IiwiZXhwIjoxNzc5NzYxNzcxLCJpYXQiOjE3Nzk3NTk5NzEsImp0aSI6IjY0YjIxM2YxLWM4YTMtNDI2Ny05MmJkLWFlZTE5ZDE0ZjI3NyJ9.BYaumVkjFEpcQJcWR5unsX6qTp9mr3YSLwveRkl8B9g" \
+# -d '{"pergunta_id": "p_ae2c0c45-69db-4963-9b74-45f4e5e0cda8", "resposta": "a"}'
+# event: resultado
+# data: {"correto": true, "status": "passed", "tentativas_restantes": 1}

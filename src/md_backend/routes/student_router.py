@@ -19,6 +19,7 @@ from md_backend.models.api_models import (
     WellBeingResponse,
 )
 from md_backend.models.db_models import HumorEnum
+from md_backend.routes.path_router import path_router
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
 from md_backend.utils.access_control import (
@@ -645,3 +646,6 @@ async def upsert_calendar_day(
         tasks=tasks_data,
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+student_router.include_router(path_router, prefix="/{student_id}/trails")
