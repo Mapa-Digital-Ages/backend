@@ -108,7 +108,7 @@ class ContentService:
 
 def _serialize(content: Content, subject: Subject) -> dict:
     return {
-        "id": str(content.id),
+        "id": content.id,
         "title": content.name,
         "description": content.description,
         "created_at": content.created_at.isoformat() if content.created_at else None,
