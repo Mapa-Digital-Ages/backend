@@ -6,14 +6,13 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import UpdateStatusRequest
-from md_backend.routes.admin_resource_router import admin_resource_router
 from md_backend.models.api_models import (
     PartnershipAdminListResponse,
     PartnershipAdminResponse,
     PartnershipStatusUpdateRequest,
     UpdateStatusRequest,
 )
+from md_backend.routes.admin_resource_router import admin_resource_router
 from md_backend.routes.content_router import content_router
 from md_backend.routes.resource_router import resource_router
 from md_backend.routes.subject_router import subject_router

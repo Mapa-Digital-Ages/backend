@@ -11,8 +11,7 @@ from md_backend.services.storage_service import (
     StorageService,
 )
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_approved_user
-from md_backend.utils.security import get_current_superadmin
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 from md_backend.utils.settings import settings
 
 resource_router = APIRouter()
@@ -93,6 +92,8 @@ async def get_resource_download_url(
             status_code=status.HTTP_404_NOT_FOUND,
         )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
 @resource_router.post("/{content_id}/resources")
 async def create_resource(
     content_id: int,
@@ -105,7 +106,7 @@ async def create_resource(
     ),
     url_or_contents: str = Form(default=""),
     session: AsyncSession = Depends(get_db_session),
-    storage: StorageService = Depends(get_storage_service),
+    storage: StorageService = Depends(_get_storage_service),
     current_user: dict = Depends(get_current_superadmin),
 ):
     """Create and upload a resource for content.

@@ -1,9 +1,9 @@
 """Business logic for resource uploads and storage metadata."""
 
+import io
 import os
 import re
 import uuid
-import io
 import zipfile
 
 from sqlalchemy import func, select
@@ -23,14 +23,6 @@ _DOCUMENT_RESOURCE_TYPES = {
 }
 
 
-def _sanitize_filename(filename: str) -> str:
-    name = filename or ""
-    # Remove backslashes immediately (invalid chars)
-    name = name.replace("\\", "")
-    # Extract basename to remove path prefixes like ../../etc/
-    name = os.path.basename(name)
-    # Remove control chars and quotes
-    name = re.sub(r"[\x00-\x1f\x7f\"']", "", name)
 # Magic bytes mapping for file type validation
 _MAGIC_BYTES_MAP: list[tuple[bytes, str]] = [
     (b"%PDF", "application/pdf"),
