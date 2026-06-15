@@ -328,6 +328,6 @@ class ResourceService:
             "file_size_bytes": resource.file_size_bytes,
             "storage_key": resource.storage_key,
             "file_url": resource.file_url,
-            "created_at": resource.created_at,
-            "updated_at": resource.updated_at,
+            "created_at": resource.created_at.isoformat() if resource.created_at else None,
+            "updated_at": resource.updated_at.isoformat() if resource.updated_at else None,
         }
