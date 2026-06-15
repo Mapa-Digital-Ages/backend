@@ -13,6 +13,7 @@ from md_backend.models.api_models import (
     UpdateStatusRequest,
 )
 from md_backend.routes.content_router import content_router
+from md_backend.routes.resource_router import resource_router
 from md_backend.routes.subject_router import subject_router
 from md_backend.routes.upload_router import admin_upload_router
 from md_backend.services.admin_service import AdminService
@@ -138,4 +139,5 @@ async def update_partnership_status(
 
 admin_router.include_router(subject_router)
 admin_router.include_router(content_router, prefix="/content")
+admin_router.include_router(resource_router, prefix="/contents")
 admin_router.include_router(admin_upload_router, prefix="/uploads")
