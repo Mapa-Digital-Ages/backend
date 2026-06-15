@@ -12,6 +12,7 @@ from md_backend.models.api_models import (
     PartnershipStatusUpdateRequest,
     UpdateStatusRequest,
 )
+from md_backend.routes.admin_resource_router import admin_resource_router
 from md_backend.routes.content_router import content_router
 from md_backend.routes.resource_router import resource_router
 from md_backend.routes.subject_router import subject_router
@@ -141,3 +142,4 @@ admin_router.include_router(subject_router)
 admin_router.include_router(content_router, prefix="/content")
 admin_router.include_router(resource_router, prefix="/contents")
 admin_router.include_router(admin_upload_router, prefix="/uploads")
+admin_router.include_router(admin_resource_router, prefix="/resources")

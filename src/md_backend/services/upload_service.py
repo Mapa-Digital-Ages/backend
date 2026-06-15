@@ -63,8 +63,13 @@ def _detect_mime(data: bytes) -> str | None:
 
 
 def _sanitize_filename(filename: str) -> str:
-    name = os.path.basename(filename)
-    name = re.sub(r'[\x00-\x1f\x7f"\'\\]', "", name)
+    name = filename or ""
+    # Remove backslashes immediately (invalid chars)
+    name = name.replace("\\", "")
+    # Extract basename to remove path prefixes like ../../etc/
+    name = os.path.basename(name)
+    # Remove control chars and quotes
+    name = re.sub(r"[\x00-\x1f\x7f\"']", "", name)
     return name[:255] or "upload"
 
 

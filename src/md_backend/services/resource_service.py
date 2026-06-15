@@ -22,6 +22,7 @@ _DOCUMENT_RESOURCE_TYPES = {
     ResourceTypeEnum.PRESENTATION,
 }
 
+
 # Magic bytes mapping for file type validation
 _MAGIC_BYTES_MAP: list[tuple[bytes, str]] = [
     (b"%PDF", "application/pdf"),
@@ -271,15 +272,18 @@ class ResourceService:
     async def delete_resource(self, session: AsyncSession, resource_id: int) -> bool:
         """Delete a resource from storage and remove its database record."""
         resource = await session.get(Resource, resource_id)
-        if resource is None or resource.storage_key is None:
+        if resource is None:
             return False
 
-        upload_id = _upload_id_for_storage_key(resource.storage_key)
-        try:
-            await self.storage.delete_file(upload_id=upload_id, storage_key=resource.storage_key)
-        except Exception:
-            await session.rollback()
-            return False
+        if resource.storage_key is not None:
+            upload_id = _upload_id_for_storage_key(resource.storage_key)
+            try:
+                await self.storage.delete_file(
+                    upload_id=upload_id, storage_key=resource.storage_key
+                )
+            except Exception:
+                await session.rollback()
+                return False
 
         await session.delete(resource)
         try:
