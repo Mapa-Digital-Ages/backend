@@ -18,6 +18,9 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "uvicorn>=0.41.0",
     "python-multipart>=0.0.9",
+    "redis>=5.0",
+    "langchain-core>=0.3",
+    "langchain-google-genai>=2.0",
 ]
 
 [tool.ruff]
