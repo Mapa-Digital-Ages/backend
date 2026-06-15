@@ -526,6 +526,8 @@ class ResourceCreateRequest(BaseModel):
     type: str = Field(min_length=1)
     title: str = Field(min_length=1)
     file_url: str
+
+
 class StepAnswer(BaseModel):
     """A single submitted answer in a sub-path quiz."""
 
