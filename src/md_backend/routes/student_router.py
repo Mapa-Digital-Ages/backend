@@ -19,6 +19,7 @@ from md_backend.models.api_models import (
     WellBeingResponse,
 )
 from md_backend.models.db_models import HumorEnum
+from md_backend.routes.path_router import path_router
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
 from md_backend.utils.access_control import (
@@ -63,7 +64,10 @@ async def _can_read_well_being_history(
         return True
 
     user_id = uuid.UUID(current_user["user_id"])
-    return await guardian_owns_student(session, user_id, student_id)
+    if await guardian_owns_student(session, user_id, student_id):
+        return True
+
+    return user_id == student_id and await is_active_student(session, user_id)
 
 
 async def _can_write_well_being(
@@ -642,3 +646,6 @@ async def upsert_calendar_day(
         tasks=tasks_data,
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+student_router.include_router(path_router, prefix="/{student_id}/trails")

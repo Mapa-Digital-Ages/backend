@@ -6,6 +6,7 @@ import uuid
 from typing import Optional  # noqa: UP035
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     Date,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -350,6 +352,12 @@ class PathStatusEnum(enum.StrEnum):
     PAUSED = "paused"
 
 
+class ItemProgressStatusEnum(enum.StrEnum):
+    """Sub-path item progress status."""
+
+    COMPLETED = "completed"
+
+
 class TypeItemEnum(enum.StrEnum):
     """Sub-path item type."""
 
@@ -371,6 +379,13 @@ class TaskStatusEnum(enum.StrEnum):
     PENDING = "pending"
     DONE = "done"
     ADJUST = "adjust"
+
+
+class TrilhaStatusEnum(enum.StrEnum):
+    """Trail completion status."""
+
+    PASSED = "passed"
+    FAILED = "failed"
 
 
 class HumorEnum(enum.StrEnum):
@@ -553,6 +568,38 @@ class StudentPathProgress(Base):
     )
 
 
+class StudentSubPathItemProgress(Base):
+    """Student progress tracking for individual sub-path items."""
+
+    __tablename__ = "student_sub_path_item_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "sub_path_item_id",
+            name="uq_student_sub_path_item_progress_student_item",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
+    )
+    path_id: Mapped[int] = mapped_column(Integer, ForeignKey("paths.id"), nullable=False)
+    sub_path_id: Mapped[int] = mapped_column(Integer, ForeignKey("sub_paths.id"), nullable=False)
+    sub_path_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sub_paths_item.id"), nullable=False
+    )
+    status: Mapped[ItemProgressStatusEnum] = mapped_column(
+        Enum(ItemProgressStatusEnum, name="item_progress_status_enum"), nullable=False
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class WellBeing(Base):
     """Student well-being tracking."""
 
@@ -676,4 +723,28 @@ class StudentUploadBlob(Base):
 
     upload: Mapped["StudentUpload"] = relationship(
         "StudentUpload", back_populates="blob", single_parent=True
+    )
+
+
+class TrilhaResultado(Base):
+    """Persisted result of a completed question trail."""
+
+    __tablename__ = "trilha_resultado"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    trilha_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
+    )
+    materia: Mapped[str] = mapped_column(String(255), nullable=False)
+    conteudo: Mapped[str] = mapped_column(Text, nullable=False)
+    eixo: Mapped[list] = mapped_column(JSON, nullable=False)
+    status: Mapped[TrilhaStatusEnum] = mapped_column(
+        Enum(TrilhaStatusEnum, name="trilha_status_enum"), nullable=False
+    )
+    dificuldade_final: Mapped[int] = mapped_column(Integer, nullable=False)
+    tentativas_total: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
     )

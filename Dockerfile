@@ -17,6 +17,7 @@ WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
 COPY src/ ./src/
+COPY scripts/ ./scripts/
 
 ENV PYTHONPATH=/app/src \
     PATH="/app/.venv/bin:$PATH" \

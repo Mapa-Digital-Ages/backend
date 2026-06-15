@@ -56,6 +56,23 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
         conn.execute.assert_not_awaited()
 
+    def test_item_progress_table_is_created_explicitly(self):
+        import md_backend.utils.database as db
+        from md_backend.models.db_models import StudentSubPathItemProgress
+
+        conn = MagicMock()
+        conn.run_sync = AsyncMock()
+
+        with patch.object(StudentSubPathItemProgress.__table__, "create") as create_mock:
+            asyncio.run(db._ensure_item_progress_table(conn))
+
+            conn.run_sync.assert_awaited_once()
+            sync_callback = conn.run_sync.await_args.args[0]
+            sync_conn = MagicMock()
+            sync_callback(sync_conn)
+
+            create_mock.assert_called_once_with(sync_conn, checkfirst=True)
+
     def test_postgres_url_sets_pool_kwargs(self):
         import md_backend.utils.database as db
         from md_backend.utils.settings import settings

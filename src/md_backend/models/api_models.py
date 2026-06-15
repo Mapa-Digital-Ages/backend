@@ -2,6 +2,7 @@
 
 import datetime
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
@@ -284,6 +285,20 @@ class ContentUpsertRequest(BaseModel):
     description: str | None = None
 
 
+class ResourceUploadRequest(BaseModel):
+    """Request body for uploading a resource file to content."""
+
+    title: str = Field(min_length=1, description="Resource title")
+    type: str = Field(
+        pattern=r"^(video|pdf|presentation|link|document)$",
+        description="Resource type",
+    )
+    url_or_contents: str | None = Field(
+        default=None,
+        description="URL for link type resources or additional content",
+    )
+
+
 class UpdateUploadRequest(BaseModel):
     """Request body for updating an upload's activity type, status, and/or subject."""
 
@@ -511,3 +526,65 @@ class ResourceCreateRequest(BaseModel):
     type: str = Field(min_length=1)
     title: str = Field(min_length=1)
     file_url: str
+class StepAnswer(BaseModel):
+    """A single submitted answer in a sub-path quiz."""
+
+    exercise_id: int
+    option_id: int
+
+
+class StepCompleteRequest(BaseModel):
+    """Payload to complete a sub-path (optionally grading a quiz)."""
+
+    answers: list[StepAnswer] = []
+
+
+class PartnershipStatusUpdateRequest(BaseModel):
+    """Request body for PATCH /admin/partnerships/{id}/status."""
+
+    status: str = Field(pattern=r"^(APPROVED|REJECTED)$")
+
+
+class PartnershipAdminResponse(BaseModel):
+    """Response model for a partnership in the admin listing."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class PartnershipAdminListResponse(BaseModel):
+    """Paginated list of partnerships for admin auditing."""
+
+    items: list[PartnershipAdminResponse]
+    total: int
+
+
+class IniciarTrilhaRequest(BaseModel):
+    """Request body for starting a new question trail."""
+
+    materia: str = Field(min_length=1)
+    conteudo: str = Field(min_length=1)
+    eixo: list[str] = Field(min_length=1)
+
+
+class PerguntaResponse(BaseModel):
+    """Response model for a trail question."""
+
+    trilha_id: str
+    pergunta_id: str
+    pergunta: str
+    respostas: dict[str, str]
+    dificuldade: int
+    tentativas_restantes: int
+
+
+class ResponderPerguntaRequest(BaseModel):
+    """Request body for submitting an answer in a trail."""
+
+    pergunta_id: str
+    resposta: Literal["a", "b", "c", "d"]

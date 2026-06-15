@@ -352,3 +352,165 @@ class TestAdminRouter(unittest.TestCase):
             headers=self.admin_headers,
         )
         self.assertEqual(delete_response.status_code, 204)
+
+    def test_create_resource_with_valid_pdf(self):
+        """Test creating a resource with a valid PDF file."""
+        # Create a subject and content first
+        subject_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        subjects = subject_response.json()
+        subject_id = subjects[0]["id"]
+
+        content_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Resource Test Content",
+                "subject_id": int(subject_id),
+                "description": "Content for testing resource upload",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(content_response.status_code, 201)
+        content_id = content_response.json()["id"]
+
+        # Upload a valid PDF resource
+        valid_pdf = b"%PDF-1.4 valid content"
+        response = self.test_client.post(
+            f"/api/admin/contents/{content_id}/resources",
+            data={"title": "Valid PDF", "type": "pdf"},
+            files={"file": ("valid.pdf", io.BytesIO(valid_pdf), "application/pdf")},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+        resource = response.json()
+        self.assertEqual(resource["title"], "Valid PDF")
+        self.assertEqual(resource["type"], "pdf")
+
+    def test_create_resource_with_malicious_file(self):
+        """Test that files with adultered extensions are rejected."""
+        # Create a subject and content first
+        subject_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        subjects = subject_response.json()
+        subject_id = subjects[0]["id"]
+
+        content_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Security Test Content",
+                "subject_id": int(subject_id),
+                "description": "Content for testing security",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(content_response.status_code, 201)
+        content_id = content_response.json()["id"]
+
+        # Upload file with .pdf extension but .exe magic bytes (malicious)
+        exe_magic_bytes = b"MZ\x90\x00"  # EXE header
+        response = self.test_client.post(
+            f"/api/admin/contents/{content_id}/resources",
+            data={"title": "Malicious File", "type": "pdf"},
+            files={"file": ("malicious.pdf", io.BytesIO(exe_magic_bytes), "application/pdf")},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("magic bytes", response.json()["detail"].lower())
+
+    def test_create_link_resource_without_file(self):
+        """Test creating a link resource without file upload."""
+        # Create a subject and content first
+        subject_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        subjects = subject_response.json()
+        subject_id = subjects[0]["id"]
+
+        content_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Link Test Content",
+                "subject_id": int(subject_id),
+                "description": "Content for testing link resources",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(content_response.status_code, 201)
+        content_id = content_response.json()["id"]
+
+        # Create a link resource (no file upload needed)
+        response = self.test_client.post(
+            f"/api/admin/contents/{content_id}/resources",
+            data={
+                "title": "External Resource",
+                "type": "link",
+                "url_or_contents": "https://example.com/resource",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 201)
+        resource = response.json()
+        self.assertEqual(resource["title"], "External Resource")
+        self.assertEqual(resource["type"], "link")
+
+    def test_create_resource_link_rejects_file(self):
+        """Test that link resources reject file uploads."""
+        # Create a subject and content first
+        subject_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        subjects = subject_response.json()
+        subject_id = subjects[0]["id"]
+
+        content_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Link File Test Content",
+                "subject_id": int(subject_id),
+                "description": "Content for testing link file rejection",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(content_response.status_code, 201)
+        content_id = content_response.json()["id"]
+
+        # Try to upload file with link type (should be rejected)
+        response = self.test_client.post(
+            f"/api/admin/contents/{content_id}/resources",
+            data={
+                "title": "Invalid Link",
+                "type": "link",
+                "url_or_contents": "https://example.com",
+            },
+            files={"file": ("unwanted.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+            headers=self.admin_headers,
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("file should not be provided", response.json()["detail"].lower())
+
+    def test_create_resource_without_authorization(self):
+        """Test that non-admin users cannot create resources."""
+        # Create a non-admin user
+        token = create_approved_user(
+            self.test_client, self.admin_headers, "nonadm_resource@test.com"
+        )
+        user_headers = {"Authorization": f"Bearer {token}"}
+
+        # Get a subject and content
+        subject_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        subjects = subject_response.json()
+        subject_id = subjects[0]["id"]
+
+        content_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Auth Test Content",
+                "subject_id": int(subject_id),
+                "description": "Content for testing authorization",
+            },
+            headers=self.admin_headers,
+        )
+        content_id = content_response.json()["id"]
+
+        # Try to create resource as non-admin (should be rejected)
+        response = self.test_client.post(
+            f"/api/admin/contents/{content_id}/resources",
+            data={"title": "Unauthorized", "type": "pdf"},
+            files={"file": ("file.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+            headers=user_headers,
+        )
+        self.assertEqual(response.status_code, 403)
