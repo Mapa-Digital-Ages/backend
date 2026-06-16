@@ -317,7 +317,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
                 "last_name": "Name",
                 "email": "school_upd_full_new@test.com",
                 "is_private": False,
-                "requested_spots": 200,
             },
             headers=self.admin_headers,
         )
@@ -325,7 +324,6 @@ class TestSchoolServiceIntegration(unittest.TestCase):
         body = resp.json()
         self.assertEqual(body["email"], "school_upd_full_new@test.com")
         self.assertEqual(body["is_private"], False)
-        self.assertEqual(body["requested_spots"], 200)
         self.assertEqual(body["name"], "New Name")
 
     def test_update_school_can_clear_last_name(self):

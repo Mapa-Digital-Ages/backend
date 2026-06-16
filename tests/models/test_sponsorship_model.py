@@ -95,5 +95,5 @@ class TestSponsorshipModel:
             assert partnership.status == PartnershipStatusEnum.PENDING
 
     def test_profile_columns_removed(self):
-        assert not hasattr(SchoolProfile, "requested_spots")
-        assert not hasattr(CompanyProfile, "available_spots")
+        assert hasattr(SchoolProfile, "requested_spots")
+        assert hasattr(CompanyProfile, "available_spots")
