@@ -366,3 +366,32 @@ class TestAdminServicePartnershipStatus(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+
+        self.assertIsNone(result)
+        session.commit.assert_not_called()
+
+    def test_update_status_superadmin_protected(self):
+        service = AdminService()
+        user = _make_user(
+            has_guardian=False,
+            has_admin=True,
+            is_superadmin=True,
+        )
+        session = _session_with_user(user)
+
+        result = asyncio.run(service.update_user_status(session, user.id, "rejected"))
+
+        assert result is not None
+        self.assertIn("error", result)
+        session.commit.assert_not_called()
+
+    def test_update_status_user_without_guardian_profile(self):
+        service = AdminService()
+        user = _make_user(has_guardian=False, has_student=True)
+        session = _session_with_user(user)
+
+        result = asyncio.run(service.update_user_status(session, user.id, "approved"))
+
+        assert result is not None
+        self.assertIn("error", result)
+        session.commit.assert_not_called()

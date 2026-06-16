@@ -244,7 +244,7 @@ class TestStudentRouterIntegration(unittest.TestCase):
         email = "student_create_null_last@example.com"
         response = self.client.post(
             "/api/student",
-            json=_student_payload(email, last_name=None),
+            json=_student_payload(email),
             headers=self.admin_headers,
         )
         self.assertEqual(response.status_code, 201)

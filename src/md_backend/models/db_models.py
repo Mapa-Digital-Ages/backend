@@ -182,10 +182,10 @@ class CompanyProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    available_spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="company_profile")
     schools: Mapped[list["SchoolProfile"]] = relationship(
         "SchoolProfile", secondary="school_company_partnership", back_populates="companies"
@@ -204,6 +204,7 @@ class SchoolProfile(Base):
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="school_profile")
     students: Mapped[list["StudentProfile"]] = relationship(
@@ -280,15 +281,6 @@ class SchoolCompanyPartnership(Base):
     )
     request_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("sponsorship_request.id"), nullable=False
-    )
-    granted_spots: Mapped[int] = mapped_column(Integer, nullable=False)
-    status: Mapped[PartnershipStatusEnum] = mapped_column(
-        Enum(PartnershipStatusEnum, name="partnership_status_enum"),
-        nullable=False,
-        default=PartnershipStatusEnum.PENDING,
-    )
-    request_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("sponsorship_request.id"), nullable=False, index=True
     )
     granted_spots: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[PartnershipStatusEnum] = mapped_column(

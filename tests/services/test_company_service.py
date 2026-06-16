@@ -81,6 +81,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "create_ok@company.com")
         self.assertEqual(body["spots"], 80)
 
+        self.assertEqual(body["available_spots"], 80)
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
@@ -255,6 +256,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertEqual(body["email"], "company_getbyid@test.com")
         self.assertEqual(body["spots"], 42)
 
+        self.assertEqual(body["available_spots"], 42)
         self.assertNotIn("password", body)
 
     def test_get_company_by_id_not_found_returns_404(self):

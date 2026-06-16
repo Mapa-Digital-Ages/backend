@@ -182,3 +182,4 @@ async def init_db() -> None:
         await _ensure_user_last_name_nullable(conn)
         await _migrate_resources_table(conn)
         await _migrate_sponsorship_tables(conn)
+        await _ensure_user_last_name_nullable(conn)
