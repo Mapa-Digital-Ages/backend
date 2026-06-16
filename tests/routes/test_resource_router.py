@@ -27,7 +27,7 @@ def _make_content(client, admin_headers, subject_id):
         json={"subject_id": subject_id, "title": f"Content {uuid.uuid4()}", "description": ""},
         headers=admin_headers,
     )
-    return resp.json()["id"]
+    return int(resp.json()["id"])
 
 
 def _make_resource(client, admin_headers, content_id, title="Test Resource", rtype="link"):

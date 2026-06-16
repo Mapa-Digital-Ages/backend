@@ -45,6 +45,7 @@ class CompanyService:
         company = CompanyProfile(
             user_id=user.id,
             spots=spots,
+            available_spots=spots,
         )
         session.add(company)
 
@@ -57,6 +58,7 @@ class CompanyService:
             "phone_number": user.phone_number,
             "name": full_name,
             "spots": company.spots,
+            "available_spots": company.available_spots,
             "status": "aguardando",
             "created_at": user.created_at.isoformat(),
         }
@@ -92,6 +94,7 @@ class CompanyService:
                 "phone_number": c.user.phone_number,
                 "name": build_full_name(c.user.first_name, c.user.last_name),
                 "spots": c.spots,
+                "available_spots": c.available_spots,
                 "status": "aguardando",
                 "created_at": c.user.created_at.isoformat(),
             }
@@ -140,6 +143,7 @@ class CompanyService:
             "phone_number": c.user.phone_number,
             "name": build_full_name(c.user.first_name, c.user.last_name),
             "spots": c.spots,
+            "available_spots": c.available_spots,
             "status": "aguardando",
             "created_at": c.user.created_at.isoformat(),
         }
@@ -197,12 +201,7 @@ class CompanyService:
                 company.user.deactivated_at = datetime.datetime.now(datetime.UTC)
 
         if spots is not None:
-            occupied_result = await session.execute(
-                select(func.sum(SchoolCompanyPartnership.granted_spots))
-                .where(SchoolCompanyPartnership.company_id == user_id)
-                .where(SchoolCompanyPartnership.is_active.is_(True))
-            )
-            occupied_spots = occupied_result.scalar() or 0
+            occupied_spots = company.spots - company.available_spots
 
             if spots < occupied_spots:
                 from fastapi import HTTPException, status
@@ -216,6 +215,7 @@ class CompanyService:
                 )
 
             company.spots = spots
+            company.available_spots = spots - occupied_spots
 
         await session.commit()
 
@@ -246,7 +246,6 @@ class CompanyService:
         from md_backend.models.db_models import (
             CompanyProfile,
             PartnershipStatusEnum,
-            SchoolCompanyPartnership,
             SponsorshipRequest,
             SponsorshipRequestStatusEnum,
         )
