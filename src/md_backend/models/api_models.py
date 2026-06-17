@@ -383,6 +383,8 @@ class CompanyResponse(BaseModel):
 class CreateSponsorshipRequestRequest(BaseModel):
     """Request body for POST /school/{school_id}/requests."""
 
+    title: str = Field(min_length=1, description="Support request title")
+    description: str | None = Field(default=None, description="Support request description")
     requested_spots: int = Field(gt=0, description="Number of sponsorship spots requested")
 
 
@@ -391,6 +393,8 @@ class SponsorshipRequestResponse(BaseModel):
 
     id: uuid.UUID
     school_id: uuid.UUID
+    title: str
+    description: str | None
     requested_spots: int
     remaining_spots: int
     status: str
@@ -429,6 +433,8 @@ class PublicSponsorshipRequestResponse(BaseModel):
     id: uuid.UUID
     school_id: uuid.UUID
     school_name: str
+    title: str
+    description: str | None
     requested_spots: int
     remaining_spots: int
     status: str

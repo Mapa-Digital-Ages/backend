@@ -206,6 +206,8 @@ async def create_sponsorship_request(
 
     result = await school_service.create_sponsorship_request(
         school_id=school_id,
+        title=request.title,
+        description=request.description,
         requested_spots=request.requested_spots,
         session=session,
     )

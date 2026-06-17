@@ -230,8 +230,10 @@ class SchoolService:
     async def create_sponsorship_request(
         self,
         school_id: uuid.UUID,
+        title: str,
         requested_spots: int,
         session: AsyncSession,
+        description: str | None = None,
     ) -> dict | None:
         """Create a sponsorship request for a school.
 
@@ -247,6 +249,8 @@ class SchoolService:
 
         sponsorship = SponsorshipRequest(
             school_id=school_id,
+            title=title,
+            description=description,
             requested_spots=requested_spots,
             remaining_spots=requested_spots,
             status=SponsorshipRequestStatusEnum.OPEN,
@@ -291,6 +295,8 @@ class SchoolService:
         return {
             "id": str(request.id),
             "school_id": str(request.school_id),
+            "title": request.title,
+            "description": request.description,
             "requested_spots": request.requested_spots,
             "remaining_spots": request.remaining_spots,
             "status": request.status,
@@ -327,6 +333,8 @@ class SchoolService:
                 "id": str(req.id),
                 "school_id": str(req.school_id),
                 "school_name": build_full_name(user.first_name, user.last_name),
+                "title": req.title,
+                "description": req.description,
                 "requested_spots": req.requested_spots,
                 "remaining_spots": req.remaining_spots,
                 "status": req.status,
