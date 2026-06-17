@@ -73,9 +73,53 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
             create_mock.assert_called_once_with(sync_conn, checkfirst=True)
 
+    def test_sponsorship_migration_preserves_current_model_columns_after_optional_failure(self):
+        import md_backend.utils.database as db
+
+        class Savepoint:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, traceback):
+                return False
+
+        class Conn:
+            def __init__(self):
+                self.dialect = MagicMock()
+                self.dialect.name = "postgresql"
+                self.executed: list[str] = []
+                self.savepoints = 0
+
+            def begin_nested(self):
+                self.savepoints += 1
+                return Savepoint()
+
+            async def execute(self, statement):
+                sql = str(statement)
+                self.executed.append(sql)
+                if "DROP CONSTRAINT school_company_partnership_pkey" in sql:
+                    raise RuntimeError("already migrated")
+
+        conn = Conn()
+
+        asyncio.run(db._migrate_sponsorship_tables(conn))
+
+        sql = "\n".join(conn.executed)
+        self.assertNotIn("DROP COLUMN IF EXISTS requested_spots", sql)
+        self.assertNotIn("DROP COLUMN IF EXISTS available_spots", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS requested_spots", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS available_spots", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS granted_spots", sql)
+        self.assertGreaterEqual(conn.savepoints, 1)
+
     def test_postgres_url_sets_pool_kwargs(self):
         import md_backend.utils.database as db
         from md_backend.utils.settings import settings
+
+        spec = importlib.util.spec_from_file_location("isolated_database_config", db.__file__)
+        self.assertIsNotNone(spec)
+        self.assertIsNotNone(spec.loader)
+        module = importlib.util.module_from_spec(spec)
 
         with (
             patch.object(settings, "DATABASE_URL", "postgresql+asyncpg://u:p@host/db"),
@@ -85,16 +129,12 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
             ) as create_engine_mock,
             patch("sqlalchemy.ext.asyncio.async_sessionmaker", return_value=MagicMock()),
         ):
-            try:
-                importlib.reload(db)
-                create_engine_mock.assert_called_once()
-                kwargs = create_engine_mock.call_args.kwargs
-                self.assertTrue(kwargs["pool_pre_ping"])
-                self.assertEqual(kwargs["pool_recycle"], 1800)
-                self.assertEqual(kwargs["pool_size"], 10)
-                self.assertEqual(kwargs["max_overflow"], 20)
-                self.assertNotIn("connect_args", kwargs)
-                self.assertNotIn("poolclass", kwargs)
-            finally:
-                # Restore the real sqlite engine for subsequent tests.
-                importlib.reload(db)
+            spec.loader.exec_module(module)
+            create_engine_mock.assert_called_once()
+            kwargs = create_engine_mock.call_args.kwargs
+            self.assertTrue(kwargs["pool_pre_ping"])
+            self.assertEqual(kwargs["pool_recycle"], 1800)
+            self.assertEqual(kwargs["pool_size"], 10)
+            self.assertEqual(kwargs["max_overflow"], 20)
+            self.assertNotIn("connect_args", kwargs)
+            self.assertNotIn("poolclass", kwargs)
