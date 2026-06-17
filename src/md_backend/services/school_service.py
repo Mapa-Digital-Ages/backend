@@ -72,6 +72,8 @@ class SchoolService:
             "user_id": str(user.id),
             "email": user.email,
             "name": full_name,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
             "is_private": school.is_private,
             "requested_spots": school.requested_spots,
             "is_active": user.is_active,

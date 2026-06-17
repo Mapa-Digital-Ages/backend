@@ -40,6 +40,8 @@ def _derive_role(user: UserProfile) -> str:
         return "student"
     if user.company_profile is not None:
         return "company"
+    if user.school_profile is not None:
+        return "school"
     return "guardian"
 
 
@@ -78,6 +80,7 @@ class AdminService:
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
                 selectinload(UserProfile.company_profile),
+                selectinload(UserProfile.school_profile),
             )
             .order_by(UserProfile.created_at.desc())
         )
@@ -114,6 +117,7 @@ class AdminService:
                 selectinload(UserProfile.admin_profile),
                 selectinload(UserProfile.student_profile),
                 selectinload(UserProfile.company_profile),
+                selectinload(UserProfile.school_profile),
             )
             .where(UserProfile.id == user_id)
         )

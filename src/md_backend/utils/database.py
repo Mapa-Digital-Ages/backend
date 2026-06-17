@@ -1,5 +1,6 @@
 """Database connection and session management."""
 
+import logging
 from collections.abc import AsyncGenerator
 from typing import cast
 
@@ -14,6 +15,8 @@ from sqlalchemy.pool import StaticPool
 
 from md_backend.models.db_models import Base, StudentSubPathItemProgress
 from md_backend.utils.settings import settings
+
+logger = logging.getLogger(__name__)
 
 _engine_kwargs: dict = {"echo": False}
 if settings.DATABASE_URL.startswith("sqlite"):
@@ -114,8 +117,11 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
 
     # Create new enums if they do not exist
     for enum_name, enum_values in [
-        ("request_status_enum", "('open','partially_fulfilled','fulfilled','cancelled')"),
-        ("partnership_status_enum", "('pending','approved','rejected')"),
+        (
+            "sponsorship_request_status_enum",
+            "('OPEN','PARTIALLY_FULFILLED','FULFILLED','CANCELLED')",
+        ),
+        ("partnership_status_enum", "('PENDING','APPROVED','REJECTED')"),
     ]:
         await conn.execute(
             text(
@@ -124,26 +130,40 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
             )
         )
 
-    # Drop legacy columns from user profiles (if they exist)
-    await conn.execute(text("ALTER TABLE school_profile DROP COLUMN IF EXISTS requested_spots"))
-    await conn.execute(text("ALTER TABLE company_profile DROP COLUMN IF EXISTS available_spots"))
-
-    # Refactor SchoolCompanyPartnership table (we can just let create_all recreate it if we drop,
-    # or handle dropping the old composite PK and adding the new UUID PK if the table exists).
-    # Since we are adding new UUID PKs and removing the composite PK, the simplest manual
-    # migration in dev environment is to drop and let create_all recreate it,
-    # or alter it directly. We'll try to alter it if we want to preserve data, but since the
-    # previous schema had no UUID `id` or `request_id`, it's complex.
-    # To be safe and idempotent, we'll try to add the `id` column. If it fails, we assume it's done.
-    try:
-        await conn.execute(
-            text(
-                "ALTER TABLE school_company_partnership "
-                "DROP CONSTRAINT school_company_partnership_pkey"
-            )
+    # Keep existing databases aligned with the current ORM models.
+    await conn.execute(
+        text("ALTER TABLE school_profile ADD COLUMN IF NOT EXISTS requested_spots INTEGER NULL")
+    )
+    await conn.execute(
+        text(
+            "ALTER TABLE sponsorship_request ADD COLUMN IF NOT EXISTS "
+            "title VARCHAR(255) NOT NULL DEFAULT ''"
         )
-    except Exception:
-        pass
+    )
+    await conn.execute(
+        text("ALTER TABLE sponsorship_request ADD COLUMN IF NOT EXISTS description TEXT NULL")
+    )
+    await conn.execute(
+        text(
+            "ALTER TABLE company_profile ADD COLUMN IF NOT EXISTS "
+            "available_spots INTEGER NOT NULL DEFAULT 0"
+        )
+    )
+
+    async def execute_optional(stmt: str) -> None:
+        """Execute optional DDL without aborting the outer startup transaction."""
+        try:
+            async with conn.begin_nested():
+                await conn.execute(text(stmt))
+        except Exception:
+            logger.debug("Optional schema migration statement failed: %s", stmt, exc_info=True)
+
+    # Refactor SchoolCompanyPartnership table. These compatibility statements may fail on
+    # already-migrated databases, so each one runs inside a savepoint. PostgreSQL marks the
+    # whole transaction as aborted after a failed statement unless the savepoint is rolled back.
+    await execute_optional(
+        "ALTER TABLE school_company_partnership DROP CONSTRAINT school_company_partnership_pkey"
+    )
 
     for stmt in [
         "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
@@ -151,21 +171,19 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
         "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS request_id UUID NULL",
         "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
         "granted_spots INTEGER NULL",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "is_active BOOLEAN NOT NULL DEFAULT true",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "deactivated_at TIMESTAMPTZ NULL",
     ]:
-        try:
-            await conn.execute(text(stmt))
-        except Exception:
-            pass
+        await execute_optional(stmt)
 
-    try:
-        await conn.execute(
-            text(
-                "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
-                "status partnership_status_enum NOT NULL DEFAULT 'pending'"
-            )
-        )
-    except Exception:
-        pass
+    await execute_optional(
+        "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
+        "status partnership_status_enum NOT NULL DEFAULT 'PENDING'"
+    )
 
 
 async def _ensure_item_progress_table(conn: AsyncConnection) -> None:

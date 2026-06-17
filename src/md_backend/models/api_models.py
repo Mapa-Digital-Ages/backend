@@ -255,6 +255,8 @@ class SchoolResponse(BaseModel):
     user_id: uuid.UUID
     email: str
     name: str
+    first_name: str
+    last_name: str | None
     is_private: bool
 
     is_active: bool
