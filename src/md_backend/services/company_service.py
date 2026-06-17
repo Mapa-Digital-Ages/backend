@@ -10,6 +10,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from md_backend.models.db_models import (
     CompanyProfile,
+    PartnershipStatusEnum,
     SchoolCompanyPartnership,
     SponsorshipRequest,
     UserProfile,
@@ -333,6 +334,7 @@ class CompanyService:
             .where(
                 SchoolCompanyPartnership.company_id == company_id,
                 SchoolCompanyPartnership.is_active.is_(True),
+                SchoolCompanyPartnership.status != PartnershipStatusEnum.REJECTED,
             )
             .order_by(SchoolCompanyPartnership.created_at.desc())
         )

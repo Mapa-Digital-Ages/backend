@@ -580,7 +580,13 @@ class StepCompleteRequest(BaseModel):
 class PartnershipStatusUpdateRequest(BaseModel):
     """Request body for PATCH /admin/partnerships/{id}/status."""
 
-    status: str = Field(pattern=r"^(APPROVED|REJECTED)$")
+    status: str = Field(pattern=r"^(APPROVED|REJECTED|approved|rejected)$")
+
+    @field_validator("status")
+    @classmethod
+    def normalize_status(cls, value: str) -> str:
+        """Normalize admin status commands to the service contract."""
+        return value.upper()
 
 
 class PartnershipAdminResponse(BaseModel):
@@ -588,8 +594,13 @@ class PartnershipAdminResponse(BaseModel):
 
     id: uuid.UUID
     school_id: uuid.UUID
+    school_name: str
     company_id: uuid.UUID
+    company_name: str
     request_id: uuid.UUID
+    request_title: str
+    requested_spots: int
+    remaining_spots: int
     granted_spots: int
     status: str
     created_at: str

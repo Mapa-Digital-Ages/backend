@@ -135,6 +135,12 @@ async def update_partnership_status(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         )
 
+    if result == "overbooking":
+        return JSONResponse(
+            content={"detail": "granted_spots exceeds the remaining spots for this request."},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 

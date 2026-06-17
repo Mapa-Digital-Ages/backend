@@ -41,6 +41,27 @@ class TestCompanyServiceUnit(unittest.TestCase):
         mock_session.commit.assert_not_called()
         mock_session.flush.assert_not_called()
 
+    def test_list_company_partnerships_excludes_rejected_status(self):
+        service = CompanyService()
+
+        company_result = MagicMock()
+        company_result.scalar_one_or_none.return_value = MagicMock()
+
+        partnerships_result = MagicMock()
+        partnerships_result.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[company_result, partnerships_result])
+
+        result = asyncio.run(service.list_company_partnerships(uuid.uuid4(), mock_session))
+
+        self.assertEqual(result, {"items": [], "total": 0})
+        partnership_query = mock_session.execute.await_args_list[1].args[0]
+        self.assertIn(
+            "school_company_partnership.status !=",
+            str(partnership_query),
+        )
+
 
 class TestCompanyServiceIntegration(unittest.TestCase):
     """Integration tests against /company via FastAPI TestClient."""
