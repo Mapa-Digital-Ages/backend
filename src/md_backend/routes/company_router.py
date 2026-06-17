@@ -13,13 +13,16 @@ from md_backend.models.api_models import (
     CreateCompanyRequest,
     CreatePartnershipRequest,
     PartnershipResponse,
+    PublicSponsorshipRequestListResponse,
     UpdateCompanyRequest,
 )
 from md_backend.services.company_service import CompanyService
+from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 
 company_service = CompanyService()
+school_service = SchoolService()
 company_router = APIRouter(prefix="/company", tags=["Company"])
 
 
@@ -76,6 +79,19 @@ async def count_companies(
     """Return the total number of active companies, optionally filtered by name."""
     total = await company_service.count_companies(session=session, name=name)
     return JSONResponse(content={"total": total}, status_code=status.HTTP_200_OK)
+
+
+@company_router.get(
+    "/requests",
+    response_model=PublicSponsorshipRequestListResponse,
+    summary="Public showcase — list open sponsorship requests for companies",
+)
+async def list_public_requests(
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """List all OPEN or PARTIALLY_FULFILLED sponsorship requests for companies."""
+    result = await school_service.list_public_sponsorship_requests(session=session)
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
 @company_router.get("/{user_id}", response_model=CompanyResponse)
