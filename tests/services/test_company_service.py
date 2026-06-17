@@ -398,6 +398,125 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertEqual(resp.status_code, 404)
 
 
+class TestCompanyPartnershipsListing(unittest.TestCase):
+    """Tests for GET /company/{id}/partnerships and list_company_partnerships."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from md_backend.main import app
+
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _create_company(self, email, spots=50):
+        resp = self.client.post(
+            "/api/company",
+            json={
+                "first_name": "Empresa",
+                "last_name": "Parc",
+                "email": email,
+                "password": "senha1234",
+                "spots": spots,
+            },
+        )
+        return resp.json()["user_id"]
+
+    def _company_headers(self, email):
+        self._create_company(email)
+        resp = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
+        return {"Authorization": f"Bearer {resp.json()['token']}"}
+
+    def test_list_partnerships_returns_enriched_items(self):
+        from md_backend.services.company_service import CompanyService
+        from md_backend.services.school_service import SchoolService
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def seed():
+            async with AsyncSessionLocal() as session:
+                company = await CompanyService().create_company(
+                    first_name="Empresa",
+                    last_name="Doadora",
+                    email="partner_company@test.com",
+                    password="senha1234",
+                    spots=100,
+                    session=session,
+                )
+                school = await SchoolService().create_school(
+                    first_name="Escola",
+                    last_name="Beneficiada",
+                    email="partner_school@test.com",
+                    password="senha1234",
+                    is_private=False,
+                    session=session,
+                )
+                request = await SchoolService().create_sponsorship_request(
+                    school_id=uuid.UUID(school["user_id"]),
+                    title="Apoio 2026",
+                    requested_spots=30,
+                    session=session,
+                )
+                await CompanyService().create_partnership(
+                    company_id=uuid.UUID(company["user_id"]),
+                    request_id=uuid.UUID(request["id"]),
+                    granted_spots=10,
+                    session=session,
+                )
+                listed = await CompanyService().list_company_partnerships(
+                    uuid.UUID(company["user_id"]),
+                    session,
+                )
+                return company, school, request, listed
+
+        company, school, request, listed = asyncio.run(seed())
+
+        self.assertEqual(listed["total"], 1)
+        item = listed["items"][0]
+        self.assertEqual(item["company_id"], company["user_id"])
+        self.assertEqual(item["school_id"], school["user_id"])
+        self.assertEqual(item["school_name"], "Escola Beneficiada")
+        self.assertEqual(item["request_title"], "Apoio 2026")
+        self.assertEqual(item["request_id"], request["id"])
+        self.assertEqual(item["granted_spots"], 10)
+
+    def test_list_partnerships_service_returns_none_for_unknown_company(self):
+        from md_backend.services.company_service import CompanyService
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def run():
+            async with AsyncSessionLocal() as session:
+                return await CompanyService().list_company_partnerships(uuid.uuid4(), session)
+
+        self.assertIsNone(asyncio.run(run()))
+
+    def test_list_partnerships_own_company_returns_200(self):
+        email = "partner_self@test.com"
+        company_id = self._create_company(email)
+        login = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
+        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+
+        resp = self.client.get(f"/api/company/{company_id}/partnerships", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["total"], 0)
+        self.assertEqual(body["items"], [])
+
+    def test_list_partnerships_forbidden_for_other_company(self):
+        headers_a = self._company_headers("partner_a@test.com")
+        company_b_id = self._create_company("partner_b@test.com")
+
+        resp = self.client.get(f"/api/company/{company_b_id}/partnerships", headers=headers_a)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_list_partnerships_not_found_returns_404_for_admin(self):
+        admin_headers = get_admin_headers(self.client)
+        resp = self.client.get(f"/api/company/{uuid.uuid4()}/partnerships", headers=admin_headers)
+        self.assertEqual(resp.status_code, 404)
+
+
 class TestUpdateCompanyRequestDTO(unittest.TestCase):
     """DTO-level unit tests for UpdateCompanyRequest."""
 

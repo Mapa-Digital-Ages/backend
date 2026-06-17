@@ -427,6 +427,27 @@ class PartnershipResponse(BaseModel):
     created_at: str
 
 
+class CompanyPartnershipResponse(BaseModel):
+    """A company's partnership, enriched with school name and request title."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    school_name: str
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    request_title: str
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class CompanyPartnershipListResponse(BaseModel):
+    """List of partnerships for a single company."""
+
+    items: list[CompanyPartnershipResponse]
+    total: int
+
+
 class PublicSponsorshipRequestResponse(BaseModel):
     """Response model for the public showcase listing."""
 

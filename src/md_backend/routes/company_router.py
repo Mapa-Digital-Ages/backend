@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    CompanyPartnershipListResponse,
     CompanyResponse,
     CreateCompanyRequest,
     CreatePartnershipRequest,
@@ -203,3 +204,35 @@ async def create_partnership(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+
+
+@company_router.get(
+    "/{user_id}/partnerships",
+    response_model=CompanyPartnershipListResponse,
+    summary="List the active partnerships of a company",
+)
+async def list_company_partnerships(
+    user_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> JSONResponse:
+    """List all active partnerships held by the given company.
+
+    Only the company itself or a superadmin may list its partnerships.
+    """
+    is_own_company = str(user_id) == current_user["user_id"]
+    if not current_user.get("is_superadmin") and not is_own_company:
+        return JSONResponse(
+            content={"detail": "Access restricted to the company owner or administrators."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await company_service.list_company_partnerships(user_id, session)
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Company not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
