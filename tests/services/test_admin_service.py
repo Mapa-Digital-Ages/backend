@@ -61,6 +61,8 @@ def _make_user(
         user.company_profile = MagicMock()
     else:
         user.company_profile = None
+
+    user.school_profile = None
     return user
 
 
