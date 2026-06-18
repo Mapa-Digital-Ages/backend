@@ -11,8 +11,10 @@ from sqlalchemy.sql.elements import ColumnElement
 from md_backend.models.db_models import (
     CompanyProfile,
     PartnershipStatusEnum,
+    PartnershipStudentSupport,
     SchoolCompanyPartnership,
     SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
     UserProfile,
 )
 from md_backend.utils.names import build_full_name
@@ -310,6 +312,7 @@ class CompanyService:
         self,
         company_id: uuid.UUID,
         session: AsyncSession,
+        status_filter: PartnershipStatusEnum | None = None,
     ) -> dict | None:
         """Return all active partnerships for a company.
 
@@ -324,6 +327,14 @@ class CompanyService:
         if company_result.scalar_one_or_none() is None:
             return None
 
+        filters = [
+            SchoolCompanyPartnership.company_id == company_id,
+            SchoolCompanyPartnership.is_active.is_(True),
+            SchoolCompanyPartnership.status != PartnershipStatusEnum.REJECTED,
+        ]
+        if status_filter is not None:
+            filters.append(SchoolCompanyPartnership.status == status_filter)
+
         query = (
             select(SchoolCompanyPartnership, SponsorshipRequest, UserProfile)
             .join(
@@ -331,16 +342,33 @@ class CompanyService:
                 SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
             )
             .join(UserProfile, UserProfile.id == SchoolCompanyPartnership.school_id)
-            .where(
-                SchoolCompanyPartnership.company_id == company_id,
-                SchoolCompanyPartnership.is_active.is_(True),
-                SchoolCompanyPartnership.status != PartnershipStatusEnum.REJECTED,
-            )
+            .where(*filters)
             .order_by(SchoolCompanyPartnership.created_at.desc())
         )
 
         result = await session.execute(query)
         rows = result.all()
+        partnership_ids = [partnership.id for partnership, _, _ in rows]
+        supported_students_by_partnership: dict[uuid.UUID, list[str]] = {
+            partnership_id: [] for partnership_id in partnership_ids
+        }
+
+        if partnership_ids:
+            supported_result = await session.execute(
+                select(
+                    PartnershipStudentSupport.partnership_id,
+                    PartnershipStudentSupport.student_id,
+                )
+                .where(
+                    PartnershipStudentSupport.partnership_id.in_(partnership_ids),
+                    PartnershipStudentSupport.is_active.is_(True),
+                )
+                .order_by(PartnershipStudentSupport.created_at.asc())
+            )
+            for partnership_id, student_id in supported_result.all():
+                supported_students_by_partnership.setdefault(partnership_id, []).append(
+                    str(student_id)
+                )
 
         items = [
             {
@@ -351,6 +379,10 @@ class CompanyService:
                 "request_id": str(partnership.request_id),
                 "request_title": request.title,
                 "granted_spots": partnership.granted_spots,
+                "supported_student_ids": supported_students_by_partnership.get(
+                    partnership.id,
+                    [],
+                ),
                 "status": partnership.status,
                 "created_at": partnership.created_at.isoformat(),
             }
@@ -358,3 +390,73 @@ class CompanyService:
         ]
 
         return {"items": items, "total": len(items)}
+
+    async def end_partnership(
+        self,
+        company_id: uuid.UUID,
+        partnership_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> dict | None | str:
+        """End an active partnership and release its supported students."""
+        async with session.begin_nested():
+            partnership_result = await session.execute(
+                select(SchoolCompanyPartnership, SponsorshipRequest)
+                .outerjoin(
+                    SponsorshipRequest,
+                    SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
+                )
+                .where(
+                    SchoolCompanyPartnership.id == partnership_id,
+                    SchoolCompanyPartnership.company_id == company_id,
+                    SchoolCompanyPartnership.is_active.is_(True),
+                )
+                .with_for_update(of=SchoolCompanyPartnership)
+            )
+            row = partnership_result.one_or_none()
+
+            if row is None:
+                return None
+
+            partnership, sponsorship = row
+            if sponsorship is None:
+                return "request_not_found"
+
+            now = datetime.datetime.now(datetime.UTC)
+            partnership.is_active = False
+            partnership.deactivated_at = now
+
+            if partnership.status != PartnershipStatusEnum.REJECTED:
+                sponsorship.remaining_spots = min(
+                    sponsorship.requested_spots,
+                    sponsorship.remaining_spots + partnership.granted_spots,
+                )
+                if sponsorship.remaining_spots >= sponsorship.requested_spots:
+                    sponsorship.status = SponsorshipRequestStatusEnum.OPEN
+                elif sponsorship.remaining_spots > 0:
+                    sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+                else:
+                    sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
+
+            supports_result = await session.execute(
+                select(PartnershipStudentSupport)
+                .where(
+                    PartnershipStudentSupport.partnership_id == partnership_id,
+                    PartnershipStudentSupport.is_active.is_(True),
+                )
+                .with_for_update()
+            )
+            for support in supports_result.scalars().all():
+                support.is_active = False
+                support.deactivated_at = now
+
+        await session.commit()
+
+        return {
+            "id": str(partnership.id),
+            "school_id": str(partnership.school_id),
+            "company_id": str(partnership.company_id),
+            "request_id": str(partnership.request_id),
+            "granted_spots": partnership.granted_spots,
+            "status": partnership.status,
+            "created_at": partnership.created_at.isoformat(),
+        }

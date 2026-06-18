@@ -437,6 +437,7 @@ class CompanyPartnershipResponse(BaseModel):
     request_id: uuid.UUID
     request_title: str
     granted_spots: int
+    supported_student_ids: list[uuid.UUID]
     status: str
     created_at: str
 

@@ -36,6 +36,7 @@ class TestSponsorshipModel:
             # Create Request
             req = SponsorshipRequest(
                 school_id=school.user_id,
+                title="Request support",
                 requested_spots=100,
                 remaining_spots=100,
             )
@@ -75,6 +76,7 @@ class TestSponsorshipModel:
             # Create Request
             req = SponsorshipRequest(
                 school_id=school.user_id,
+                title="Request support",
                 requested_spots=100,
                 remaining_spots=100,
             )

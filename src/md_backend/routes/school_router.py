@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -148,13 +148,14 @@ async def update_school(
 @school_router.delete(
     "/{school_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     summary="Deactivate school (soft delete)",
     dependencies=[Depends(get_current_superadmin)],
 )
 async def deactivate_school(
     school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
+) -> JSONResponse | Response:
     """Soft delete: deactivate school without removing data."""
     success = await school_service.deactivate_school(school_id=school_id, session=session)
 
@@ -164,7 +165,7 @@ async def deactivate_school(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @school_router.post(

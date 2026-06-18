@@ -18,6 +18,10 @@ from md_backend.models.db_models import (
     StudentProfile,
     UserProfile,
 )
+from md_backend.services.partnership_support_service import (
+    deactivate_supported_students_for_partnership,
+    sync_supported_students_for_partnership,
+)
 from md_backend.utils.names import build_full_name
 
 _STATUS_INPUT_MAP = {
@@ -263,6 +267,7 @@ class AdminService:
                     sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
                 else:
                     sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+                await sync_supported_students_for_partnership(session, partnership)
 
             elif target_status == PartnershipStatusEnum.REJECTED:
                 partnership.status = target_status
@@ -279,6 +284,7 @@ class AdminService:
                 elif sponsorship.remaining_spots > 0:
                     sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
                 # If remaining_spots == 0, status remains unchanged.
+                await deactivate_supported_students_for_partnership(session, partnership.id)
 
         await session.commit()
 

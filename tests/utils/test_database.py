@@ -12,6 +12,16 @@ from md_backend.main import app
 from md_backend.utils.database import AsyncSessionLocal
 
 
+class Savepoint:
+    async def __aenter__(self):
+        """Enter the fake savepoint."""
+        return self
+
+    async def __aexit__(self, exc_type, exc, traceback):
+        """Exit the fake savepoint without suppressing exceptions."""
+        return False
+
+
 class TestDatabase(unittest.TestCase):
     def setUp(self):
         self.ctx = TestClient(app, raise_server_exceptions=False)
@@ -37,6 +47,7 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
         conn = MagicMock()
         conn.dialect.name = "postgresql"
         conn.execute = AsyncMock()
+        conn.begin_nested.return_value = Savepoint()
 
         asyncio.run(db._ensure_user_last_name_nullable(conn))
 
@@ -76,12 +87,41 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
     def test_sponsorship_migration_preserves_current_model_columns_after_optional_failure(self):
         import md_backend.utils.database as db
 
-        class Savepoint:
-            async def __aenter__(self):
-                return self
+        class Conn:
+            def __init__(self):
+                self.dialect = MagicMock()
+                self.dialect.name = "postgresql"
+                self.executed: list[str] = []
+                self.savepoints = 0
 
-            async def __aexit__(self, exc_type, exc, traceback):
-                return False
+            def begin_nested(self):
+                self.savepoints += 1
+                return Savepoint()
+
+            async def execute(self, statement):
+                sql = str(statement)
+                self.executed.append(sql)
+                if "ADD COLUMN IF NOT EXISTS request_id" in sql:
+                    raise RuntimeError("already migrated")
+
+        conn = Conn()
+
+        asyncio.run(db._migrate_sponsorship_tables(conn))
+
+        sql = "\n".join(conn.executed)
+        self.assertNotIn("DROP COLUMN IF EXISTS requested_spots", sql)
+        self.assertNotIn("DROP COLUMN IF EXISTS available_spots", sql)
+        self.assertNotIn("DROP CONSTRAINT school_company_partnership_pkey", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS requested_spots", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS available_spots", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS id UUID", sql)
+        self.assertIn("SET id = gen_random_uuid() WHERE id IS NULL", sql)
+        self.assertIn("school_company_partnership_id_key UNIQUE (id)", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS granted_spots", sql)
+        self.assertGreaterEqual(conn.savepoints, 1)
+
+    def test_resource_migration_continues_after_optional_failure(self):
+        import md_backend.utils.database as db
 
         class Conn:
             def __init__(self):
@@ -97,19 +137,17 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
             async def execute(self, statement):
                 sql = str(statement)
                 self.executed.append(sql)
-                if "DROP CONSTRAINT school_company_partnership_pkey" in sql:
-                    raise RuntimeError("already migrated")
+                if "ALTER COLUMN type TYPE resource_type_enum" in sql:
+                    raise RuntimeError("legacy enum mismatch")
 
         conn = Conn()
 
-        asyncio.run(db._migrate_sponsorship_tables(conn))
+        asyncio.run(db._migrate_resources_table(conn))
 
         sql = "\n".join(conn.executed)
-        self.assertNotIn("DROP COLUMN IF EXISTS requested_spots", sql)
-        self.assertNotIn("DROP COLUMN IF EXISTS available_spots", sql)
-        self.assertIn("ADD COLUMN IF NOT EXISTS requested_spots", sql)
-        self.assertIn("ADD COLUMN IF NOT EXISTS available_spots", sql)
-        self.assertIn("ADD COLUMN IF NOT EXISTS granted_spots", sql)
+        self.assertIn("ALTER COLUMN type TYPE resource_type_enum", sql)
+        self.assertIn("DROP COLUMN IF EXISTS url_or_contents", sql)
+        self.assertIn("ADD COLUMN IF NOT EXISTS file_url", sql)
         self.assertGreaterEqual(conn.savepoints, 1)
 
     def test_postgres_url_sets_pool_kwargs(self):

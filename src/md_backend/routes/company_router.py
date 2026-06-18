@@ -17,6 +17,7 @@ from md_backend.models.api_models import (
     PublicSponsorshipRequestListResponse,
     UpdateCompanyRequest,
 )
+from md_backend.models.db_models import PartnershipStatusEnum
 from md_backend.services.company_service import CompanyService
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
@@ -25,6 +26,7 @@ from md_backend.utils.security import get_current_approved_user
 company_service = CompanyService()
 school_service = SchoolService()
 company_router = APIRouter(prefix="/company", tags=["Company"])
+_VISIBLE_PARTNERSHIP_STATUSES = {"pending", "approved"}
 
 
 @company_router.post("", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
@@ -110,7 +112,11 @@ async def get_company(
     return result
 
 
-@company_router.delete("/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@company_router.delete(
+    "/{user_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+)
 async def delete_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -213,6 +219,10 @@ async def create_partnership(
 )
 async def list_company_partnerships(
     user_id: uuid.UUID,
+    partnership_status: str | None = Query(
+        default=None,
+        description="Optional visible partnership status filter: pending or approved",
+    ),
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ) -> JSONResponse:
@@ -227,7 +237,20 @@ async def list_company_partnerships(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    result = await company_service.list_company_partnerships(user_id, session)
+    if partnership_status is not None and partnership_status not in _VISIBLE_PARTNERSHIP_STATUSES:
+        return JSONResponse(
+            content={"detail": "Invalid status. Use: pending or approved."},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    status_filter = (
+        PartnershipStatusEnum(partnership_status) if partnership_status is not None else None
+    )
+    result = await company_service.list_company_partnerships(
+        user_id,
+        session,
+        status_filter=status_filter,
+    )
 
     if result is None:
         return JSONResponse(
@@ -236,3 +259,44 @@ async def list_company_partnerships(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@company_router.delete(
+    "/{user_id}/partnerships/{partnership_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
+    summary="End an active school partnership",
+)
+async def end_company_partnership(
+    user_id: uuid.UUID,
+    partnership_id: uuid.UUID,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> Response | JSONResponse:
+    """End an active partnership and remove it from the company's supported schools."""
+    is_own_company = str(user_id) == current_user["user_id"]
+    if not current_user.get("is_superadmin") and not is_own_company:
+        return JSONResponse(
+            content={"detail": "Access restricted to the company owner or administrators."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await company_service.end_partnership(
+        company_id=user_id,
+        partnership_id=partnership_id,
+        session=session,
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Partnership not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    if result == "request_not_found":
+        return JSONResponse(
+            content={"detail": "Linked sponsorship request not found."},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

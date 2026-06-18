@@ -3,7 +3,7 @@
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
@@ -118,7 +118,7 @@ async def update_my_guardian(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+@guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_my_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
@@ -134,7 +134,7 @@ async def delete_my_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @guardian_router.get(
@@ -193,6 +193,7 @@ async def update_guardian(
 @guardian_router.delete(
     "/{guardian_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(get_current_superadmin)],
 )
 async def delete_guardian(
@@ -208,7 +209,7 @@ async def delete_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @guardian_router.post(
@@ -241,6 +242,7 @@ async def link_student_to_guardian(
 @guardian_router.delete(
     "/{guardian_id}/students/{student_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(get_current_superadmin)],
 )
 async def unlink_student_from_guardian(
@@ -259,4 +261,4 @@ async def unlink_student_from_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
