@@ -7,6 +7,10 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
+from sqlalchemy import func, insert, select
+from sqlalchemy.exc import IntegrityError
+from fastapi import BackgroundTasks
+
 
 from md_backend.models.db_models import (
     CompanyProfile,
@@ -18,7 +22,13 @@ from md_backend.models.db_models import (
 )
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
+from md_backend.models.api_models import CompanyBatchErrorItem, CompanyBatchResponse, CompanyBatchRow
+from md_backend.services.csv_processor_service import CSVProcessorService
+from md_backend.utils.email_sender import EmailSender
 
+COMPANY_BATCH_HEADERS = {"first_name", "last_name", "email"}
+
+_email_sender = EmailSender()
 
 class CompanyService:
     """Service for company-related operations."""
@@ -69,6 +79,91 @@ class CompanyService:
             "status": "aguardando",
             "created_at": user.created_at.isoformat(),
         }
+
+    async def import_from_csv(
+        self,
+        raw_content: bytes,
+        session: AsyncSession,
+        csv_processor: CSVProcessorService,
+        background_tasks: BackgroundTasks,
+    ) -> CompanyBatchResponse:
+        content = csv_processor.decode_csv(raw_content)
+        reader = csv_processor.validate_headers(content, COMPANY_BATCH_HEADERS)
+        validation = csv_processor.validate_rows(reader, CompanyBatchRow)
+
+        if validation.has_errors:
+            return CompanyBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(validation.errors),
+                message="Validation failed. No records were imported.",
+                errors=[
+                    CompanyBatchErrorItem(
+                        row=e.row, email=e.email, reason=e.reason,
+                        first_name=e.first_name, last_name=e.last_name,
+                    )
+                    for e in validation.errors
+                ],
+            )
+
+        created = 0
+        created_rows: list[tuple[str, str]] = []
+        abort_error: CompanyBatchErrorItem | None = None
+
+        for line_number, row in validation.valid_rows_with_line:
+            try:
+                user_result = await session.execute(
+                    insert(UserProfile)
+                    .values(
+                        first_name=row.first_name,
+                        last_name=row.last_name,
+                        email=row.email,
+                        password=await hash_password(uuid.uuid4().hex),
+                    )
+                    .returning(UserProfile.id)
+                )
+                user_id = user_result.scalar_one()
+
+                await session.execute(
+                    insert(CompanyProfile).values(
+                        user_id=user_id,
+                        spots=0,
+                        available_spots=0,
+                    )
+                )
+            except IntegrityError:
+                await session.rollback()
+                abort_error = CompanyBatchErrorItem(
+                    row=line_number, email=row.email, reason="Email already registered.",
+                )
+                break
+
+            created_rows.append((row.email, row.first_name))
+            created += 1
+
+        if abort_error is not None:
+            return CompanyBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=1,
+                message="Insert failed. No records were imported.",
+                errors=[abort_error],
+            )
+
+        await session.commit()
+
+        for email, first_name in created_rows:
+            background_tasks.add_task(_email_sender.send_set_password, to_email=email, first_name=first_name)
+
+        return CompanyBatchResponse(
+            status="completed",
+            total_processed=validation.total_processed,
+            created=created,
+            failed=0,
+            message=f"{created} company/companies imported successfully.",
+        )
 
     async def list_companies(
         self, session: AsyncSession, name: str | None = None, page: int = 1, size: int = 10

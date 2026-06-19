@@ -816,3 +816,34 @@ class GuardianBatchResponse(BaseModel):
     failed: int
     message: str
     errors: list[GuardianBatchErrorItem] = []
+
+class CompanyBatchRow(BaseModel):
+    """Schema for a single row of the company batch-import CSV."""
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+
+    @field_validator("last_name", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+
+class CompanyBatchErrorItem(BaseModel):
+    row: int
+    email: str
+    reason: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class CompanyBatchResponse(BaseModel):
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[CompanyBatchErrorItem] = []
