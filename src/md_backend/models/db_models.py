@@ -420,6 +420,10 @@ class Content(Base):
         nullable=False,
     )
 
+    subject: Mapped["Subject"] = relationship("Subject")
+    exercises: Mapped[list["Exercise"]] = relationship("Exercise", back_populates="content")
+    resources: Mapped[list["Resource"]] = relationship("Resource", back_populates="content")
+
 
 class Resource(Base):
     """Resource table."""
@@ -447,6 +451,8 @@ class Resource(Base):
         nullable=False,
     )
 
+    content: Mapped["Content"] = relationship("Content", back_populates="resources")
+
 
 class Exercise(Base):
     """Exercise table."""
@@ -460,6 +466,11 @@ class Exercise(Base):
         Enum(DifficultyEnum, name="difficulty_enum"), nullable=False
     )
 
+    content: Mapped["Content"] = relationship("Content", back_populates="exercises")
+    options: Mapped[list["Option"]] = relationship(
+        "Option", back_populates="exercise", order_by="Option.id"
+    )
+
 
 class Option(Base):
     """Options for exercises."""
@@ -470,6 +481,8 @@ class Option(Base):
     exercise_id: Mapped[int] = mapped_column(Integer, ForeignKey("exercises.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="options")
 
 
 class Attempt(Base):
