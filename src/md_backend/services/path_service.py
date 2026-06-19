@@ -521,7 +521,7 @@ class PathService:
             await session.execute(
                 select(Subject)
                 .join(Content, Content.subject_id == Subject.id)
-                .join(Path, Path.contents_id == Content.id)
+                .join(Path, Path.content_id == Content.id)
                 .where(Path.id == path_id)
             )
         ).scalar_one_or_none()
@@ -574,7 +574,7 @@ class PathService:
 
         stmt = (
             select(Path, Content, Subject, sub_path_count_sq.c.total)
-            .join(Content, Path.contents_id == Content.id)
+            .join(Content, Path.content_id == Content.id)
             .join(Subject, Content.subject_id == Subject.id)
             .outerjoin(sub_path_count_sq, Path.id == sub_path_count_sq.c.path_id)
             .where(playable)
@@ -639,7 +639,7 @@ class PathService:
         row = (
             await session.execute(
                 select(Path, Content, Subject)
-                .join(Content, Path.contents_id == Content.id)
+                .join(Content, Path.content_id == Content.id)
                 .join(Subject, Content.subject_id == Subject.id)
                 .where(Path.id == path_id)
             )

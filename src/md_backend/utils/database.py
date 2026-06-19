@@ -262,6 +262,23 @@ async def _migrate_sub_path_item_targets(conn: AsyncConnection) -> None:
         await _execute_optional_ddl(conn, stmt)
 
 
+async def _migrate_content_fk_naming(conn: AsyncConnection) -> None:
+    """Normalize legacy contents_id columns to content_id on paths and exercises."""
+    if conn.dialect.name != "postgresql":
+        return
+    for table in ("paths", "exercises"):
+        await _execute_optional_ddl(
+            conn,
+            "DO $$ BEGIN "
+            f"IF EXISTS (SELECT 1 FROM information_schema.columns "
+            f"WHERE table_name='{table}' AND column_name='contents_id') "
+            f"AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+            f"WHERE table_name='{table}' AND column_name='content_id') "
+            f"THEN ALTER TABLE {table} RENAME COLUMN contents_id TO content_id; "
+            "END IF; END $$",
+        )
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
@@ -276,3 +293,4 @@ async def init_db() -> None:
         await _migrate_student_path_progress(conn)
         await _migrate_sub_path_ordering(conn)
         await _migrate_sub_path_item_targets(conn)
+        await _migrate_content_fk_naming(conn)

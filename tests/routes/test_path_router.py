@@ -68,7 +68,7 @@ def _seed_trail(student_id: str) -> dict:
             path_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO paths (contents_id, name, description) "
+                        "INSERT INTO paths (content_id, name, description) "
                         "VALUES (:cid, :n, :d) RETURNING id"
                     ),
                     {"cid": content_id, "n": path_name, "d": "trilha desc"},
@@ -107,7 +107,7 @@ def _seed_trail(student_id: str) -> dict:
             exercise_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO exercises (contents_id, statement, difficulty) "
+                        "INSERT INTO exercises (content_id, statement, difficulty) "
                         "VALUES (:cid, :s, 'EASY') RETURNING id"
                     ),
                     {"cid": content_id, "s": "Quanto é 2x+4=10?"},
@@ -203,7 +203,7 @@ def _seed_incomplete_path() -> int:
             path_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO paths (contents_id, name, description) "
+                        "INSERT INTO paths (content_id, name, description) "
                         "VALUES (:cid, :n, 'd') RETURNING id"
                     ),
                     {"cid": content_id, "n": f"Empty Trail {uuid.uuid4().hex[:6]}"},
@@ -240,7 +240,7 @@ def _seed_path_with_optionless_exercise() -> dict:
             path_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO paths (contents_id, name, description) "
+                        "INSERT INTO paths (content_id, name, description) "
                         "VALUES (:cid, :n, 'd') RETURNING id"
                     ),
                     {"cid": content_id, "n": f"NoOpt Trail {uuid.uuid4().hex[:6]}"},
@@ -258,7 +258,7 @@ def _seed_path_with_optionless_exercise() -> dict:
             exercise_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO exercises (contents_id, statement, difficulty) "
+                        "INSERT INTO exercises (content_id, statement, difficulty) "
                         "VALUES (:cid, 'no options here', 'EASY') RETURNING id"
                     ),
                     {"cid": content_id},

@@ -461,7 +461,7 @@ class Exercise(Base):
     __tablename__ = "exercises"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
     statement: Mapped[str] = mapped_column(Text, nullable=False)
     difficulty: Mapped[DifficultyEnum] = mapped_column(
         Enum(DifficultyEnum, name="difficulty_enum"), nullable=False
@@ -507,7 +507,7 @@ class Path(Base):
     __tablename__ = "paths"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 

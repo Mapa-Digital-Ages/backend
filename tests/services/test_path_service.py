@@ -272,7 +272,7 @@ class TestResolveNextSubPath(unittest.IsolatedAsyncioTestCase):
         content = Content(subject_id=subject.id, name=f"C{suffix}", description="d")
         session.add(content)
         await session.flush()
-        path = Path(contents_id=content.id, name=f"P{suffix}", description="d")
+        path = Path(content_id=content.id, name=f"P{suffix}", description="d")
         session.add(path)
         await session.flush()
         sps = [SubPath(path_id=path.id, difficulty=DifficultyEnum.EASY) for _ in range(3)]

@@ -89,12 +89,12 @@ async def seed(student_email: str | None) -> None:
             session.add(resource)
 
             ex1 = Exercise(
-                contents_id=content.id,
+                content_id=content.id,
                 statement="Quanto vale x em 2x + 4 = 10?",
                 difficulty=DifficultyEnum.EASY,
             )
             ex2 = Exercise(
-                contents_id=content.id,
+                content_id=content.id,
                 statement="Qual é a forma decimal de 1/2?",
                 difficulty=DifficultyEnum.MEDIUM,
             )
@@ -113,7 +113,7 @@ async def seed(student_email: str | None) -> None:
             )
 
             path = Path(
-                contents_id=content.id,
+                content_id=content.id,
                 name=DEMO_PATH_NAME,
                 description="Trilha adaptativa demo com vídeo e dois quizzes.",
             )
@@ -174,7 +174,7 @@ async def seed(student_email: str | None) -> None:
             session.add(resource)
 
             exercise = Exercise(
-                contents_id=content.id,
+                content_id=content.id,
                 statement="Qual é a área de um retângulo de base 8 e altura 3?",
                 difficulty=DifficultyEnum.EASY,
             )
@@ -190,7 +190,7 @@ async def seed(student_email: str | None) -> None:
             )
 
             geometry = Path(
-                contents_id=content.id,
+                content_id=content.id,
                 name=DEMO_GEOMETRY_PATH_NAME,
                 description="Trilha adaptativa demo com leitura e quiz de geometria.",
             )
