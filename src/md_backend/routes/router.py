@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from md_backend.routes.admin_router import admin_router
 from md_backend.routes.company_router import company_router
+from md_backend.routes.content_generation_router import content_generation_router
 from md_backend.routes.guardian_router import guardian_router
 from md_backend.routes.login_router import login_router
 from md_backend.routes.password_reset_router import password_reset_router
@@ -31,3 +32,4 @@ router.include_router(upload_router)
 router.include_router(subject_router)
 router.include_router(resource_router)
 router.include_router(trail_authoring_router)
+router.include_router(content_generation_router)

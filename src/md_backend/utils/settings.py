@@ -58,6 +58,7 @@ class Settings(BaseSettings):
     GEMINI_MODEL: str = "gemini-2.0-flash"
     GOOGLE_API_KEY: str = ""
     LLM_TEMPERATURE: float = 0.7
+    LLM_GENERATION_TEMPERATURE: float = 0.2
 
     # Trilha (adaptive trail)
     TRILHA_TTL_SECONDS: int = 3600

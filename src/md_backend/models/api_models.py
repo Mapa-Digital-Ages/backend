@@ -654,6 +654,38 @@ class IdResponse(BaseModel):
     id: int
 
 
+class GenerateQuestionsRequest(BaseModel):
+    """Request body for offline AI question generation."""
+
+    content_id: int | None = None
+    count: int = Field(default=5, ge=1, le=20)
+    difficulty: int = Field(default=1, ge=1, le=3)
+    eixo: list[str] = Field(min_length=1)
+
+
+class GeneratedOption(BaseModel):
+    """Generated answer option for author review."""
+
+    text: str
+    correct: bool
+
+
+class GeneratedQuestion(BaseModel):
+    """Generated objective question persisted as an exercise."""
+
+    statement: str
+    difficulty: int = Field(ge=1, le=3)
+    options: list[GeneratedOption] = Field(min_length=4, max_length=4)
+
+
+class GenerateQuestionsResponse(BaseModel):
+    """Response for generated content question bank."""
+
+    content_id: int
+    created_exercise_ids: list[int]
+    questions: list[GeneratedQuestion]
+
+
 class PartnershipStatusUpdateRequest(BaseModel):
     """Request body for PATCH /admin/partnerships/{id}/status."""
 

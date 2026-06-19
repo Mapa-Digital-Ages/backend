@@ -28,14 +28,8 @@ def pick_next_sub_path(
             continue
         if score is None or transition.rule_value is None:
             continue
-        if (
-            transition.rule_type == RuleTypeEnum.BIGGER_THAN
-            and score > transition.rule_value
-        ):
+        if transition.rule_type == RuleTypeEnum.BIGGER_THAN and score > transition.rule_value:
             return transition.destination_id
-        if (
-            transition.rule_type == RuleTypeEnum.SMALLER_THAN
-            and score < transition.rule_value
-        ):
+        if transition.rule_type == RuleTypeEnum.SMALLER_THAN and score < transition.rule_value:
             return transition.destination_id
     return standard_dest if standard_dest is not None else fallback_next_id
