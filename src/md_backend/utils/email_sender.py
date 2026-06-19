@@ -27,6 +27,24 @@ _PASSWORD_RESET_HTML = (
     " Se você não solicitou a redefinição, ignore este email.</p>"
 )
 
+_SET_PASSWORD_SUBJECT = "Defina sua senha — Mapa Digital"
+
+_SET_PASSWORD_TEXT = (
+    "Olá {first_name},\n\n"
+    "Uma conta foi criada para você no Mapa Digital.\n\n"
+    "Para acessar a plataforma, defina sua senha de acesso através do link enviado "
+    "pela sua instituição ou contate o administrador responsável.\n\n"
+    "Se você não esperava este email, ignore esta mensagem."
+)
+
+_SET_PASSWORD_HTML = (
+    "<p>Olá {first_name},</p>"
+    "<p>Uma conta foi criada para você no Mapa Digital.</p>"
+    "<p>Para acessar a plataforma, defina sua senha de acesso através do link enviado "
+    "pela sua instituição ou contate o administrador responsável.</p>"
+    "<p>Se você não esperava este email, ignore esta mensagem.</p>"
+)
+
 
 class EmailSender:
     """Send transactional emails via SMTP, with a safe no-op fallback for dev/tests."""
@@ -56,6 +74,36 @@ class EmailSender:
         except Exception:
             # Swallow: endpoint must stay 200 to avoid leaking whether the email exists.
             logger.exception("Failed to send password reset email to %s", to_email)
+
+    async def send_set_password(self, to_email: str, first_name: str) -> None:
+        """Send the "Defina sua senha" email for accounts created via batch import.
+
+        Never raises — failures are logged so a bulk import never fails because
+        a single notification email could not be delivered.
+        """
+        if not (settings.SMTP_USERNAME and settings.SMTP_PASSWORD):
+            logger.info("[email noop] set-password notice for %s", to_email)
+            return
+
+        message = EmailMessage()
+        message["Subject"] = _SET_PASSWORD_SUBJECT
+        message["From"] = self._format_from()
+        message["To"] = to_email
+        message.set_content(_SET_PASSWORD_TEXT.format(first_name=first_name))
+        message.add_alternative(_SET_PASSWORD_HTML.format(first_name=first_name), subtype="html")
+
+        try:
+            await aiosmtplib.send(
+                message,
+                hostname=settings.SMTP_HOST,
+                port=settings.SMTP_PORT,
+                username=settings.SMTP_USERNAME or None,
+                password=settings.SMTP_PASSWORD or None,
+                start_tls=True,
+            )
+        except Exception:
+            # Swallow: a notification failure must never roll back a batch import.
+            logger.exception("Failed to send set-password email to %s", to_email)
 
     def _format_from(self) -> str:
         """Build the From header from the authenticated account."""

@@ -274,6 +274,73 @@ class SchoolListResponse(BaseModel):
     size: int
 
 
+class SchoolBatchRow(BaseModel):
+    """Schema for a single row of the school batch-import CSV.
+
+    Field names mirror the expected CSV headers exactly, so a dict built
+    from ``csv.DictReader`` can be unpacked straight into this model.
+    """
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+    phone_number: str | None = Field(default=None)
+    is_private: bool
+
+    @field_validator("last_name", mode="before")
+    @classmethod
+    def blank_last_name_to_none(cls, value):
+        """Treat an empty CSV cell as no last name instead of a literal ''."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def blank_phone_to_none(cls, value):
+        """Treat an empty CSV cell as no phone number instead of a literal ''."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+    @field_validator("is_private", mode="before")
+    @classmethod
+    def parse_is_private(cls, value):
+        """Accept common CSV boolean spellings (true/false/1/0/yes/no)."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y"}:
+                return True
+            if normalized in {"false", "0", "no", "n"}:
+                return False
+            raise ValueError("is_private must be a boolean-like value (true/false)")
+        return value
+
+
+class SchoolBatchErrorItem(BaseModel):
+    """Dados de um registro que falhou durante o batch import."""
+
+    row: int
+    email: str
+    reason: str
+    # Dados do elemento que deu erro
+    first_name: str | None = None
+    last_name: str | None = None
+    phone_number: str | None = None
+    is_private: bool | None = None
+
+
+class SchoolBatchResponse(BaseModel):
+    """Resposta unificada do batch import — sucesso total, parcial ou abortado."""
+
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[SchoolBatchErrorItem] = []
+
+
 class StudentUploadResponse(BaseModel):
     """Response model for student upload."""
 
