@@ -4,9 +4,15 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from md_backend.models.db_models import ClassEnum, TaskStatusEnum
+from md_backend.models.db_models import (
+    ClassEnum,
+    DifficultyEnum,
+    RuleTypeEnum,
+    TaskStatusEnum,
+    TypeItemEnum,
+)
 
 
 class RegisterRequest(BaseModel):
@@ -596,6 +602,56 @@ class StepCompleteRequest(BaseModel):
     """Payload to complete a sub-path (optionally grading a quiz)."""
 
     answers: list[StepAnswer] = []
+
+
+class CreatePathRequest(BaseModel):
+    """Request body for admin trail creation."""
+
+    content_id: int
+    name: str | None = None
+    description: str | None = None
+
+
+class CreateSubPathRequest(BaseModel):
+    """Request body for adding a sub-path to a trail."""
+
+    difficulty: DifficultyEnum | None = None
+    order: int = 0
+
+
+class AddItemRequest(BaseModel):
+    """Request body for adding an existing resource or exercise to a sub-path."""
+
+    type_item: TypeItemEnum
+    resource_id: int | None = None
+    exercise_id: int | None = None
+    order: int = 0
+
+    @model_validator(mode="after")
+    def exactly_one_target(self):
+        """Require one target and keep it aligned with type_item."""
+        if (self.resource_id is None) == (self.exercise_id is None):
+            raise ValueError("exactly one of resource_id/exercise_id must be set")
+        if self.type_item == TypeItemEnum.EXERCISE and self.exercise_id is None:
+            raise ValueError("exercise_id is required for exercise items")
+        if self.type_item == TypeItemEnum.RESOURCE and self.resource_id is None:
+            raise ValueError("resource_id is required for resource items")
+        return self
+
+
+class AddTransitionRequest(BaseModel):
+    """Request body for adding an adaptive transition between sub-paths."""
+
+    sub_path_origin_id: int
+    sub_path_destination_id: int
+    rule_type: RuleTypeEnum
+    rule_value: int | None = None
+
+
+class IdResponse(BaseModel):
+    """Generic id response for trail authoring endpoints."""
+
+    id: int
 
 
 class PartnershipStatusUpdateRequest(BaseModel):
