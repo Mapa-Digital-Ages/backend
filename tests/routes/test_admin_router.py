@@ -45,6 +45,64 @@ class TestAdminRouter(unittest.TestCase):
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
 
+    def _create_partnership_fixture(self):
+        school_email = f"admin.partner.school.{uuid.uuid4()}@example.com"
+        school_password = "securepass123"
+        school_response = self.test_client.post(
+            "/api/school",
+            json={
+                "first_name": "Admin",
+                "last_name": "Partner School",
+                "email": school_email,
+                "password": school_password,
+                "is_private": False,
+            },
+            headers=self.admin_headers,
+        )
+        school_id = school_response.json()["user_id"]
+        school_login = self.test_client.post(
+            "/api/login", json={"email": school_email, "password": school_password}
+        )
+        school_headers = {"Authorization": f"Bearer {school_login.json()['token']}"}
+
+        request_response = self.test_client.post(
+            f"/api/school/{school_id}/requests",
+            json={"title": "Pedido administrativo", "requested_spots": 12},
+            headers=school_headers,
+        )
+        request_id = request_response.json()["id"]
+
+        company_email = f"admin.partner.company.{uuid.uuid4()}@example.com"
+        company_password = "securepass123"
+        company_response = self.test_client.post(
+            "/api/company",
+            json={
+                "first_name": "Admin",
+                "last_name": "Partner Company",
+                "email": company_email,
+                "password": company_password,
+                "spots": 20,
+            },
+        )
+        company_id = company_response.json()["user_id"]
+        company_login = self.test_client.post(
+            "/api/login", json={"email": company_email, "password": company_password}
+        )
+        company_headers = {"Authorization": f"Bearer {company_login.json()['token']}"}
+
+        partnership_response = self.test_client.post(
+            f"/api/company/{company_id}/partnerships",
+            json={"request_id": request_id, "granted_spots": 5},
+            headers=company_headers,
+        )
+
+        return {
+            "company_id": company_id,
+            "partnership_id": partnership_response.json()["id"],
+            "request_id": request_id,
+            "school_id": school_id,
+        }
+
     def test_list_users_as_admin(self):
         response = self.test_client.get("/api/admin/users", headers=self.admin_headers)
         self.assertEqual(response.status_code, 200)
@@ -206,6 +264,42 @@ class TestAdminRouter(unittest.TestCase):
             headers=user_headers,
         )
         self.assertEqual(response.status_code, 403)
+
+    def test_list_partnerships_returns_enriched_items(self):
+        fixture = self._create_partnership_fixture()
+
+        response = self.test_client.get("/api/admin/partnerships", headers=self.admin_headers)
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        item = next(i for i in body["items"] if i["id"] == fixture["partnership_id"])
+        self.assertEqual(item["school_id"], fixture["school_id"])
+        self.assertEqual(item["school_name"], "Admin Partner School")
+        self.assertEqual(item["company_id"], fixture["company_id"])
+        self.assertEqual(item["company_name"], "Admin Partner Company")
+        self.assertEqual(item["request_id"], fixture["request_id"])
+        self.assertEqual(item["request_title"], "Pedido administrativo")
+        self.assertEqual(item["requested_spots"], 12)
+        self.assertEqual(item["remaining_spots"], 7)
+        self.assertEqual(item["granted_spots"], 5)
+        self.assertEqual(item["status"], "pending")
+
+    def test_approve_partnership_status(self):
+        fixture = self._create_partnership_fixture()
+
+        response = self.test_client.patch(
+            f"/api/admin/partnerships/{fixture['partnership_id']}/status",
+            json={"status": "APPROVED"},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["id"], fixture["partnership_id"])
+        self.assertEqual(body["status"], "approved")
+        self.assertEqual(body["school_name"], "Admin Partner School")
+        self.assertEqual(body["company_name"], "Admin Partner Company")
+        self.assertEqual(body["request_title"], "Pedido administrativo")
 
     def test_cannot_change_superadmin_status(self):
         admin_id = get_admin_id(self.test_client, self.admin_headers)

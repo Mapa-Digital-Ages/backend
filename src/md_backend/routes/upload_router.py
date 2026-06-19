@@ -4,7 +4,7 @@ import uuid
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import UpdateUploadRequest
@@ -309,4 +309,4 @@ async def delete_admin_upload(
             content={"detail": "Upload not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

@@ -270,6 +270,7 @@ def _make_partnership(granted_spots: int = 5):
 def _make_sponsorship(remaining_spots: int, requested_spots: int = 10):
     s = MagicMock(spec=SponsorshipRequest)
     s.id = uuid.uuid4()
+    s.title = "Pedido de bolsas"
     s.remaining_spots = remaining_spots
     s.requested_spots = requested_spots
     s.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
@@ -285,13 +286,65 @@ def _session_with_partnership(partnership, sponsorship):
     session.begin_nested = MagicMock(return_value=nested_cm)
 
     partnership_result = MagicMock()
-    partnership_result.scalar_one_or_none.return_value = partnership
+    partnership_result.one_or_none.return_value = (
+        partnership,
+        sponsorship,
+        _make_user(
+            user_id=partnership.school_id,
+            email="school@test.com",
+            first_name="Partner",
+            last_name="School",
+            has_guardian=False,
+        ),
+        _make_user(
+            user_id=partnership.company_id,
+            email="company@test.com",
+            first_name="Partner",
+            last_name="Company",
+            has_guardian=False,
+        ),
+    )
 
-    sponsorship_result = MagicMock()
-    sponsorship_result.scalar_one_or_none.return_value = sponsorship
-
-    session.execute = AsyncMock(side_effect=[partnership_result, sponsorship_result])
+    session.add = MagicMock()
+    session.execute = AsyncMock(side_effect=[partnership_result])
     return session
+
+
+class TestAdminServiceListPartnerships(unittest.TestCase):
+    def test_list_partnerships_returns_enriched_items(self):
+        partnership = _make_partnership(granted_spots=5)
+        sponsorship = _make_sponsorship(remaining_spots=7, requested_spots=12)
+        school = _make_user(
+            user_id=partnership.school_id,
+            email="school@test.com",
+            first_name="Admin",
+            last_name="Partner School",
+            has_guardian=False,
+        )
+        company = _make_user(
+            user_id=partnership.company_id,
+            email="company@test.com",
+            first_name="Admin",
+            last_name="Partner Company",
+            has_guardian=False,
+        )
+
+        result_proxy = MagicMock()
+        result_proxy.all.return_value = [(partnership, sponsorship, school, company)]
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result_proxy)
+
+        result = asyncio.run(AdminService().list_partnerships(session))
+
+        self.assertEqual(result["total"], 1)
+        item = result["items"][0]
+        self.assertEqual(item["school_name"], "Admin Partner School")
+        self.assertEqual(item["company_name"], "Admin Partner Company")
+        self.assertEqual(item["request_title"], "Pedido de bolsas")
+        self.assertEqual(item["requested_spots"], 12)
+        self.assertEqual(item["remaining_spots"], 7)
+        self.assertEqual(item["granted_spots"], 5)
+        self.assertEqual(item["status"], "pending")
 
 
 class TestAdminServicePartnershipStatus(unittest.TestCase):
@@ -360,7 +413,7 @@ class TestAdminServicePartnershipStatus(unittest.TestCase):
         session.begin_nested = MagicMock(return_value=nested_cm)
 
         not_found = MagicMock()
-        not_found.scalar_one_or_none.return_value = None
+        not_found.one_or_none.return_value = None
         session.execute = AsyncMock(return_value=not_found)
 
         result = asyncio.run(

@@ -4,7 +4,7 @@ import asyncio
 import datetime
 import unittest
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.exc import IntegrityError
 
@@ -51,10 +51,37 @@ class TestStudentServiceCreate(unittest.TestCase):
         mock_session.add = MagicMock()
         mock_session.commit.side_effect = IntegrityError("forced", {}, Exception("forced"))
 
-        result = asyncio.run(self.service.create_student(**self.kwargs, session=mock_session))
+        with patch(
+            "md_backend.services.student_service.hash_password",
+            new=AsyncMock(return_value="hashed"),
+        ):
+            result = asyncio.run(self.service.create_student(**self.kwargs, session=mock_session))
 
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()
+
+    def test_creates_student_with_school_commits(self):
+        school_id = uuid.uuid4()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+
+        mock_session = AsyncMock()
+        mock_session.execute.return_value = mock_result
+        mock_session.add = MagicMock()
+
+        with patch(
+            "md_backend.services.student_service.hash_password",
+            new=AsyncMock(return_value="hashed"),
+        ):
+            asyncio.run(
+                self.service.create_student(
+                    **self.kwargs,
+                    session=mock_session,
+                    school_id=school_id,
+                )
+            )
+
+        mock_session.commit.assert_awaited_once()
 
 
 class TestStudentServiceList(unittest.TestCase):
@@ -145,6 +172,45 @@ class TestStudentServiceUpdateRollback(unittest.TestCase):
             )
         )
         self.assertIsNone(result)
+
+    def test_update_persists_school_id_when_provided(self):
+        service = StudentService()
+        school_id = uuid.uuid4()
+        user_profile = MagicMock()
+        user_profile.id = uuid.uuid4()
+        user_profile.first_name = "Linked"
+        user_profile.last_name = "Student"
+        user_profile.email = "linked.student@example.com"
+        user_profile.phone_number = None
+        user_profile.is_active = True
+        user_profile.created_at = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+
+        student_profile = MagicMock()
+        student_profile.user_id = user_profile.id
+        student_profile.school_id = None
+        student_profile.birth_date = datetime.date(2011, 1, 1)
+        student_profile.student_class = ClassEnum.CLASS_5TH
+
+        mock_row = MagicMock()
+        mock_row.one_or_none.return_value = (user_profile, student_profile)
+        school_rows = MagicMock()
+        school_rows.all.return_value = []
+        guardian_rows = MagicMock()
+        guardian_rows.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute.side_effect = [mock_row, school_rows, guardian_rows]
+
+        result = asyncio.run(
+            service.update_student(
+                session=mock_session,
+                student_id=user_profile.id,
+                data={"school_id": school_id},
+            )
+        )
+
+        self.assertEqual(result["school_id"], str(school_id))
+        mock_session.commit.assert_awaited_once()
 
 
 class TestStudentServiceWellBeing(unittest.TestCase):

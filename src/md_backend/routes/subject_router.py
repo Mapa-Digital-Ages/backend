@@ -1,7 +1,7 @@
 """Subject routes — mounted at /subjects and reused under /admin via admin_router."""
 
 from fastapi import APIRouter, Depends, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import SubjectRequest, SubjectUpdateRequest
@@ -88,4 +88,4 @@ async def delete_subject(subject_id: int, session: AsyncSession = Depends(get_db
             content={"detail": "Subject has linked content or tasks"},
             status_code=status.HTTP_409_CONFLICT,
         )
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

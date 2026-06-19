@@ -383,6 +383,8 @@ class CompanyResponse(BaseModel):
 class CreateSponsorshipRequestRequest(BaseModel):
     """Request body for POST /school/{school_id}/requests."""
 
+    title: str = Field(min_length=1, description="Support request title")
+    description: str | None = Field(default=None, description="Support request description")
     requested_spots: int = Field(gt=0, description="Number of sponsorship spots requested")
 
 
@@ -391,6 +393,8 @@ class SponsorshipRequestResponse(BaseModel):
 
     id: uuid.UUID
     school_id: uuid.UUID
+    title: str
+    description: str | None
     requested_spots: int
     remaining_spots: int
     status: str
@@ -423,12 +427,56 @@ class PartnershipResponse(BaseModel):
     created_at: str
 
 
+class CompanyPartnershipResponse(BaseModel):
+    """A company's partnership, enriched with school name and request title."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    school_name: str
+    company_id: uuid.UUID
+    request_id: uuid.UUID
+    request_title: str
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class CompanyPartnershipListResponse(BaseModel):
+    """List of partnerships for a single company."""
+
+    items: list[CompanyPartnershipResponse]
+    total: int
+
+
+class SchoolPartnershipResponse(BaseModel):
+    """A school's partnership, enriched with company name and request title."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    company_name: str
+    request_id: uuid.UUID
+    request_title: str
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class SchoolPartnershipListResponse(BaseModel):
+    """List of partnerships for a single school."""
+
+    items: list[SchoolPartnershipResponse]
+    total: int
+
+
 class PublicSponsorshipRequestResponse(BaseModel):
     """Response model for the public showcase listing."""
 
     id: uuid.UUID
     school_id: uuid.UUID
     school_name: str
+    title: str
+    description: str | None
     requested_spots: int
     remaining_spots: int
     status: str
@@ -553,7 +601,13 @@ class StepCompleteRequest(BaseModel):
 class PartnershipStatusUpdateRequest(BaseModel):
     """Request body for PATCH /admin/partnerships/{id}/status."""
 
-    status: str = Field(pattern=r"^(APPROVED|REJECTED)$")
+    status: str = Field(pattern=r"^(APPROVED|REJECTED|approved|rejected)$")
+
+    @field_validator("status")
+    @classmethod
+    def normalize_status(cls, value: str) -> str:
+        """Normalize admin status commands to the service contract."""
+        return value.upper()
 
 
 class PartnershipAdminResponse(BaseModel):
@@ -561,8 +615,13 @@ class PartnershipAdminResponse(BaseModel):
 
     id: uuid.UUID
     school_id: uuid.UUID
+    school_name: str
     company_id: uuid.UUID
+    company_name: str
     request_id: uuid.UUID
+    request_title: str
+    requested_spots: int
+    remaining_spots: int
     granted_spots: int
     status: str
     created_at: str

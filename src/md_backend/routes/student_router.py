@@ -4,7 +4,7 @@ import datetime
 import uuid
 
 from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
@@ -239,6 +239,7 @@ async def update_student(
 @student_router.delete(
     "/{student_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(get_current_superadmin)],
 )
 async def delete_student(
@@ -259,7 +260,7 @@ async def delete_student(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @student_router.patch(
