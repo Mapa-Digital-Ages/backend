@@ -263,7 +263,9 @@ async def _init_progress(session, path: Path, student_email: str) -> None:
 async def clean(all_demo: bool) -> None:
     """Delete trails that are not playable. With --all-demo, also delete the demo trail."""
     async with AsyncSessionLocal() as session:
-        has_options = select(Option.id).where(Option.exercise_id == SubPathItem.exercise_id).exists()
+        has_options = (
+            select(Option.id).where(Option.exercise_id == SubPathItem.exercise_id).exists()
+        )
         usable = (
             select(SubPathItem.id)
             .join(SubPath, SubPath.id == SubPathItem.sub_path_id)

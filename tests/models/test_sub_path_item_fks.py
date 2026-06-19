@@ -4,6 +4,7 @@ from md_backend.models.db_models import SubPathItem
 
 
 def test_has_resource_and_exercise_fks_and_no_item_id():
+    """SubPathItem uses concrete FKs instead of a polymorphic item_id."""
     cols = SubPathItem.__table__.c
     assert "resource_id" in cols
     assert "exercise_id" in cols
@@ -11,5 +12,6 @@ def test_has_resource_and_exercise_fks_and_no_item_id():
 
 
 def test_has_resource_and_exercise_relationships():
+    """SubPathItem exposes resource and exercise relationships."""
     rels = set(SubPathItem.__mapper__.relationships.keys())
     assert {"resource", "exercise"} <= rels

@@ -13,10 +13,10 @@ _SETUP_HEADERS = {"X-Setup-Token": os.environ.get("SETUP_TOKEN", "")}
 
 class TestTrailSeedRemoved(unittest.TestCase):
     def test_seed_default_trails_is_not_importable(self):
-        import md_backend.services.path_service as ps
+        import md_backend.services.trail.read_service as read_service
 
         self.assertFalse(
-            hasattr(ps, "seed_default_trails"),
+            hasattr(read_service, "seed_default_trails"),
             "seed_default_trails must be removed (content comes from external pipeline)",
         )
 
