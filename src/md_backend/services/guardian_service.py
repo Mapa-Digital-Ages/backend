@@ -3,15 +3,17 @@
 import datetime
 import uuid
 
+from fastapi import BackgroundTasks
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from md_backend.models.api_models import GuardianBatchErrorItem, GuardianBatchResponse, GuardianBatchRow
-from md_backend.services.csv_processor_service import CSVProcessorService
-from md_backend.utils.email_sender import EmailSender
-from fastapi import BackgroundTasks
 
+from md_backend.models.api_models import (
+    GuardianBatchErrorItem,
+    GuardianBatchResponse,
+    GuardianBatchRow,
+)
 from md_backend.models.db_models import (
     GuardianProfile,
     GuardianStatusEnum,
@@ -19,11 +21,14 @@ from md_backend.models.db_models import (
     StudentProfile,
     UserProfile,
 )
+from md_backend.services.csv_processor_service import CSVProcessorService
+from md_backend.utils.email_sender import EmailSender
 from md_backend.utils.security import hash_password
 
 GUARDIAN_BATCH_HEADERS = {"first_name", "last_name", "email", "phone_number"}
 
 _email_sender = EmailSender()
+
 
 class GuardianService:
     """Service for guardian operations."""
@@ -444,6 +449,7 @@ class GuardianService:
         csv_processor: CSVProcessorService,
         background_tasks: BackgroundTasks,
     ) -> GuardianBatchResponse:
+        """Import guardians from a CSV payload and return an import summary."""
         content = csv_processor.decode_csv(raw_content)
         reader = csv_processor.validate_headers(content, GUARDIAN_BATCH_HEADERS)
         validation = csv_processor.validate_rows(reader, GuardianBatchRow)
@@ -457,8 +463,11 @@ class GuardianService:
                 message="Validation failed. No records were imported.",
                 errors=[
                     GuardianBatchErrorItem(
-                        row=e.row, email=e.email, reason=e.reason,
-                        first_name=e.first_name, last_name=e.last_name,
+                        row=e.row,
+                        email=e.email,
+                        reason=e.reason,
+                        first_name=e.first_name,
+                        last_name=e.last_name,
                     )
                     for e in validation.errors
                 ],
@@ -469,11 +478,17 @@ class GuardianService:
         created_rows: list[tuple[str, str]] = []
 
         for line_number, row in validation.valid_rows_with_line:
-            existing = await session.execute(select(UserProfile).where(UserProfile.email == row.email))
+            existing = await session.execute(
+                select(UserProfile).where(UserProfile.email == row.email)
+            )
             if existing.scalar_one_or_none() is not None:
-                insert_errors.append(GuardianBatchErrorItem(
-                    row=line_number, email=row.email, reason="Email already registered.",
-                ))
+                insert_errors.append(
+                    GuardianBatchErrorItem(
+                        row=line_number,
+                        email=row.email,
+                        reason="Email already registered.",
+                    )
+                )
                 continue
 
             user = UserProfile(
@@ -494,9 +509,13 @@ class GuardianService:
                 await session.flush()
             except Exception:
                 await session.rollback()
-                insert_errors.append(GuardianBatchErrorItem(
-                    row=line_number, email=row.email, reason="Failed to persist record.",
-                ))
+                insert_errors.append(
+                    GuardianBatchErrorItem(
+                        row=line_number,
+                        email=row.email,
+                        reason="Failed to persist record.",
+                    )
+                )
                 continue
 
             created_rows.append((row.email, row.first_name))
@@ -516,7 +535,9 @@ class GuardianService:
         await session.commit()
 
         for email, first_name in created_rows:
-            background_tasks.add_task(_email_sender.send_set_password, to_email=email, first_name=first_name)
+            background_tasks.add_task(
+                _email_sender.send_set_password, to_email=email, first_name=first_name
+            )
 
         return GuardianBatchResponse(
             status="completed",

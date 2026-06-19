@@ -336,7 +336,8 @@ class TestGuardianAdminRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         students = resp.json().get("students", [])
         self.assertTrue(any(s["user_id"] == student_id for s in students))
-    
+
+
 class TestGuardianBatchImport(unittest.TestCase):
     """Integration tests for POST /api/guardian/batch."""
 
@@ -351,21 +352,25 @@ class TestGuardianBatchImport(unittest.TestCase):
     def _make_csv(self, rows: list[dict]) -> bytes:
         header = "first_name,last_name,email,phone_number\n"
         lines = [
-            f"{r.get('first_name','')},{r.get('last_name','')},{r.get('email','')},{r.get('phone_number','')}"
+            f"{r.get('first_name', '')},"
+            f"{r.get('last_name', '')},{r.get('email', '')},"
+            f"{r.get('phone_number', '')}"
             for r in rows
         ]
         return (header + "\n".join(lines)).encode("utf-8")
 
     def test_empty_phone_number_is_accepted_and_stored_as_null(self):
         email = f"guardian_batch_{uuid.uuid4().hex[:6]}@example.com"
-        csv_bytes = self._make_csv([
-            {
-                "first_name": "Maria",
-                "last_name": "Souza",
-                "email": email,
-                "phone_number": "",
-            }
-        ])
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Maria",
+                    "last_name": "Souza",
+                    "email": email,
+                    "phone_number": "",
+                }
+            ]
+        )
 
         response = self.client.post(
             "/api/guardian/batch",

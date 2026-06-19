@@ -3,15 +3,18 @@
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from fastapi import BackgroundTasks
+from sqlalchemy import func, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
-from sqlalchemy import func, insert, select
-from sqlalchemy.exc import IntegrityError
-from fastapi import BackgroundTasks
 
-
+from md_backend.models.api_models import (
+    CompanyBatchErrorItem,
+    CompanyBatchResponse,
+    CompanyBatchRow,
+)
 from md_backend.models.db_models import (
     CompanyProfile,
     PartnershipStatusEnum,
@@ -20,15 +23,15 @@ from md_backend.models.db_models import (
     SponsorshipRequestStatusEnum,
     UserProfile,
 )
-from md_backend.utils.names import build_full_name
-from md_backend.utils.security import hash_password
-from md_backend.models.api_models import CompanyBatchErrorItem, CompanyBatchResponse, CompanyBatchRow
 from md_backend.services.csv_processor_service import CSVProcessorService
 from md_backend.utils.email_sender import EmailSender
+from md_backend.utils.names import build_full_name
+from md_backend.utils.security import hash_password
 
 COMPANY_BATCH_HEADERS = {"first_name", "last_name", "email"}
 
 _email_sender = EmailSender()
+
 
 class CompanyService:
     """Service for company-related operations."""
@@ -87,6 +90,11 @@ class CompanyService:
         csv_processor: CSVProcessorService,
         background_tasks: BackgroundTasks,
     ) -> CompanyBatchResponse:
+        """Import companies from a CSV payload and return an import summary.
+
+        Decodes and validates CSV rows, inserts new companies and schedules
+        password emails via background tasks.
+        """
         content = csv_processor.decode_csv(raw_content)
         reader = csv_processor.validate_headers(content, COMPANY_BATCH_HEADERS)
         validation = csv_processor.validate_rows(reader, CompanyBatchRow)
@@ -100,8 +108,11 @@ class CompanyService:
                 message="Validation failed. No records were imported.",
                 errors=[
                     CompanyBatchErrorItem(
-                        row=e.row, email=e.email, reason=e.reason,
-                        first_name=e.first_name, last_name=e.last_name,
+                        row=e.row,
+                        email=e.email,
+                        reason=e.reason,
+                        first_name=e.first_name,
+                        last_name=e.last_name,
                     )
                     for e in validation.errors
                 ],
@@ -135,7 +146,9 @@ class CompanyService:
             except IntegrityError:
                 await session.rollback()
                 abort_error = CompanyBatchErrorItem(
-                    row=line_number, email=row.email, reason="Email already registered.",
+                    row=line_number,
+                    email=row.email,
+                    reason="Email already registered.",
                 )
                 break
 
@@ -155,7 +168,9 @@ class CompanyService:
         await session.commit()
 
         for email, first_name in created_rows:
-            background_tasks.add_task(_email_sender.send_set_password, to_email=email, first_name=first_name)
+            background_tasks.add_task(
+                _email_sender.send_set_password, to_email=email, first_name=first_name
+            )
 
         return CompanyBatchResponse(
             status="completed",

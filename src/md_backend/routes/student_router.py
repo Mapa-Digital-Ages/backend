@@ -3,15 +3,14 @@
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from md_backend.models.api_models import StudentBatchResponse
-from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 
 from md_backend.models.api_models import (
     CalendarTaskSyncItemRequest,
     CalendarUpsertRequest,
+    StudentBatchResponse,
     StudentListResponse,
     StudentRequest,
     StudentResponse,
@@ -22,6 +21,7 @@ from md_backend.models.api_models import (
 )
 from md_backend.models.db_models import HumorEnum
 from md_backend.routes.path_router import path_router
+from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
 from md_backend.utils.access_control import (
@@ -651,6 +651,7 @@ async def upsert_calendar_day(
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
+
 @student_router.post(
     "/batch",
     response_model=StudentBatchResponse,
@@ -675,9 +676,9 @@ async def batch_import_students(
         )
 
     http_status = (
-        status.HTTP_200_OK if result.status == "completed"
-        else status.HTTP_400_BAD_REQUEST
+        status.HTTP_200_OK if result.status == "completed" else status.HTTP_400_BAD_REQUEST
     )
     return JSONResponse(content=result.model_dump(), status_code=http_status)
+
 
 student_router.include_router(path_router, prefix="/{student_id}/trails")

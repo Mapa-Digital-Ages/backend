@@ -2,18 +2,18 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status, BackgroundTasks, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from md_backend.models.api_models import GuardianBatchResponse
-from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 
 from md_backend.models.api_models import (
+    GuardianBatchResponse,
     GuardianCreateRequest,
     GuardianListPaginatedResponse,
     GuardianResponse,
     GuardianUpdateRequest,
 )
+from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 from md_backend.services.guardian_service import GuardianService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
@@ -214,6 +214,7 @@ async def delete_guardian(
 
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
+
 @guardian_router.post(
     "/batch",
     response_model=GuardianBatchResponse,
@@ -240,10 +241,10 @@ async def batch_import_guardians(
         )
 
     http_status = (
-        status.HTTP_200_OK if result.status == "completed"
-        else status.HTTP_400_BAD_REQUEST
+        status.HTTP_200_OK if result.status == "completed" else status.HTTP_400_BAD_REQUEST
     )
     return JSONResponse(content=result.model_dump(), status_code=http_status)
+
 
 @guardian_router.post(
     "/{guardian_id}/students/{student_id}",

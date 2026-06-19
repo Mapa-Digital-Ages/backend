@@ -726,7 +726,10 @@ class ResponderPerguntaRequest(BaseModel):
     pergunta_id: str
     resposta: Literal["a", "b", "c", "d"]
 
+
 class StudentBatchRow(BaseModel):
+    """Schema for a single row of the student batch-import CSV."""
+
     first_name: str = Field(min_length=1)
     last_name: str | None = Field(default=None)
     email: EmailStr
@@ -739,6 +742,7 @@ class StudentBatchRow(BaseModel):
     @field_validator("last_name", "phone_number", "school_email", "guardian_email", mode="before")
     @classmethod
     def blank_to_none(cls, value):
+        """Convert blank strings to None before validation."""
         if isinstance(value, str) and value.strip() == "":
             return None
         return value
@@ -746,30 +750,41 @@ class StudentBatchRow(BaseModel):
     @field_validator("birth_date", mode="before")
     @classmethod
     def parse_birth_date(cls, value):
+        """Parse a birth date string in YYYY-MM-DD to a date object.
+
+        Raises a ValueError from None when the format is invalid.
+        """
         if isinstance(value, str):
             try:
                 return datetime.date.fromisoformat(value.strip())
-            except ValueError:
-                raise ValueError("birth_date must be in YYYY-MM-DD format")
+            except ValueError as err:
+                raise ValueError("birth_date must be in YYYY-MM-DD format") from err
         return value
 
     @field_validator("student_class", mode="before")
     @classmethod
     def parse_student_class(cls, value):
+        """Coerce a student class string into the corresponding ClassEnum.
+
+        Raises a ValueError from None when the value is invalid.
+        """
         if isinstance(value, str):
             try:
                 return ClassEnum(value.strip())
-            except ValueError:
+            except ValueError as err:
                 valid = [e.value for e in ClassEnum]
-                raise ValueError(f"student_class must be one of {valid}")
+                raise ValueError(f"student_class must be one of {valid}") from err
         return value
 
     def model_post_init(self, __context):
+        """Post-init hook to ensure at least one contact email is provided."""
         if not self.school_email and not self.guardian_email:
             raise ValueError("At least one of school_email or guardian_email must be provided")
 
 
 class StudentBatchErrorItem(BaseModel):
+    """Error item resulting from validating a student batch row."""
+
     row: int
     email: str
     reason: str
@@ -778,12 +793,15 @@ class StudentBatchErrorItem(BaseModel):
 
 
 class StudentBatchResponse(BaseModel):
+    """Response model for student batch import results."""
+
     status: Literal["completed", "partial", "aborted"]
     total_processed: int
     created: int
     failed: int
     message: str
     errors: list[StudentBatchErrorItem] = []
+
 
 class GuardianBatchRow(BaseModel):
     """Schema for a single row of the guardian batch-import CSV."""
@@ -796,12 +814,15 @@ class GuardianBatchRow(BaseModel):
     @field_validator("last_name", "phone_number", mode="before")
     @classmethod
     def blank_to_none(cls, value):
+        """Convert blank strings to None before validation."""
         if isinstance(value, str) and value.strip() == "":
             return None
         return value
 
 
 class GuardianBatchErrorItem(BaseModel):
+    """Error item resulting from validating a guardian batch row."""
+
     row: int
     email: str
     reason: str
@@ -810,12 +831,15 @@ class GuardianBatchErrorItem(BaseModel):
 
 
 class GuardianBatchResponse(BaseModel):
+    """Response model for guardian batch import results."""
+
     status: Literal["completed", "partial", "aborted"]
     total_processed: int
     created: int
     failed: int
     message: str
     errors: list[GuardianBatchErrorItem] = []
+
 
 class CompanyBatchRow(BaseModel):
     """Schema for a single row of the company batch-import CSV."""
@@ -827,12 +851,15 @@ class CompanyBatchRow(BaseModel):
     @field_validator("last_name", mode="before")
     @classmethod
     def blank_to_none(cls, value):
+        """Convert blank last_name strings to None before validation."""
         if isinstance(value, str) and value.strip() == "":
             return None
         return value
 
 
 class CompanyBatchErrorItem(BaseModel):
+    """Error item resulting from validating a company batch row."""
+
     row: int
     email: str
     reason: str
@@ -841,6 +868,8 @@ class CompanyBatchErrorItem(BaseModel):
 
 
 class CompanyBatchResponse(BaseModel):
+    """Response model for company batch import results."""
+
     status: Literal["completed", "partial", "aborted"]
     total_processed: int
     created: int

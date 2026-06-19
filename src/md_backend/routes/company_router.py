@@ -3,14 +3,13 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, status, BackgroundTasks, File, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from md_backend.models.api_models import CompanyBatchResponse
-from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 
 from md_backend.models.api_models import (
+    CompanyBatchResponse,
     CompanyPartnershipListResponse,
     CompanyResponse,
     CreateCompanyRequest,
@@ -21,6 +20,7 @@ from md_backend.models.api_models import (
 )
 from md_backend.models.db_models import PartnershipStatusEnum
 from md_backend.services.company_service import CompanyService
+from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
@@ -62,6 +62,7 @@ async def create_company(
 
     return result
 
+
 @company_router.post(
     "/batch",
     response_model=CompanyBatchResponse,
@@ -88,10 +89,10 @@ async def batch_import_companies(
         )
 
     http_status = (
-        status.HTTP_200_OK if result.status == "completed"
-        else status.HTTP_400_BAD_REQUEST
+        status.HTTP_200_OK if result.status == "completed" else status.HTTP_400_BAD_REQUEST
     )
     return JSONResponse(content=result.model_dump(), status_code=http_status)
+
 
 @company_router.get("", response_model=list[CompanyResponse])
 async def list_companies(

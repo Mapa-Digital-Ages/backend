@@ -1500,6 +1500,7 @@ class TestStudentCalendar(unittest.TestCase):
         response = self.client.get(f"/api/student/{self.student_id}/calendar")
         self.assertEqual(response.status_code, 401)
 
+
 class TestStudentBatchImport(unittest.TestCase):
     """Integration tests for POST /api/student/batch."""
 
@@ -1512,26 +1513,32 @@ class TestStudentBatchImport(unittest.TestCase):
         self.ctx.__exit__(None, None, None)
 
     def _make_csv(self, rows: list[dict]) -> bytes:
-        header = "first_name,last_name,email,phone_number,birth_date,student_class,school_email,guardian_email\n"
+        header = "first_name,last_name,email,phone_number,"
+        "birth_date,student_class,school_email,guardian_email\n"
         lines = [
-            f"{r.get('first_name','')},{r.get('last_name','')},{r.get('email','')},{r.get('phone_number','')},{r.get('birth_date','')},{r.get('student_class','')},{r.get('school_email','')},{r.get('guardian_email','')}"
+            f"{r.get('first_name', '')},{r.get('last_name', '')},"
+            f"{r.get('email', '')},{r.get('phone_number', '')},"
+            f"{r.get('birth_date', '')},{r.get('student_class', '')},"
+            f"{r.get('school_email', '')},{r.get('guardian_email', '')}"
             for r in rows
         ]
         return (header + "\n".join(lines)).encode("utf-8")
 
     def test_nonexistent_school_email_returns_400_aborted_with_row(self):
-        csv_bytes = self._make_csv([
-            {
-                "first_name": "Ana",
-                "last_name": "Silva",
-                "email": f"ana_{uuid.uuid4().hex[:6]}@example.com",
-                "phone_number": "",
-                "birth_date": "2010-03-15",
-                "student_class": "5th class",
-                "school_email": "escola_inexistente@example.com",
-                "guardian_email": "",
-            }
-        ])
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Ana",
+                    "last_name": "Silva",
+                    "email": f"ana_{uuid.uuid4().hex[:6]}@example.com",
+                    "phone_number": "",
+                    "birth_date": "2010-03-15",
+                    "student_class": "5th class",
+                    "school_email": "escola_inexistente@example.com",
+                    "guardian_email": "",
+                }
+            ]
+        )
 
         response = self.client.post(
             "/api/student/batch",
