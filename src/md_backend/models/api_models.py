@@ -725,3 +725,62 @@ class ResponderPerguntaRequest(BaseModel):
 
     pergunta_id: str
     resposta: Literal["a", "b", "c", "d"]
+
+class StudentBatchRow(BaseModel):
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+    phone_number: str | None = Field(default=None)
+    birth_date: datetime.date
+    student_class: ClassEnum
+    school_email: str | None = Field(default=None)
+    guardian_email: str | None = Field(default=None)
+
+    @field_validator("last_name", "phone_number", "school_email", "guardian_email", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+    @field_validator("birth_date", mode="before")
+    @classmethod
+    def parse_birth_date(cls, value):
+        if isinstance(value, str):
+            try:
+                return datetime.date.fromisoformat(value.strip())
+            except ValueError:
+                raise ValueError("birth_date must be in YYYY-MM-DD format")
+        return value
+
+    @field_validator("student_class", mode="before")
+    @classmethod
+    def parse_student_class(cls, value):
+        if isinstance(value, str):
+            try:
+                return ClassEnum(value.strip())
+            except ValueError:
+                valid = [e.value for e in ClassEnum]
+                raise ValueError(f"student_class must be one of {valid}")
+        return value
+
+    def model_post_init(self, __context):
+        if not self.school_email and not self.guardian_email:
+            raise ValueError("At least one of school_email or guardian_email must be provided")
+
+
+class StudentBatchErrorItem(BaseModel):
+    row: int
+    email: str
+    reason: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class StudentBatchResponse(BaseModel):
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[StudentBatchErrorItem] = []

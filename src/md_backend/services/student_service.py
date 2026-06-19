@@ -7,6 +7,8 @@ from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
+from md_backend.models.api_models import StudentBatchErrorItem, StudentBatchResponse, StudentBatchRow
+from md_backend.services.csv_processor_service import CSVProcessorService
 
 from md_backend.models.db_models import (
     Attempt,
@@ -76,6 +78,10 @@ def _task_with_subject_to_dict(task, subject) -> dict:
         },
     }
 
+STUDENT_BATCH_HEADERS = {
+    "first_name", "last_name", "email", "phone_number",
+    "birth_date", "student_class", "school_email", "guardian_email",
+}
 
 class StudentService:
     """Service for student operations."""
@@ -743,6 +749,141 @@ class StudentService:
             "online_activity_minutes": record.online_activity_minutes,
             "sleep_hours": float(record.sleep_hours) if record.sleep_hours is not None else None,
         }
+
+    async def import_from_csv(
+        self,
+        raw_content: bytes,
+        session: AsyncSession,
+        csv_processor: CSVProcessorService,
+    ) -> StudentBatchResponse:
+        content = csv_processor.decode_csv(raw_content)
+        reader = csv_processor.validate_headers(content, STUDENT_BATCH_HEADERS)
+        validation = csv_processor.validate_rows(reader, StudentBatchRow)
+
+        if validation.has_errors:
+            return StudentBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(validation.errors),
+                message="Validation failed. No records were imported.",
+                errors=[
+                    StudentBatchErrorItem(
+                        row=e.row, email=e.email, reason=e.reason,
+                        first_name=e.first_name, last_name=e.last_name,
+                    )
+                    for e in validation.errors
+                ],
+            )
+
+        school_emails = {r.school_email for _, r in validation.valid_rows_with_line if r.school_email}
+        guardian_emails = {r.guardian_email for _, r in validation.valid_rows_with_line if r.guardian_email}
+
+        school_map: dict[str, uuid.UUID] = {}
+        guardian_map: dict[str, uuid.UUID] = {}
+
+        if school_emails:
+            rows = (await session.execute(
+                select(UserProfile.email, SchoolProfile.user_id)
+                .join(SchoolProfile, SchoolProfile.user_id == UserProfile.id)
+                .where(UserProfile.email.in_(school_emails))
+            )).all()
+            school_map = {r.email: r.user_id for r in rows}
+
+        if guardian_emails:
+            rows = (await session.execute(
+                select(UserProfile.email, GuardianProfile.user_id)
+                .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
+                .where(UserProfile.email.in_(guardian_emails))
+            )).all()
+            guardian_map = {r.email: r.user_id for r in rows}
+
+        lookup_errors: list[StudentBatchErrorItem] = []
+        for line_number, row in validation.valid_rows_with_line:
+            if row.school_email and row.school_email not in school_map:
+                lookup_errors.append(StudentBatchErrorItem(
+                    row=line_number, email=row.email,
+                    reason=f"Escola com o e-mail {row.school_email} não encontrada.",
+                ))
+            if row.guardian_email and row.guardian_email not in guardian_map:
+                lookup_errors.append(StudentBatchErrorItem(
+                    row=line_number, email=row.email,
+                    reason=f"Responsável com o e-mail {row.guardian_email} não encontrado(a).",
+                ))
+
+        if lookup_errors:
+            return StudentBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(lookup_errors),
+                message="Relational lookup failed. No records were imported.",
+                errors=lookup_errors,
+            )
+
+        created = 0
+        insert_errors: list[StudentBatchErrorItem] = []
+
+        for line_number, row in validation.valid_rows_with_line:
+            existing = await session.execute(select(UserProfile).where(UserProfile.email == row.email))
+            if existing.scalar_one_or_none() is not None:
+                insert_errors.append(StudentBatchErrorItem(
+                    row=line_number, email=row.email, reason="Email already registered.",
+                ))
+                continue
+
+            school_id = school_map.get(row.school_email) if row.school_email else None
+            guardian_id = guardian_map.get(row.guardian_email) if row.guardian_email else None
+
+            user = UserProfile(
+                first_name=row.first_name,
+                last_name=row.last_name,
+                email=row.email,
+                password=await hash_password(uuid.uuid4().hex),
+                phone_number=row.phone_number,
+            )
+            student = StudentProfile(
+                user=user,
+                birth_date=row.birth_date,
+                student_class=row.student_class,
+                school_id=school_id,
+            )
+            session.add(user)
+            session.add(student)
+
+            try:
+                await session.flush()
+            except Exception:
+                await session.rollback()
+                insert_errors.append(StudentBatchErrorItem(
+                    row=line_number, email=row.email, reason="Failed to persist record.",
+                ))
+                continue
+
+            if guardian_id:
+                session.add(StudentGuardian(student_id=user.id, guardian_id=guardian_id))
+
+            created += 1
+
+        if insert_errors:
+            await session.rollback()
+            return StudentBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(insert_errors),
+                message="Insert failed. No records were imported.",
+                errors=insert_errors,
+            )
+
+        await session.commit()
+        return StudentBatchResponse(
+            status="completed",
+            total_processed=validation.total_processed,
+            created=created,
+            failed=0,
+            message=f"{created} student(s) imported successfully.",
+        )
 
     def _to_dict(
         self,

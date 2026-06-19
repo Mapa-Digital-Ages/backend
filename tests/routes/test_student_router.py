@@ -1499,3 +1499,52 @@ class TestStudentCalendar(unittest.TestCase):
     def test_unauthenticated_returns_401(self):
         response = self.client.get(f"/api/student/{self.student_id}/calendar")
         self.assertEqual(response.status_code, 401)
+
+class TestStudentBatchImport(unittest.TestCase):
+    """Integration tests for POST /api/student/batch."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        header = "first_name,last_name,email,phone_number,birth_date,student_class,school_email,guardian_email\n"
+        lines = [
+            f"{r.get('first_name','')},{r.get('last_name','')},{r.get('email','')},{r.get('phone_number','')},{r.get('birth_date','')},{r.get('student_class','')},{r.get('school_email','')},{r.get('guardian_email','')}"
+            for r in rows
+        ]
+        return (header + "\n".join(lines)).encode("utf-8")
+
+    def test_nonexistent_school_email_returns_400_aborted_with_row(self):
+        csv_bytes = self._make_csv([
+            {
+                "first_name": "Ana",
+                "last_name": "Silva",
+                "email": f"ana_{uuid.uuid4().hex[:6]}@example.com",
+                "phone_number": "",
+                "birth_date": "2010-03-15",
+                "student_class": "5th class",
+                "school_email": "escola_inexistente@example.com",
+                "guardian_email": "",
+            }
+        ])
+
+        response = self.client.post(
+            "/api/student/batch",
+            files={"file": ("students.csv", csv_bytes, "text/csv")},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["status"], "aborted")
+        self.assertEqual(body["created"], 0)
+        self.assertGreater(body["failed"], 0)
+        self.assertEqual(len(body["errors"]), 1)
+        error = body["errors"][0]
+        self.assertEqual(error["row"], 2)
+        self.assertIn("escola_inexistente@example.com", error["reason"])
