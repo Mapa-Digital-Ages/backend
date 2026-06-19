@@ -121,6 +121,9 @@ class StudentService:
         except IntegrityError:
             await session.rollback()
             return None
+        except Exception:
+            await session.rollback()
+            raise
 
         return self._to_dict(user_profile, student_profile)
 

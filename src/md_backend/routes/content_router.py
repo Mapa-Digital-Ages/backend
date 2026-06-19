@@ -1,7 +1,7 @@
 """Content routes — mounted under /admin via admin_router."""
 
 from fastapi import APIRouter, Depends, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import ContentUpsertRequest
@@ -89,4 +89,4 @@ async def delete_content(content_id: int, session: AsyncSession = Depends(get_db
             content={"detail": "Content not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

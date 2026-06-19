@@ -228,6 +228,8 @@ class SponsorshipRequest(Base):
     school_id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False, index=True
     )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     requested_spots: Mapped[int] = mapped_column(Integer, nullable=False)
     remaining_spots: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[SponsorshipRequestStatusEnum] = mapped_column(

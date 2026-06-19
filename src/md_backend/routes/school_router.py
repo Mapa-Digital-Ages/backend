@@ -13,18 +13,22 @@ from md_backend.models.api_models import (
     PublicSponsorshipRequestListResponse,
     SchoolBatchResponse,
     SchoolListResponse,
+    SchoolPartnershipListResponse,
     SchoolResponse,
     SponsorshipRequestListResponse,
     SponsorshipRequestResponse,
     UpdateSchoolRequest,
 )
 from md_backend.services.csv_processor_service import CSVHeaderError
+from md_backend.models.db_models import PartnershipStatusEnum
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 school_service = SchoolService()
 school_router = APIRouter(prefix="/school", tags=["School"])
+
+_VISIBLE_PARTNERSHIP_STATUSES = {"pending", "approved"}
 
 
 @school_router.post(
@@ -118,19 +122,6 @@ async def list_schools(
 
 
 @school_router.get(
-    "/requests",
-    response_model=PublicSponsorshipRequestListResponse,
-    summary="Public showcase — list open sponsorship requests",
-)
-async def list_public_requests(
-    session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
-    """List all OPEN or PARTIALLY_FULFILLED sponsorship requests publicly."""
-    result = await school_service.list_public_sponsorship_requests(session=session)
-    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
-
-
-@school_router.get(
     "/{school_id}",
     response_model=SchoolResponse,
     summary="Get school by ID",
@@ -194,13 +185,14 @@ async def update_school(
 @school_router.delete(
     "/{school_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     summary="Deactivate school (soft delete)",
     dependencies=[Depends(get_current_superadmin)],
 )
 async def deactivate_school(
     school_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
-) -> JSONResponse:
+) -> JSONResponse | Response:
     """Soft delete: deactivate school without removing data."""
     success = await school_service.deactivate_school(school_id=school_id, session=session)
 
@@ -210,7 +202,7 @@ async def deactivate_school(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @school_router.post(
@@ -238,6 +230,8 @@ async def create_sponsorship_request(
 
     result = await school_service.create_sponsorship_request(
         school_id=school_id,
+        title=request.title,
+        description=request.description,
         requested_spots=request.requested_spots,
         session=session,
     )
@@ -275,6 +269,55 @@ async def list_sponsorship_requests(
     result = await school_service.list_sponsorship_requests(
         school_id=school_id,
         session=session,
+    )
+
+    if result is None:
+        return JSONResponse(
+            content={"detail": "School not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@school_router.get(
+    "/{school_id}/partnerships",
+    response_model=SchoolPartnershipListResponse,
+    summary="List the partnerships of a school",
+)
+async def list_school_partnerships(
+    school_id: uuid.UUID,
+    partnership_status: str | None = Query(
+        default=None,
+        description="Optional visible partnership status filter: pending or approved",
+    ),
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> JSONResponse:
+    """Return the active partnerships accepted against a school's requests.
+
+    Only the school itself or a superadmin may list its partnerships.
+    """
+    is_own_school = str(school_id) == current_user["user_id"]
+    if not current_user.get("is_superadmin") and not is_own_school:
+        return JSONResponse(
+            content={"detail": "Access restricted to the school owner or administrators."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    if partnership_status is not None and partnership_status not in _VISIBLE_PARTNERSHIP_STATUSES:
+        return JSONResponse(
+            content={"detail": "Invalid status. Use: pending or approved."},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+
+    status_filter = (
+        PartnershipStatusEnum(partnership_status) if partnership_status is not None else None
+    )
+    result = await school_service.list_school_partnerships(
+        school_id=school_id,
+        session=session,
+        status_filter=status_filter,
     )
 
     if result is None:

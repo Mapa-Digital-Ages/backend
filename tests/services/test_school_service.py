@@ -519,7 +519,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
     def test_create_request_returns_201_with_open_status(self):
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 50},
+            json={"title": "Pedido de bolsas", "requested_spots": 50},
             headers=self.school_headers,
         )
         self.assertEqual(resp.status_code, 201)
@@ -531,7 +531,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
         """Validate business rule: remaining_spots must be initialized to requested_spots."""
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 30},
+            json={"title": "Pedido de bolsas", "requested_spots": 30},
             headers=self.school_headers,
         )
         self.assertEqual(resp.status_code, 201)
@@ -546,7 +546,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
 
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 10},
+            json={"title": "Pedido de bolsas", "requested_spots": 10},
             headers=self.school_headers,
         )
         self.assertEqual(resp.status_code, 201)
@@ -568,7 +568,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
     def test_create_request_admin_can_create_for_any_school(self):
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 20},
+            json={"title": "Pedido de bolsas", "requested_spots": 20},
             headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
@@ -581,7 +581,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
         )
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 10},
+            json={"title": "Pedido de bolsas", "requested_spots": 10},
             headers={"Authorization": f"Bearer {token}"},
         )
         self.assertEqual(resp.status_code, 403)
@@ -589,14 +589,14 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
     def test_create_request_unauthenticated_returns_401(self):
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 10},
+            json={"title": "Pedido de bolsas", "requested_spots": 10},
         )
         self.assertEqual(resp.status_code, 401)
 
     def test_create_request_school_not_found_returns_404(self):
         resp = self.client.post(
             f"/api/school/{uuid.uuid4()}/requests",
-            json={"requested_spots": 10},
+            json={"title": "Pedido de bolsas", "requested_spots": 10},
             headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 404)
@@ -604,7 +604,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
     def test_create_request_invalid_spots_returns_422(self):
         resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 0},
+            json={"title": "Pedido de bolsas", "requested_spots": 0},
             headers=self.school_headers,
         )
         self.assertEqual(resp.status_code, 422)
@@ -613,12 +613,12 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
     def test_list_requests_returns_all_school_requests(self):
         self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 10},
+            json={"title": "Pedido de bolsas A", "requested_spots": 10},
             headers=self.school_headers,
         )
         self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 20},
+            json={"title": "Pedido de bolsas B", "requested_spots": 20},
             headers=self.school_headers,
         )
 
@@ -635,7 +635,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
     def test_list_requests_shows_progress_fields(self):
         self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 40},
+            json={"title": "Pedido de bolsas", "requested_spots": 40},
             headers=self.school_headers,
         )
 
@@ -681,7 +681,7 @@ class TestSponsorshipRequestIntegration(unittest.TestCase):
 
 
 class TestPartnershipIntegration(unittest.TestCase):
-    """Integration tests for POST /api/company/{id}/partnerships and GET /api/school/requests."""
+    """Integration tests for POST /api/company/{id}/partnerships and GET /api/company/requests."""
 
     def setUp(self):
         from fastapi.testclient import TestClient
@@ -716,7 +716,7 @@ class TestPartnershipIntegration(unittest.TestCase):
         # Create sponsorship request with 10 spots
         req_resp = self.client.post(
             f"/api/school/{self.school_id}/requests",
-            json={"requested_spots": 10},
+            json={"title": "Pedido de bolsas", "requested_spots": 10},
             headers=self.school_headers,
         )
         self.request_id = req_resp.json()["id"]
@@ -781,7 +781,7 @@ class TestPartnershipIntegration(unittest.TestCase):
             json={"request_id": self.request_id, "granted_spots": 4},
             headers=self.company_a_headers,
         )
-        showcase = self.client.get("/api/school/requests")
+        showcase = self.client.get("/api/company/requests")
         items = showcase.json()["items"]
         req = next(i for i in items if i["id"] == self.request_id)
         self.assertEqual(req["remaining_spots"], 6)
@@ -886,9 +886,9 @@ class TestPartnershipIntegration(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 422)
 
-    # GET /api/school/requests  (vitrine pública)
+    # GET /api/company/requests  (vitrine pública)
     def test_showcase_returns_open_requests(self):
-        resp = self.client.get("/api/school/requests")
+        resp = self.client.get("/api/company/requests")
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertIn("items", body)
@@ -897,7 +897,7 @@ class TestPartnershipIntegration(unittest.TestCase):
         self.assertIn(self.request_id, ids)
 
     def test_showcase_exposes_remaining_spots(self):
-        resp = self.client.get("/api/school/requests")
+        resp = self.client.get("/api/company/requests")
         items = resp.json()["items"]
         req = next(i for i in items if i["id"] == self.request_id)
         self.assertIn("remaining_spots", req)
@@ -910,7 +910,7 @@ class TestPartnershipIntegration(unittest.TestCase):
             json={"request_id": self.request_id, "granted_spots": 10},
             headers=self.company_a_headers,
         )
-        resp = self.client.get("/api/school/requests")
+        resp = self.client.get("/api/company/requests")
         ids = [i["id"] for i in resp.json()["items"]]
         self.assertNotIn(self.request_id, ids)
 
@@ -920,12 +920,103 @@ class TestPartnershipIntegration(unittest.TestCase):
             json={"request_id": self.request_id, "granted_spots": 3},
             headers=self.company_a_headers,
         )
-        resp = self.client.get("/api/school/requests")
+        resp = self.client.get("/api/company/requests")
         items = resp.json()["items"]
         req = next((i for i in items if i["id"] == self.request_id), None)
         self.assertIsNotNone(req)
 
     def test_showcase_no_auth_required(self):
         """Vitrine is public — no token needed."""
-        resp = self.client.get("/api/school/requests")
+        resp = self.client.get("/api/company/requests")
         self.assertEqual(resp.status_code, 200)
+
+    # GET /api/school/{id}/partnerships
+    def test_list_school_partnerships_returns_pending_with_company_name(self):
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["total"], 1)
+        item = body["items"][0]
+        self.assertEqual(item["status"], "pending")
+        self.assertEqual(item["granted_spots"], 4)
+        self.assertEqual(item["company_id"], self.company_a_id)
+        self.assertEqual(item["company_name"], "Company Alpha")
+        self.assertEqual(item["request_id"], self.request_id)
+        self.assertEqual(item["request_title"], "Pedido de bolsas")
+
+    def test_partial_acceptance_keeps_request_open_and_shows_partnership(self):
+        """School asks 10, company takes 4: request keeps 6 open AND a partnership card exists."""
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+
+        requests = self.client.get(
+            f"/api/school/{self.school_id}/requests",
+            headers=self.school_headers,
+        ).json()["items"]
+        req = next(i for i in requests if i["id"] == self.request_id)
+        self.assertEqual(req["remaining_spots"], 6)
+        self.assertEqual(req["status"], "partially_fulfilled")
+
+        partnerships = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            headers=self.school_headers,
+        ).json()["items"]
+        self.assertEqual(len(partnerships), 1)
+        self.assertEqual(partnerships[0]["granted_spots"], 4)
+
+    def test_list_school_partnerships_status_filter(self):
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+        pending = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            params={"partnership_status": "pending"},
+            headers=self.school_headers,
+        )
+        self.assertEqual(pending.json()["total"], 1)
+
+        approved = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            params={"partnership_status": "approved"},
+            headers=self.school_headers,
+        )
+        self.assertEqual(approved.json()["total"], 0)
+
+    def test_list_school_partnerships_invalid_status_returns_422(self):
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            params={"partnership_status": "bogus"},
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_list_school_partnerships_other_user_returns_403(self):
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_list_school_partnerships_unauthenticated_returns_401(self):
+        resp = self.client.get(f"/api/school/{self.school_id}/partnerships")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_list_school_partnerships_school_not_found_returns_404(self):
+        resp = self.client.get(
+            f"/api/school/{uuid.uuid4()}/partnerships",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 404)
