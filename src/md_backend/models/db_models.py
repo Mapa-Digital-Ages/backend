@@ -555,10 +555,21 @@ class StudentPathProgress(Base):
         Integer, ForeignKey("sub_paths.id"), nullable=False
     )
     path_status: Mapped[PathStatusEnum | None] = mapped_column(
-        Enum(PathStatusEnum, name="path_status_enum"), nullable=True
+        Enum(PathStatusEnum, name="path_status_enum"),
+        nullable=True,
+        default=PathStatusEnum.ON_GOING,
     )
-    updated_at: Mapped[datetime.datetime | None] = mapped_column(
+    started_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )
 
 

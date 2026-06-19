@@ -212,6 +212,21 @@ async def _drop_partnership_student_support_table(conn: AsyncConnection) -> None
     await _execute_optional_ddl(conn, "DROP TABLE IF EXISTS partnership_student_support")
 
 
+async def _migrate_student_path_progress(conn: AsyncConnection) -> None:
+    """Align existing student_path_progress with the current ORM model."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        "ALTER TABLE student_path_progress ADD COLUMN IF NOT EXISTS "
+        "started_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE student_path_progress ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL",
+        "ALTER TABLE student_path_progress ALTER COLUMN updated_at SET DEFAULT now()",
+        "UPDATE student_path_progress SET updated_at = now() WHERE updated_at IS NULL",
+        "ALTER TABLE student_path_progress ALTER COLUMN updated_at SET NOT NULL",
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
@@ -223,3 +238,4 @@ async def init_db() -> None:
         await _migrate_sponsorship_tables(conn)
         await _ensure_user_last_name_nullable(conn)
         await _drop_partnership_student_support_table(conn)
+        await _migrate_student_path_progress(conn)
