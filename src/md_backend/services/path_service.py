@@ -106,7 +106,7 @@ class PathService:
                 await session.execute(
                     select(SubPathItem)
                     .where(SubPathItem.sub_path_id == sub_path_id)
-                    .order_by(SubPathItem.id)
+                    .order_by(SubPathItem.order, SubPathItem.id)
                 )
             )
             .scalars()
@@ -207,7 +207,7 @@ class PathService:
                 await session.execute(
                     select(SubPathItem)
                     .where(SubPathItem.sub_path_id == sub_path_id)
-                    .order_by(SubPathItem.id)
+                    .order_by(SubPathItem.order, SubPathItem.id)
                 )
             )
             .scalars()
@@ -655,7 +655,7 @@ class PathService:
         sub_paths = (
             (
                 await session.execute(
-                    select(SubPath).where(SubPath.path_id == path_id).order_by(SubPath.id)
+                    select(SubPath).where(SubPath.path_id == path_id).order_by(SubPath.order, SubPath.id)
                 )
             )
             .scalars()

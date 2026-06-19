@@ -227,6 +227,17 @@ async def _migrate_student_path_progress(conn: AsyncConnection) -> None:
         await _execute_optional_ddl(conn, stmt)
 
 
+async def _migrate_sub_path_ordering(conn: AsyncConnection) -> None:
+    """Add explicit ordering columns to sub_paths and sub_paths_item."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        'ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS "order" INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS "order" INTEGER NOT NULL DEFAULT 0',
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
@@ -239,3 +250,4 @@ async def init_db() -> None:
         await _ensure_user_last_name_nullable(conn)
         await _drop_partnership_student_support_table(conn)
         await _migrate_student_path_progress(conn)
+        await _migrate_sub_path_ordering(conn)

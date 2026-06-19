@@ -521,6 +521,7 @@ class SubPath(Base):
     difficulty: Mapped[DifficultyEnum | None] = mapped_column(
         Enum(DifficultyEnum, name="difficulty_enum"), nullable=True
     )
+    order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class SubPathItem(Base):
@@ -534,6 +535,7 @@ class SubPathItem(Base):
         Enum(TypeItemEnum, name="type_item_enum"), nullable=False
     )
     item_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class PathTransition(Base):
