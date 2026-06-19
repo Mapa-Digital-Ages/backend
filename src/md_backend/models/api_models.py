@@ -784,3 +784,35 @@ class StudentBatchResponse(BaseModel):
     failed: int
     message: str
     errors: list[StudentBatchErrorItem] = []
+
+class GuardianBatchRow(BaseModel):
+    """Schema for a single row of the guardian batch-import CSV."""
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+    phone_number: str | None = Field(default=None)
+
+    @field_validator("last_name", "phone_number", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+
+class GuardianBatchErrorItem(BaseModel):
+    row: int
+    email: str
+    reason: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class GuardianBatchResponse(BaseModel):
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[GuardianBatchErrorItem] = []
