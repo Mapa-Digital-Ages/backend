@@ -1513,8 +1513,10 @@ class TestStudentBatchImport(unittest.TestCase):
         self.ctx.__exit__(None, None, None)
 
     def _make_csv(self, rows: list[dict]) -> bytes:
-        header = ("first_name,last_name,email,phone_number,"
-                   "birth_date,student_class,school_email,guardian_email\n")
+        header = (
+            "first_name,last_name,email,phone_number,"
+            "birth_date,student_class,school_email,guardian_email\n"
+        )
         lines = [
             f"{r.get('first_name', '')},{r.get('last_name', '')},"
             f"{r.get('email', '')},{r.get('phone_number', '')},"
