@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.db_models import (
+    PartnershipStatusEnum,
+    SchoolCompanyPartnership,
     SchoolProfile,
     SponsorshipRequest,
     SponsorshipRequestStatusEnum,
@@ -289,6 +291,65 @@ class SchoolService:
             "items": [self._build_sponsorship_dict(r) for r in requests],
             "total": len(requests),
         }
+
+    async def list_school_partnerships(
+        self,
+        school_id: uuid.UUID,
+        session: AsyncSession,
+        status_filter: PartnershipStatusEnum | None = None,
+    ) -> dict | None:
+        """Return all active partnerships for a school.
+
+        Each item is enriched with the company name and the originating request title,
+        so the school can see who accepted its requests and the partnership status.
+        Rejected partnerships are never returned.
+
+        Returns None if the school does not exist.
+        """
+        school_result = await session.execute(
+            select(SchoolProfile).where(SchoolProfile.user_id == school_id)
+        )
+        if school_result.scalar_one_or_none() is None:
+            return None
+
+        filters = [
+            SchoolCompanyPartnership.school_id == school_id,
+            SchoolCompanyPartnership.is_active.is_(True),
+            SchoolCompanyPartnership.status != PartnershipStatusEnum.REJECTED,
+        ]
+        if status_filter is not None:
+            filters.append(SchoolCompanyPartnership.status == status_filter)
+
+        query = (
+            select(SchoolCompanyPartnership, SponsorshipRequest, UserProfile)
+            .join(
+                SponsorshipRequest,
+                SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
+            )
+            .join(UserProfile, UserProfile.id == SchoolCompanyPartnership.company_id)
+            .where(*filters)
+            .order_by(SchoolCompanyPartnership.created_at.desc())
+        )
+
+        result = await session.execute(query)
+        rows = result.all()
+
+        items = [
+            {
+                "id": str(partnership.id),
+                "school_id": str(partnership.school_id),
+                "company_id": str(partnership.company_id),
+                "company_name": build_full_name(user.first_name, user.last_name),
+                "request_id": str(partnership.request_id),
+                "request_title": request.title,
+                "granted_spots": partnership.granted_spots,
+                "status": partnership.status,
+                "created_at": partnership.created_at.isoformat(),
+            }
+            for partnership, request, user in rows
+        ]
+
+        return {"items": items, "total": len(items)}
 
     def _build_sponsorship_dict(self, request: SponsorshipRequest) -> dict:
         """Build the sponsorship request response dict."""

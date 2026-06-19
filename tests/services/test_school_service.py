@@ -929,3 +929,94 @@ class TestPartnershipIntegration(unittest.TestCase):
         """Vitrine is public — no token needed."""
         resp = self.client.get("/api/company/requests")
         self.assertEqual(resp.status_code, 200)
+
+    # GET /api/school/{id}/partnerships
+    def test_list_school_partnerships_returns_pending_with_company_name(self):
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["total"], 1)
+        item = body["items"][0]
+        self.assertEqual(item["status"], "pending")
+        self.assertEqual(item["granted_spots"], 4)
+        self.assertEqual(item["company_id"], self.company_a_id)
+        self.assertEqual(item["company_name"], "Company Alpha")
+        self.assertEqual(item["request_id"], self.request_id)
+        self.assertEqual(item["request_title"], "Pedido de bolsas")
+
+    def test_partial_acceptance_keeps_request_open_and_shows_partnership(self):
+        """School asks 10, company takes 4: request keeps 6 open AND a partnership card exists."""
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+
+        requests = self.client.get(
+            f"/api/school/{self.school_id}/requests",
+            headers=self.school_headers,
+        ).json()["items"]
+        req = next(i for i in requests if i["id"] == self.request_id)
+        self.assertEqual(req["remaining_spots"], 6)
+        self.assertEqual(req["status"], "partially_fulfilled")
+
+        partnerships = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            headers=self.school_headers,
+        ).json()["items"]
+        self.assertEqual(len(partnerships), 1)
+        self.assertEqual(partnerships[0]["granted_spots"], 4)
+
+    def test_list_school_partnerships_status_filter(self):
+        self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 4},
+            headers=self.company_a_headers,
+        )
+        pending = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            params={"partnership_status": "pending"},
+            headers=self.school_headers,
+        )
+        self.assertEqual(pending.json()["total"], 1)
+
+        approved = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            params={"partnership_status": "approved"},
+            headers=self.school_headers,
+        )
+        self.assertEqual(approved.json()["total"], 0)
+
+    def test_list_school_partnerships_invalid_status_returns_422(self):
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            params={"partnership_status": "bogus"},
+            headers=self.school_headers,
+        )
+        self.assertEqual(resp.status_code, 422)
+
+    def test_list_school_partnerships_other_user_returns_403(self):
+        resp = self.client.get(
+            f"/api/school/{self.school_id}/partnerships",
+            headers=self.company_a_headers,
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_list_school_partnerships_unauthenticated_returns_401(self):
+        resp = self.client.get(f"/api/school/{self.school_id}/partnerships")
+        self.assertEqual(resp.status_code, 401)
+
+    def test_list_school_partnerships_school_not_found_returns_404(self):
+        resp = self.client.get(
+            f"/api/school/{uuid.uuid4()}/partnerships",
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resp.status_code, 404)

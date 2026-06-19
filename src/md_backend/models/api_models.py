@@ -437,7 +437,6 @@ class CompanyPartnershipResponse(BaseModel):
     request_id: uuid.UUID
     request_title: str
     granted_spots: int
-    supported_student_ids: list[uuid.UUID]
     status: str
     created_at: str
 
@@ -446,6 +445,27 @@ class CompanyPartnershipListResponse(BaseModel):
     """List of partnerships for a single company."""
 
     items: list[CompanyPartnershipResponse]
+    total: int
+
+
+class SchoolPartnershipResponse(BaseModel):
+    """A school's partnership, enriched with company name and request title."""
+
+    id: uuid.UUID
+    school_id: uuid.UUID
+    company_id: uuid.UUID
+    company_name: str
+    request_id: uuid.UUID
+    request_title: str
+    granted_spots: int
+    status: str
+    created_at: str
+
+
+class SchoolPartnershipListResponse(BaseModel):
+    """List of partnerships for a single school."""
+
+    items: list[SchoolPartnershipResponse]
     total: int
 
 

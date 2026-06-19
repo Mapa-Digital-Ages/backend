@@ -23,7 +23,6 @@ from md_backend.models.db_models import (
     UserProfile,
     WellBeing,
 )
-from md_backend.services.partnership_support_service import sync_supported_students_for_school
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
@@ -116,9 +115,6 @@ class StudentService:
             )
             session.add(user_profile)
             session.add(student_profile)
-            if student_profile.school_id is not None:
-                await session.flush()
-                await sync_supported_students_for_school(session, student_profile.school_id)
             await session.commit()
             await session.refresh(user_profile)
             await session.refresh(student_profile)
@@ -332,11 +328,9 @@ class StudentService:
             return None
 
         user_profile, student_profile = row
-        previous_school_id = student_profile.school_id
 
         user_fields = {"first_name", "last_name", "phone_number"}
         student_fields = {"birth_date", "student_class", "school_id"}
-        school_id_was_provided = "school_id" in data
 
         for field, value in data.items():
             if value is None and field != "last_name":
@@ -376,15 +370,6 @@ class StudentService:
                     )
 
         try:
-            if school_id_was_provided:
-                await session.flush()
-                if (
-                    previous_school_id is not None
-                    and previous_school_id != student_profile.school_id
-                ):
-                    await sync_supported_students_for_school(session, previous_school_id)
-                if student_profile.school_id is not None:
-                    await sync_supported_students_for_school(session, student_profile.school_id)
             await session.commit()
             await session.refresh(user_profile)
             await session.refresh(student_profile)

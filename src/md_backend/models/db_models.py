@@ -299,40 +299,6 @@ class SchoolCompanyPartnership(Base):
     )
 
 
-class PartnershipStudentSupport(Base):
-    """Students covered by an approved school-company partnership."""
-
-    __tablename__ = "partnership_student_support"
-    __table_args__ = (
-        UniqueConstraint(
-            "partnership_id",
-            "student_id",
-            name="uq_partnership_student_support_partnership_student",
-        ),
-    )
-
-    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    partnership_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("school_company_partnership.id"), nullable=False, index=True
-    )
-    school_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False, index=True
-    )
-    company_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("company_profile.user_id"), nullable=False, index=True
-    )
-    student_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False, index=True
-    )
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    created_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
-    )
-    deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
-
-
 class StudentGuardian(Base):
     """N:M Relationship between Student and Guardian."""
 

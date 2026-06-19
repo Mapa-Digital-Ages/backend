@@ -60,7 +60,7 @@ class TestStudentServiceCreate(unittest.TestCase):
         self.assertIsNone(result)
         mock_session.rollback.assert_called_once()
 
-    def test_syncs_partnership_spots_when_created_with_school(self):
+    def test_creates_student_with_school_commits(self):
         school_id = uuid.uuid4()
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
@@ -69,15 +69,9 @@ class TestStudentServiceCreate(unittest.TestCase):
         mock_session.execute.return_value = mock_result
         mock_session.add = MagicMock()
 
-        with (
-            patch(
-                "md_backend.services.student_service.hash_password",
-                new=AsyncMock(return_value="hashed"),
-            ),
-            patch(
-                "md_backend.services.student_service.sync_supported_students_for_school",
-                new_callable=AsyncMock,
-            ) as sync_supported_students_for_school,
+        with patch(
+            "md_backend.services.student_service.hash_password",
+            new=AsyncMock(return_value="hashed"),
         ):
             asyncio.run(
                 self.service.create_student(
@@ -87,8 +81,6 @@ class TestStudentServiceCreate(unittest.TestCase):
                 )
             )
 
-        sync_supported_students_for_school.assert_awaited_once_with(mock_session, school_id)
-        mock_session.flush.assert_awaited_once()
         mock_session.commit.assert_awaited_once()
 
 
@@ -181,7 +173,7 @@ class TestStudentServiceUpdateRollback(unittest.TestCase):
         )
         self.assertIsNone(result)
 
-    def test_update_syncs_partnership_spots_when_school_id_is_provided(self):
+    def test_update_persists_school_id_when_provided(self):
         service = StudentService()
         school_id = uuid.uuid4()
         user_profile = MagicMock()
@@ -209,21 +201,15 @@ class TestStudentServiceUpdateRollback(unittest.TestCase):
         mock_session = AsyncMock()
         mock_session.execute.side_effect = [mock_row, school_rows, guardian_rows]
 
-        with patch(
-            "md_backend.services.student_service.sync_supported_students_for_school",
-            new_callable=AsyncMock,
-        ) as sync_supported_students_for_school:
-            result = asyncio.run(
-                service.update_student(
-                    session=mock_session,
-                    student_id=user_profile.id,
-                    data={"school_id": school_id},
-                )
+        result = asyncio.run(
+            service.update_student(
+                session=mock_session,
+                student_id=user_profile.id,
+                data={"school_id": school_id},
             )
+        )
 
         self.assertEqual(result["school_id"], str(school_id))
-        sync_supported_students_for_school.assert_awaited_once_with(mock_session, school_id)
-        mock_session.flush.assert_awaited_once()
         mock_session.commit.assert_awaited_once()
 
 

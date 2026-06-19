@@ -67,11 +67,10 @@ class TestCompanyServiceUnit(unittest.TestCase):
             str(partnership_query),
         )
 
-    def test_list_company_partnerships_can_filter_approved_and_returns_supported_students(self):
+    def test_list_company_partnerships_can_filter_approved(self):
         service = CompanyService()
         company_id = uuid.uuid4()
         partnership_id = uuid.uuid4()
-        student_id = uuid.uuid4()
 
         company_result = MagicMock()
         company_result.scalar_one_or_none.return_value = MagicMock()
@@ -95,13 +94,8 @@ class TestCompanyServiceUnit(unittest.TestCase):
         partnerships_result = MagicMock()
         partnerships_result.all.return_value = [(partnership, request, school_user)]
 
-        supported_result = MagicMock()
-        supported_result.all.return_value = [(partnership_id, student_id)]
-
         mock_session = AsyncMock()
-        mock_session.execute = AsyncMock(
-            side_effect=[company_result, partnerships_result, supported_result]
-        )
+        mock_session.execute = AsyncMock(side_effect=[company_result, partnerships_result])
 
         result = asyncio.run(
             service.list_company_partnerships(
@@ -112,14 +106,15 @@ class TestCompanyServiceUnit(unittest.TestCase):
         )
 
         self.assertEqual(result["total"], 1)
-        self.assertEqual(result["items"][0]["supported_student_ids"], [str(student_id)])
+        self.assertEqual(result["items"][0]["granted_spots"], 3)
+        self.assertNotIn("supported_student_ids", result["items"][0])
         partnership_query = mock_session.execute.await_args_list[1].args[0]
         self.assertIn(
             "school_company_partnership.status =",
             str(partnership_query),
         )
 
-    def test_end_partnership_soft_deletes_partnership_and_supported_students(self):
+    def test_end_partnership_soft_deletes_partnership_and_frees_spots(self):
         service = CompanyService()
         company_id = uuid.uuid4()
         partnership_id = uuid.uuid4()
@@ -139,10 +134,6 @@ class TestCompanyServiceUnit(unittest.TestCase):
         request.requested_spots = 10
         request.remaining_spots = 2
 
-        support = MagicMock()
-        support.is_active = True
-        support.deactivated_at = None
-
         nested_cm = MagicMock()
         nested_cm.__aenter__ = AsyncMock(return_value=None)
         nested_cm.__aexit__ = AsyncMock(return_value=False)
@@ -150,20 +141,15 @@ class TestCompanyServiceUnit(unittest.TestCase):
         partnership_result = MagicMock()
         partnership_result.one_or_none.return_value = (partnership, request)
 
-        supports_result = MagicMock()
-        supports_result.scalars.return_value.all.return_value = [support]
-
         mock_session = AsyncMock()
         mock_session.begin_nested = MagicMock(return_value=nested_cm)
-        mock_session.execute = AsyncMock(side_effect=[partnership_result, supports_result])
+        mock_session.execute = AsyncMock(side_effect=[partnership_result])
 
         result = asyncio.run(service.end_partnership(company_id, partnership_id, mock_session))
 
         self.assertIsNotNone(result)
         self.assertFalse(partnership.is_active)
         self.assertIsNotNone(partnership.deactivated_at)
-        self.assertFalse(support.is_active)
-        self.assertIsNotNone(support.deactivated_at)
         self.assertEqual(request.remaining_spots, 6)
         mock_session.commit.assert_awaited_once()
 

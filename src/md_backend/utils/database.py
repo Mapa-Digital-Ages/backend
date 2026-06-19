@@ -207,6 +207,11 @@ async def _ensure_item_progress_table(conn: AsyncConnection) -> None:
     await conn.run_sync(lambda sync_conn: table.create(sync_conn, checkfirst=True))
 
 
+async def _drop_partnership_student_support_table(conn: AsyncConnection) -> None:
+    """Drop the legacy table that tracked students supported by a specific company."""
+    await _execute_optional_ddl(conn, "DROP TABLE IF EXISTS partnership_student_support")
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
@@ -217,3 +222,4 @@ async def init_db() -> None:
         await _migrate_resources_table(conn)
         await _migrate_sponsorship_tables(conn)
         await _ensure_user_last_name_nullable(conn)
+        await _drop_partnership_student_support_table(conn)

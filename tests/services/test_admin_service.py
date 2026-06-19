@@ -10,11 +10,9 @@ import tests.keys_test  # noqa: F401
 from md_backend.models.db_models import (
     GuardianStatusEnum,
     PartnershipStatusEnum,
-    PartnershipStudentSupport,
     SchoolCompanyPartnership,
     SponsorshipRequest,
     SponsorshipRequestStatusEnum,
-    StudentProfile,
 )
 from md_backend.services.admin_service import AdminService
 
@@ -307,15 +305,8 @@ def _session_with_partnership(partnership, sponsorship):
         ),
     )
 
-    supports_result = MagicMock()
-    supports_result.scalars.return_value.all.return_value = []
-
-    students_result = MagicMock()
-    students_result.scalars.return_value.all.return_value = []
-
     session.add = MagicMock()
-    session.execute = AsyncMock(side_effect=[partnership_result, supports_result, students_result])
-    session.students_result = students_result
+    session.execute = AsyncMock(side_effect=[partnership_result])
     return session
 
 
@@ -357,31 +348,6 @@ class TestAdminServiceListPartnerships(unittest.TestCase):
 
 
 class TestAdminServicePartnershipStatus(unittest.TestCase):
-    def test_approve_creates_missing_supported_students(self):
-        partnership = _make_partnership(granted_spots=2)
-        sponsorship = _make_sponsorship(remaining_spots=8, requested_spots=10)
-        session = _session_with_partnership(partnership, sponsorship)
-        student_a = MagicMock(spec=StudentProfile)
-        student_a.user_id = uuid.uuid4()
-        student_b = MagicMock(spec=StudentProfile)
-        student_b.user_id = uuid.uuid4()
-        session.students_result.scalars.return_value.all.return_value = [
-            student_a,
-            student_b,
-        ]
-
-        asyncio.run(AdminService().update_partnership_status(session, partnership.id, "APPROVED"))
-
-        self.assertEqual(session.add.call_count, 2)
-        added_supports = [call.args[0] for call in session.add.call_args_list]
-        self.assertTrue(
-            all(isinstance(support, PartnershipStudentSupport) for support in added_supports)
-        )
-        self.assertEqual(
-            {support.student_id for support in added_supports},
-            {student_a.user_id, student_b.user_id},
-        )
-
     def test_approve_sets_fulfilled_when_no_remaining_spots(self):
         """Aprovação com remaining_spots == 0 define request como FULFILLED."""
         partnership = _make_partnership(granted_spots=10)

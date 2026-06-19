@@ -11,7 +11,6 @@ from sqlalchemy.sql.elements import ColumnElement
 from md_backend.models.db_models import (
     CompanyProfile,
     PartnershipStatusEnum,
-    PartnershipStudentSupport,
     SchoolCompanyPartnership,
     SponsorshipRequest,
     SponsorshipRequestStatusEnum,
@@ -348,27 +347,6 @@ class CompanyService:
 
         result = await session.execute(query)
         rows = result.all()
-        partnership_ids = [partnership.id for partnership, _, _ in rows]
-        supported_students_by_partnership: dict[uuid.UUID, list[str]] = {
-            partnership_id: [] for partnership_id in partnership_ids
-        }
-
-        if partnership_ids:
-            supported_result = await session.execute(
-                select(
-                    PartnershipStudentSupport.partnership_id,
-                    PartnershipStudentSupport.student_id,
-                )
-                .where(
-                    PartnershipStudentSupport.partnership_id.in_(partnership_ids),
-                    PartnershipStudentSupport.is_active.is_(True),
-                )
-                .order_by(PartnershipStudentSupport.created_at.asc())
-            )
-            for partnership_id, student_id in supported_result.all():
-                supported_students_by_partnership.setdefault(partnership_id, []).append(
-                    str(student_id)
-                )
 
         items = [
             {
@@ -379,10 +357,6 @@ class CompanyService:
                 "request_id": str(partnership.request_id),
                 "request_title": request.title,
                 "granted_spots": partnership.granted_spots,
-                "supported_student_ids": supported_students_by_partnership.get(
-                    partnership.id,
-                    [],
-                ),
                 "status": partnership.status,
                 "created_at": partnership.created_at.isoformat(),
             }
@@ -397,7 +371,7 @@ class CompanyService:
         partnership_id: uuid.UUID,
         session: AsyncSession,
     ) -> dict | None | str:
-        """End an active partnership and release its supported students."""
+        """End an active partnership and free up its granted spots."""
         async with session.begin_nested():
             partnership_result = await session.execute(
                 select(SchoolCompanyPartnership, SponsorshipRequest)
@@ -436,18 +410,6 @@ class CompanyService:
                     sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
                 else:
                     sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
-
-            supports_result = await session.execute(
-                select(PartnershipStudentSupport)
-                .where(
-                    PartnershipStudentSupport.partnership_id == partnership_id,
-                    PartnershipStudentSupport.is_active.is_(True),
-                )
-                .with_for_update()
-            )
-            for support in supports_result.scalars().all():
-                support.is_active = False
-                support.deactivated_at = now
 
         await session.commit()
 
