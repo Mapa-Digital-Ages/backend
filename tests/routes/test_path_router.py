@@ -132,7 +132,7 @@ def _seed_trail(student_id: str) -> dict:
             resource_item_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                        "INSERT INTO sub_paths_item (sub_path_id, type_item, resource_id) "
                         "VALUES (:spid, 'RESOURCE', :rid) RETURNING id"
                     ),
                     {"spid": sub_path_id, "rid": resource_id},
@@ -141,7 +141,7 @@ def _seed_trail(student_id: str) -> dict:
             exercise_item_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                        "INSERT INTO sub_paths_item (sub_path_id, type_item, exercise_id) "
                         "VALUES (:spid, 'EXERCISE', :eid) RETURNING id"
                     ),
                     {"spid": sub_path_id, "eid": exercise_id},
@@ -266,7 +266,7 @@ def _seed_path_with_optionless_exercise() -> dict:
             ).scalar_one()
             await conn.execute(
                 text(
-                    "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                    "INSERT INTO sub_paths_item (sub_path_id, type_item, exercise_id) "
                     "VALUES (:spid, 'EXERCISE', :eid)"
                 ),
                 {"spid": sub_path_id, "eid": exercise_id},

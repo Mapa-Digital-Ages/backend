@@ -9,6 +9,7 @@ from sqlalchemy import (
     JSON,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -528,14 +529,28 @@ class SubPathItem(Base):
     """Items inside a sub-path."""
 
     __tablename__ = "sub_paths_item"
+    __table_args__ = (
+        CheckConstraint(
+            "(resource_id IS NOT NULL) <> (exercise_id IS NOT NULL)",
+            name="ck_sub_path_item_exactly_one_target",
+        ),
+    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     sub_path_id: Mapped[int] = mapped_column(Integer, ForeignKey("sub_paths.id"), nullable=False)
     type_item: Mapped[TypeItemEnum] = mapped_column(
         Enum(TypeItemEnum, name="type_item_enum"), nullable=False
     )
-    item_id: Mapped[int] = mapped_column(Integer, nullable=False)
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    resource_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("resources.id"), nullable=True
+    )
+    exercise_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("exercises.id"), nullable=True
+    )
+
+    resource: Mapped["Resource | None"] = relationship("Resource")
+    exercise: Mapped["Exercise | None"] = relationship("Exercise")
 
 
 class PathTransition(Base):

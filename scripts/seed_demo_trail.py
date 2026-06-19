@@ -128,13 +128,13 @@ async def seed(student_email: str | None) -> None:
             session.add_all(
                 [
                     SubPathItem(
-                        sub_path_id=sp1.id, type_item=TypeItemEnum.RESOURCE, item_id=resource.id
+                        sub_path_id=sp1.id, type_item=TypeItemEnum.RESOURCE, resource_id=resource.id
                     ),
                     SubPathItem(
-                        sub_path_id=sp1.id, type_item=TypeItemEnum.EXERCISE, item_id=ex1.id
+                        sub_path_id=sp1.id, type_item=TypeItemEnum.EXERCISE, exercise_id=ex1.id
                     ),
                     SubPathItem(
-                        sub_path_id=sp2.id, type_item=TypeItemEnum.EXERCISE, item_id=ex2.id
+                        sub_path_id=sp2.id, type_item=TypeItemEnum.EXERCISE, exercise_id=ex2.id
                     ),
                     # Adaptive edge: by default advance from step 1 to step 2.
                     PathTransition(
@@ -206,12 +206,12 @@ async def seed(student_email: str | None) -> None:
                     SubPathItem(
                         sub_path_id=sp1.id,
                         type_item=TypeItemEnum.RESOURCE,
-                        item_id=resource.id,
+                        resource_id=resource.id,
                     ),
                     SubPathItem(
                         sub_path_id=sp1.id,
                         type_item=TypeItemEnum.EXERCISE,
-                        item_id=exercise.id,
+                        exercise_id=exercise.id,
                     ),
                 ]
             )
@@ -263,7 +263,7 @@ async def _init_progress(session, path: Path, student_email: str) -> None:
 async def clean(all_demo: bool) -> None:
     """Delete trails that are not playable. With --all-demo, also delete the demo trail."""
     async with AsyncSessionLocal() as session:
-        has_options = select(Option.id).where(Option.exercise_id == SubPathItem.item_id).exists()
+        has_options = select(Option.id).where(Option.exercise_id == SubPathItem.exercise_id).exists()
         usable = (
             select(SubPathItem.id)
             .join(SubPath, SubPath.id == SubPathItem.sub_path_id)

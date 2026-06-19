@@ -121,7 +121,7 @@ class PathService:
         for item in items:
             if item.type_item == TypeItemEnum.EXERCISE:
                 exercise = (
-                    await session.execute(select(Exercise).where(Exercise.id == item.item_id))
+                    await session.execute(select(Exercise).where(Exercise.id == item.exercise_id))
                 ).scalar_one_or_none()
                 if exercise is None:
                     continue
@@ -151,7 +151,7 @@ class PathService:
                 quiz_item_ids.append(item.id)
             else:
                 resource = (
-                    await session.execute(select(Resource).where(Resource.id == item.item_id))
+                    await session.execute(select(Resource).where(Resource.id == item.resource_id))
                 ).scalar_one_or_none()
                 if resource is None:
                     continue
@@ -221,7 +221,7 @@ class PathService:
                 continue
             has_options = (
                 await session.execute(
-                    select(Option.id).where(Option.exercise_id == item.item_id).limit(1)
+                    select(Option.id).where(Option.exercise_id == item.exercise_id).limit(1)
                 )
             ).scalar_one_or_none()
             if has_options is not None:
@@ -446,7 +446,7 @@ class PathService:
                     option is not None
                     and option.correct
                     and option.exercise_id == ans["exercise_id"]
-                    and option.exercise_id == item.item_id
+                    and option.exercise_id == item.exercise_id
                 )
                 if is_correct:
                     correct += 1
@@ -561,7 +561,7 @@ class PathService:
         # item: a resource, or an exercise that actually has answer options. Empty
         # shells and option-less (ungradable) quizzes are hidden so the UI never
         # shows a broken trail.
-        has_options = select(Option.id).where(Option.exercise_id == SubPathItem.item_id).exists()
+        has_options = select(Option.id).where(Option.exercise_id == SubPathItem.exercise_id).exists()
         playable = (
             select(SubPathItem.id)
             .join(SubPath, SubPath.id == SubPathItem.sub_path_id)

@@ -238,6 +238,30 @@ async def _migrate_sub_path_ordering(conn: AsyncConnection) -> None:
         await _execute_optional_ddl(conn, stmt)
 
 
+async def _migrate_sub_path_item_targets(conn: AsyncConnection) -> None:
+    """Replace the polymorphic sub_paths_item.item_id with real resource/exercise FKs."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS "
+        "resource_id INTEGER REFERENCES resources(id)",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS "
+        "exercise_id INTEGER REFERENCES exercises(id)",
+        # Backfill from the legacy polymorphic column, then drop it. Enum is stored
+        # as UPPERCASE member names (see backend-enum-convention).
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_name='sub_paths_item' AND column_name='item_id') THEN "
+        "UPDATE sub_paths_item SET exercise_id = item_id "
+        "WHERE type_item::text = 'EXERCISE' AND exercise_id IS NULL; "
+        "UPDATE sub_paths_item SET resource_id = item_id "
+        "WHERE type_item::text = 'RESOURCE' AND resource_id IS NULL; "
+        "ALTER TABLE sub_paths_item DROP COLUMN item_id; "
+        "END IF; END $$",
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
@@ -251,3 +275,4 @@ async def init_db() -> None:
         await _drop_partnership_student_support_table(conn)
         await _migrate_student_path_progress(conn)
         await _migrate_sub_path_ordering(conn)
+        await _migrate_sub_path_item_targets(conn)
