@@ -3,14 +3,13 @@
 import uuid
 
 from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
     CreateSchoolRequest,
     CreateSponsorshipRequestRequest,
-    PublicSponsorshipRequestListResponse,
     SchoolBatchResponse,
     SchoolListResponse,
     SchoolPartnershipListResponse,
@@ -19,8 +18,8 @@ from md_backend.models.api_models import (
     SponsorshipRequestResponse,
     UpdateSchoolRequest,
 )
-from md_backend.services.csv_processor_service import CSVHeaderError
 from md_backend.models.db_models import PartnershipStatusEnum
+from md_backend.services.csv_processor_service import CSVHeaderError
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
