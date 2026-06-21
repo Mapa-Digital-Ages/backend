@@ -55,6 +55,15 @@ async def _ensure_user_last_name_nullable(conn: AsyncConnection) -> None:
         )
 
 
+async def _ensure_password_reset_expiry_nullable(conn: AsyncConnection) -> None:
+    """Allow non-expiring initial password setup codes on existing databases."""
+    if conn.dialect.name == "postgresql":
+        await _execute_optional_ddl(
+            conn,
+            "ALTER TABLE password_reset_code ALTER COLUMN expires_at DROP NOT NULL",
+        )
+
+
 async def _migrate_resources_table(conn: AsyncConnection) -> None:
     """Apply schema updates to the resources table."""
     if conn.dialect.name != "postgresql":
@@ -219,6 +228,7 @@ async def init_db() -> None:
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_item_progress_table(conn)
         await _ensure_user_last_name_nullable(conn)
+        await _ensure_password_reset_expiry_nullable(conn)
         await _migrate_resources_table(conn)
         await _migrate_sponsorship_tables(conn)
         await _ensure_user_last_name_nullable(conn)

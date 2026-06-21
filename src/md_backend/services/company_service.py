@@ -3,11 +3,18 @@
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from fastapi import BackgroundTasks
+from sqlalchemy import func, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
+from md_backend.models.api_models import (
+    CompanyBatchErrorItem,
+    CompanyBatchResponse,
+    CompanyBatchRow,
+)
 from md_backend.models.db_models import (
     CompanyProfile,
     PartnershipStatusEnum,
@@ -16,8 +23,14 @@ from md_backend.models.db_models import (
     SponsorshipRequestStatusEnum,
     UserProfile,
 )
+from md_backend.services.csv_processor_service import CSVProcessorService
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
+
+COMPANY_BATCH_HEADERS = {"first_name", "last_name", "email"}
+
+_password_reset_service = PasswordResetService()
 
 
 class CompanyService:
@@ -69,6 +82,109 @@ class CompanyService:
             "status": "aguardando",
             "created_at": user.created_at.isoformat(),
         }
+
+    async def import_from_csv(
+        self,
+        raw_content: bytes,
+        session: AsyncSession,
+        csv_processor: CSVProcessorService,
+        background_tasks: BackgroundTasks,
+    ) -> CompanyBatchResponse:
+        """Import companies from a CSV payload and return an import summary.
+
+        Decodes and validates CSV rows, inserts new companies and schedules
+        password emails via background tasks.
+        """
+        content = csv_processor.decode_csv(raw_content)
+        reader = csv_processor.validate_headers(content, COMPANY_BATCH_HEADERS)
+        validation = csv_processor.validate_rows(reader, CompanyBatchRow)
+
+        if validation.has_errors:
+            return CompanyBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(validation.errors),
+                message="Validation failed. No records were imported.",
+                errors=[
+                    CompanyBatchErrorItem(
+                        row=e.row,
+                        email=e.email,
+                        reason=e.reason,
+                        first_name=e.first_name,
+                        last_name=e.last_name,
+                    )
+                    for e in validation.errors
+                ],
+            )
+
+        created = 0
+        reset_notifications: list[tuple[str, str]] = []
+        abort_error: CompanyBatchErrorItem | None = None
+
+        for line_number, row in validation.valid_rows_with_line:
+            try:
+                user_result = await session.execute(
+                    insert(UserProfile)
+                    .values(
+                        first_name=row.first_name,
+                        last_name=row.last_name,
+                        email=row.email,
+                        password=await hash_password(uuid.uuid4().hex),
+                    )
+                    .returning(UserProfile.id)
+                )
+                user_id = user_result.scalar_one()
+
+                await session.execute(
+                    insert(CompanyProfile).values(
+                        user_id=user_id,
+                        spots=0,
+                        available_spots=0,
+                    )
+                )
+                reset_code = await _password_reset_service.prepare_initial_password_setup(
+                    user_id=user_id,
+                    session=session,
+                )
+            except IntegrityError:
+                await session.rollback()
+                abort_error = CompanyBatchErrorItem(
+                    row=line_number,
+                    email=row.email,
+                    reason="Email already registered.",
+                )
+                break
+
+            reset_notifications.append((row.email, reset_code))
+            created += 1
+
+        if abort_error is not None:
+            return CompanyBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=1,
+                message="Insert failed. No records were imported.",
+                errors=[abort_error],
+            )
+
+        await session.commit()
+
+        for email, reset_code in reset_notifications:
+            await _password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
+            )
+
+        return CompanyBatchResponse(
+            status="completed",
+            total_processed=validation.total_processed,
+            created=created,
+            failed=0,
+            message=f"{created} company/companies imported successfully.",
+        )
 
     async def list_companies(
         self, session: AsyncSession, name: str | None = None, page: int = 1, size: int = 10

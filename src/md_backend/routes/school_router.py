@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from md_backend.models.api_models import (
     CreateSchoolRequest,
     CreateSponsorshipRequestRequest,
+    SchoolBatchResponse,
     SchoolListResponse,
     SchoolPartnershipListResponse,
     SchoolResponse,
@@ -18,6 +19,7 @@ from md_backend.models.api_models import (
     UpdateSchoolRequest,
 )
 from md_backend.models.db_models import PartnershipStatusEnum
+from md_backend.services.csv_processor_service import CSVHeaderError
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
@@ -64,6 +66,36 @@ async def create_school(
         )
 
     return JSONResponse(content=result, status_code=status.HTTP_201_CREATED)
+
+
+@school_router.post(
+    "/batch",
+    response_model=SchoolBatchResponse,
+    summary="Bulk-import schools from a CSV file",
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def import_school_batch(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db_session),
+) -> JSONResponse:
+    """Importa escolas em lote via CSV, criando os válidos e reportando os inválidos."""
+    raw_content = await file.read()
+
+    try:
+        result = await school_service.import_school_batch(
+            raw_content=raw_content,
+            session=session,
+            background_tasks=background_tasks,
+        )
+    except CSVHeaderError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    http_status = status.HTTP_201_CREATED if result["created"] > 0 else status.HTTP_400_BAD_REQUEST
+    return JSONResponse(content=result, status_code=http_status)
 
 
 @school_router.get(
