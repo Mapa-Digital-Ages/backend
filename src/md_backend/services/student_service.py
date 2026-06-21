@@ -3,6 +3,7 @@
 import datetime
 import uuid
 
+from fastapi import BackgroundTasks
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,6 +30,7 @@ from md_backend.models.db_models import (
     WellBeing,
 )
 from md_backend.services.csv_processor_service import CSVProcessorService
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
@@ -93,6 +95,8 @@ STUDENT_BATCH_HEADERS = {
     "school_email",
     "guardian_email",
 }
+
+_password_reset_service = PasswordResetService()
 
 
 class StudentService:
@@ -767,6 +771,7 @@ class StudentService:
         raw_content: bytes,
         session: AsyncSession,
         csv_processor: CSVProcessorService,
+        background_tasks: BackgroundTasks,
     ) -> StudentBatchResponse:
         """Import students from a CSV payload and return an import summary."""
         content = csv_processor.decode_csv(raw_content)
@@ -853,6 +858,7 @@ class StudentService:
 
         created = 0
         insert_errors: list[StudentBatchErrorItem] = []
+        reset_notifications: list[tuple[str, str]] = []
 
         for line_number, row in validation.valid_rows_with_line:
             existing = await session.execute(
@@ -889,6 +895,14 @@ class StudentService:
 
             try:
                 await session.flush()
+
+                if guardian_id:
+                    session.add(StudentGuardian(student_id=user.id, guardian_id=guardian_id))
+
+                reset_code = await _password_reset_service.prepare_initial_password_setup(
+                    user_id=user.id,
+                    session=session,
+                )
             except Exception:
                 await session.rollback()
                 insert_errors.append(
@@ -900,9 +914,7 @@ class StudentService:
                 )
                 continue
 
-            if guardian_id:
-                session.add(StudentGuardian(student_id=user.id, guardian_id=guardian_id))
-
+            reset_notifications.append((row.email, reset_code))
             created += 1
 
         if insert_errors:
@@ -917,6 +929,14 @@ class StudentService:
             )
 
         await session.commit()
+
+        for email, reset_code in reset_notifications:
+            await _password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
+            )
+
         return StudentBatchResponse(
             status="completed",
             total_processed=validation.total_processed,

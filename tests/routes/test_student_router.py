@@ -1535,7 +1535,7 @@ class TestStudentBatchImport(unittest.TestCase):
                     "email": f"ana_{uuid.uuid4().hex[:6]}@example.com",
                     "phone_number": "",
                     "birth_date": "2010-03-15",
-                    "student_class": "5th class",
+                    "student_class": "5",
                     "school_email": "escola_inexistente@example.com",
                     "guardian_email": "",
                 }

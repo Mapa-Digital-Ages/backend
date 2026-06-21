@@ -22,12 +22,12 @@ from md_backend.models.db_models import (
     UserProfile,
 )
 from md_backend.services.csv_processor_service import CSVProcessorService
-from md_backend.utils.email_sender import EmailSender
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.security import hash_password
 
 GUARDIAN_BATCH_HEADERS = {"first_name", "last_name", "email", "phone_number"}
 
-_email_sender = EmailSender()
+_password_reset_service = PasswordResetService()
 
 
 class GuardianService:
@@ -475,7 +475,7 @@ class GuardianService:
 
         created = 0
         insert_errors: list[GuardianBatchErrorItem] = []
-        created_rows: list[tuple[str, str]] = []
+        reset_notifications: list[tuple[str, str]] = []
 
         for line_number, row in validation.valid_rows_with_line:
             existing = await session.execute(
@@ -500,13 +500,17 @@ class GuardianService:
             )
             guardian = GuardianProfile(
                 user=user,
-                guardian_status=GuardianStatusEnum.WAITING,
+                guardian_status=GuardianStatusEnum.APPROVED,
             )
             session.add(user)
             session.add(guardian)
 
             try:
                 await session.flush()
+                reset_code = await _password_reset_service.prepare_initial_password_setup(
+                    user_id=user.id,
+                    session=session,
+                )
             except Exception:
                 await session.rollback()
                 insert_errors.append(
@@ -518,7 +522,7 @@ class GuardianService:
                 )
                 continue
 
-            created_rows.append((row.email, row.first_name))
+            reset_notifications.append((row.email, reset_code))
             created += 1
 
         if insert_errors:
@@ -534,9 +538,11 @@ class GuardianService:
 
         await session.commit()
 
-        for email, first_name in created_rows:
-            background_tasks.add_task(
-                _email_sender.send_set_password, to_email=email, first_name=first_name
+        for email, reset_code in reset_notifications:
+            await _password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
             )
 
         return GuardianBatchResponse(

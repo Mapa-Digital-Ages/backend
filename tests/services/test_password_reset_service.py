@@ -81,6 +81,31 @@ class TestGetValidResetEntryExpiredSkipped(unittest.TestCase):
         )
         self.assertIsNone(result)
 
+    def test_non_expiring_entry_remains_valid_until_consumed(self):
+        service = PasswordResetService()
+        reset_entry = MagicMock()
+        reset_entry.expires_at = None
+        reset_entry.code_hash = "hashed-code"
+        scalars_result = MagicMock()
+        scalars_result.scalars.return_value = iter([reset_entry])
+        session = AsyncMock()
+        session.execute.return_value = scalars_result
+
+        with patch(
+            "md_backend.services.password_reset_service.verify_password",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            result = asyncio.run(
+                service._get_valid_reset_entry(
+                    user_id=uuid.uuid4(),
+                    code="123456",
+                    session=session,
+                )
+            )
+
+        self.assertIs(result, reset_entry)
+
 
 class TestRequestResetEmailDispatch(unittest.TestCase):
     """Cover the email dispatch wiring in request_reset."""
@@ -134,3 +159,70 @@ class TestRequestResetEmailDispatch(unittest.TestCase):
         asyncio.run(service.request_reset(email="ghost@test.com", session=session))
 
         sender.send_password_reset.assert_not_awaited()
+
+
+class TestInitialPasswordSetup(unittest.TestCase):
+    def test_prepares_code_without_committing_the_batch_transaction(self):
+        service = PasswordResetService()
+        session = AsyncMock()
+        session.add = MagicMock()
+        user_id = uuid.uuid4()
+
+        with (
+            patch(
+                "md_backend.services.password_reset_service._generate_reset_code",
+                return_value="135790",
+            ),
+            patch(
+                "md_backend.services.password_reset_service.hash_password",
+                new_callable=AsyncMock,
+                return_value="hashed-code",
+            ),
+        ):
+            code = asyncio.run(
+                service.prepare_initial_password_setup(user_id=user_id, session=session)
+            )
+
+        self.assertEqual(code, "135790")
+        reset_entry = session.add.call_args.args[0]
+        self.assertEqual(reset_entry.user_id, user_id)
+        self.assertEqual(reset_entry.code_hash, "hashed-code")
+        self.assertIsNone(reset_entry.expires_at)
+        session.commit.assert_not_awaited()
+
+    def test_dispatch_uses_background_tasks_when_available(self):
+        sender = AsyncMock()
+        service = PasswordResetService(email_sender=sender)
+        background_tasks = MagicMock()
+
+        asyncio.run(
+            service.dispatch_reset_email(
+                email="new.user@example.com",
+                code="246802",
+                background_tasks=background_tasks,
+            )
+        )
+
+        background_tasks.add_task.assert_called_once_with(
+            sender.send_password_reset,
+            to_email="new.user@example.com",
+            code="246802",
+        )
+        sender.send_password_reset.assert_not_awaited()
+
+    def test_initial_setup_email_is_marked_as_non_expiring(self):
+        sender = AsyncMock()
+        service = PasswordResetService(email_sender=sender)
+
+        asyncio.run(
+            service.dispatch_initial_password_setup_email(
+                email="new.user@example.com",
+                code="975310",
+            )
+        )
+
+        sender.send_password_reset.assert_awaited_once_with(
+            to_email="new.user@example.com",
+            code="975310",
+            expires_in_minutes=None,
+        )

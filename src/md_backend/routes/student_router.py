@@ -3,7 +3,7 @@
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -658,6 +658,7 @@ async def upsert_calendar_day(
     dependencies=[Depends(get_current_superadmin)],
 )
 async def batch_import_students(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     session: AsyncSession = Depends(get_db_session),
 ):
@@ -668,6 +669,7 @@ async def batch_import_students(
             raw_content=raw,
             session=session,
             csv_processor=csv_processor,
+            background_tasks=background_tasks,
         )
     except CSVHeaderError as exc:
         return JSONResponse(

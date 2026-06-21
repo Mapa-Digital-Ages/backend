@@ -24,13 +24,13 @@ from md_backend.models.db_models import (
     UserProfile,
 )
 from md_backend.services.csv_processor_service import CSVProcessorService
-from md_backend.utils.email_sender import EmailSender
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
 COMPANY_BATCH_HEADERS = {"first_name", "last_name", "email"}
 
-_email_sender = EmailSender()
+_password_reset_service = PasswordResetService()
 
 
 class CompanyService:
@@ -119,7 +119,7 @@ class CompanyService:
             )
 
         created = 0
-        created_rows: list[tuple[str, str]] = []
+        reset_notifications: list[tuple[str, str]] = []
         abort_error: CompanyBatchErrorItem | None = None
 
         for line_number, row in validation.valid_rows_with_line:
@@ -143,6 +143,10 @@ class CompanyService:
                         available_spots=0,
                     )
                 )
+                reset_code = await _password_reset_service.prepare_initial_password_setup(
+                    user_id=user_id,
+                    session=session,
+                )
             except IntegrityError:
                 await session.rollback()
                 abort_error = CompanyBatchErrorItem(
@@ -152,7 +156,7 @@ class CompanyService:
                 )
                 break
 
-            created_rows.append((row.email, row.first_name))
+            reset_notifications.append((row.email, reset_code))
             created += 1
 
         if abort_error is not None:
@@ -167,9 +171,11 @@ class CompanyService:
 
         await session.commit()
 
-        for email, first_name in created_rows:
-            background_tasks.add_task(
-                _email_sender.send_set_password, to_email=email, first_name=first_name
+        for email, reset_code in reset_notifications:
+            await _password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
             )
 
         return CompanyBatchResponse(

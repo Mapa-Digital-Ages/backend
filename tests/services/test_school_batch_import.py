@@ -351,8 +351,10 @@ class TestSchoolBatchImportDualInsertUnit(unittest.TestCase):
 
         mock_session.execute.assert_not_called()
 
-    def test_background_tasks_receive_one_set_password_email_per_created_user(self):
-        service = SchoolService()
+    def test_background_tasks_receive_one_reset_email_per_created_user(self):
+        password_reset_service = AsyncMock()
+        password_reset_service.prepare_initial_password_setup.return_value = "123456"
+        service = SchoolService(password_reset_service=password_reset_service)
         mock_session = AsyncMock()
         mock_background_tasks = MagicMock()
 
@@ -365,23 +367,29 @@ class TestSchoolBatchImportDualInsertUnit(unittest.TestCase):
 
         mock_session.execute.side_effect = [integrity_result, returning_result, MagicMock()]
 
-        asyncio.run(
-            service.import_school_batch(
-                raw_content=self._csv_bytes(1),
-                session=mock_session,
-                background_tasks=mock_background_tasks,
+        with patch(
+            "md_backend.services.school_service.hash_password",
+            new_callable=AsyncMock,
+            return_value="hashed-password",
+        ):
+            asyncio.run(
+                service.import_school_batch(
+                    raw_content=self._csv_bytes(1),
+                    session=mock_session,
+                    background_tasks=mock_background_tasks,
+                )
             )
-        )
 
-        mock_background_tasks.add_task.assert_called_once_with(
-            service._email_sender.send_set_password,
-            to_email="user0@test.com",
-            first_name="User0",
+        password_reset_service.dispatch_initial_password_setup_email.assert_awaited_once_with(
+            email="user0@test.com",
+            code="123456",
+            background_tasks=mock_background_tasks,
         )
 
     def test_inline_email_dispatch_when_no_background_tasks_provided(self):
-        mock_email_sender = AsyncMock()
-        service = SchoolService(email_sender=mock_email_sender)
+        password_reset_service = AsyncMock()
+        password_reset_service.prepare_initial_password_setup.return_value = "654321"
+        service = SchoolService(password_reset_service=password_reset_service)
         mock_session = AsyncMock()
 
         integrity_result = MagicMock()
@@ -393,16 +401,23 @@ class TestSchoolBatchImportDualInsertUnit(unittest.TestCase):
 
         mock_session.execute.side_effect = [integrity_result, returning_result, MagicMock()]
 
-        asyncio.run(
-            service.import_school_batch(
-                raw_content=self._csv_bytes(1),
-                session=mock_session,
-                background_tasks=None,
+        with patch(
+            "md_backend.services.school_service.hash_password",
+            new_callable=AsyncMock,
+            return_value="hashed-password",
+        ):
+            asyncio.run(
+                service.import_school_batch(
+                    raw_content=self._csv_bytes(1),
+                    session=mock_session,
+                    background_tasks=None,
+                )
             )
-        )
 
-        mock_email_sender.send_set_password.assert_awaited_once_with(
-            to_email="user0@test.com", first_name="User0"
+        password_reset_service.dispatch_initial_password_setup_email.assert_awaited_once_with(
+            email="user0@test.com",
+            code="654321",
+            background_tasks=None,
         )
 
 

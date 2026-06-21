@@ -727,6 +727,15 @@ class ResponderPerguntaRequest(BaseModel):
     resposta: Literal["a", "b", "c", "d"]
 
 
+_STUDENT_CLASS_BY_CSV_YEAR = {
+    "5": ClassEnum.CLASS_5TH,
+    "6": ClassEnum.CLASS_6TH,
+    "7": ClassEnum.CLASS_7TH,
+    "8": ClassEnum.CLASS_8TH,
+    "9": ClassEnum.CLASS_9TH,
+}
+
+
 class StudentBatchRow(BaseModel):
     """Schema for a single row of the student batch-import CSV."""
 
@@ -764,16 +773,18 @@ class StudentBatchRow(BaseModel):
     @field_validator("student_class", mode="before")
     @classmethod
     def parse_student_class(cls, value):
-        """Coerce a student class string into the corresponding ClassEnum.
+        """Convert the CSV school-year number into the internal ClassEnum.
 
         Raises a ValueError from None when the value is invalid.
         """
+        if isinstance(value, ClassEnum):
+            return value
+
         if isinstance(value, str):
-            try:
-                return ClassEnum(value.strip())
-            except ValueError as err:
-                valid = [e.value for e in ClassEnum]
-                raise ValueError(f"student_class must be one of {valid}") from err
+            normalized = value.strip()
+            if normalized in _STUDENT_CLASS_BY_CSV_YEAR:
+                return _STUDENT_CLASS_BY_CSV_YEAR[normalized]
+            raise ValueError("student_class must be one of ['5', '6', '7', '8', '9']")
         return value
 
     def model_post_init(self, __context):

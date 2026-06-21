@@ -19,6 +19,7 @@ from md_backend.models.db_models import (
     UserProfile,
 )
 from md_backend.services.csv_processor_service import CSVProcessorService, CSVRowError
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.email_sender import EmailSender
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
@@ -39,10 +40,13 @@ class SchoolService:
         self,
         csv_processor: CSVProcessorService | None = None,
         email_sender: EmailSender | None = None,
+        password_reset_service: PasswordResetService | None = None,
     ) -> None:
         """Initialize with optional overrides (defaults to the real collaborators)."""
         self._csv_processor = csv_processor or CSVProcessorService()
-        self._email_sender = email_sender or EmailSender()
+        self._password_reset_service = password_reset_service or PasswordResetService(
+            email_sender=email_sender
+        )
 
     async def create_school(
         self,
@@ -570,18 +574,22 @@ class SchoolService:
         ]
         await session.execute(insert(SchoolProfile).values(schools_payload))
 
-        for _, email in inserted_users:
-            first_name = rows_by_email[email].first_name
-            if background_tasks is not None:
-                background_tasks.add_task(
-                    self._email_sender.send_set_password,
-                    to_email=email,
-                    first_name=first_name,
-                )
-            else:
-                await self._email_sender.send_set_password(to_email=email, first_name=first_name)
+        reset_notifications = []
+        for user_id, email in inserted_users:
+            reset_code = await self._password_reset_service.prepare_initial_password_setup(
+                user_id=user_id,
+                session=session,
+            )
+            reset_notifications.append((email, reset_code))
 
         await session.commit()
+
+        for email, reset_code in reset_notifications:
+            await self._password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
+            )
 
         if errors:
             return self._build_partial_payload(
@@ -596,4 +604,5 @@ class SchoolService:
             "created": len(inserted_users),
             "failed": 0,
             "message": f"{len(inserted_users)} escola(s) importada(s) com sucesso.",
+            "errors": [],
         }

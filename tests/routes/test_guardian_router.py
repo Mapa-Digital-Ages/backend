@@ -391,3 +391,4 @@ class TestGuardianBatchImport(unittest.TestCase):
         items = list_resp.json()["items"]
         self.assertEqual(len(items), 1)
         self.assertIsNone(items[0]["phone_number"])
+        self.assertEqual(items[0]["guardian_status"], "approved")

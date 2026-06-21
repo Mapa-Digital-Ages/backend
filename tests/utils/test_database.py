@@ -67,6 +67,20 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
         conn.execute.assert_not_awaited()
 
+    def test_postgres_password_reset_expiry_becomes_nullable(self):
+        import md_backend.utils.database as db
+
+        conn = MagicMock()
+        conn.dialect.name = "postgresql"
+        conn.execute = AsyncMock()
+        conn.begin_nested.return_value = Savepoint()
+
+        asyncio.run(db._ensure_password_reset_expiry_nullable(conn))
+
+        statement = str(conn.execute.await_args.args[0])
+        self.assertIn("password_reset_code", statement)
+        self.assertIn("expires_at DROP NOT NULL", statement)
+
     def test_item_progress_table_is_created_explicitly(self):
         import md_backend.utils.database as db
         from md_backend.models.db_models import StudentSubPathItemProgress
