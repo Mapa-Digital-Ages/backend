@@ -2,6 +2,8 @@
 
 import logging
 from email.message import EmailMessage
+from html import escape
+from urllib.parse import urlencode
 
 import aiosmtplib
 
@@ -9,30 +11,34 @@ from md_backend.utils.settings import settings
 
 logger = logging.getLogger(__name__)
 
-_PASSWORD_RESET_SUBJECT = "Seu código de redefinição de senha"
+_PASSWORD_RESET_SUBJECT = "Defina sua senha — Mapa Digital"
 
 _PASSWORD_RESET_TEXT = (
     "Olá,\n\n"
-    "Recebemos uma solicitação para redefinir a senha da sua conta no Mapa Digital.\n\n"
-    "Seu código de redefinição é: {code}\n\n"
-    "O código expira em 15 minutos. Se você não solicitou a redefinição, ignore este email."
+    "Acesse o link abaixo para definir ou redefinir a senha da sua conta no Mapa Digital:\n\n"
+    "{reset_url}\n\n"
+    "{expiration_text} Se você não esperava este email, ignore esta mensagem."
 )
 
 _PASSWORD_RESET_HTML = (
     "<p>Olá,</p>"
-    "<p>Recebemos uma solicitação para redefinir a senha da sua conta no Mapa Digital.</p>"
-    "<p>Seu código de redefinição é:"
-    ' <strong style="font-size:1.4em;letter-spacing:0.15em">{code}</strong></p>'
-    "<p>O código expira em <strong>15 minutos</strong>."
-    " Se você não solicitou a redefinição, ignore este email.</p>"
+    "<p>Acesse o link abaixo para definir ou redefinir a senha da sua conta no Mapa Digital.</p>"
+    '<p><a href="{reset_url}">Definir minha senha</a></p>'
+    "<p>{expiration_text}"
+    " Se você não esperava este email, ignore esta mensagem.</p>"
 )
 
 
 class EmailSender:
     """Send transactional emails via SMTP, with a safe no-op fallback for dev/tests."""
 
-    async def send_password_reset(self, to_email: str, code: str) -> None:
-        """Send the password reset code email. Never raises — failures are logged."""
+    async def send_password_reset(
+        self,
+        to_email: str,
+        code: str,
+        expires_in_minutes: int | None = 15,
+    ) -> None:
+        """Send a single-use password setup link. Never raises — failures are logged."""
         if not (settings.SMTP_USERNAME and settings.SMTP_PASSWORD):
             logger.info("[email noop] reset code for %s: %s", to_email, code)
             return
@@ -41,8 +47,29 @@ class EmailSender:
         message["Subject"] = _PASSWORD_RESET_SUBJECT
         message["From"] = self._format_from()
         message["To"] = to_email
-        message.set_content(_PASSWORD_RESET_TEXT.format(code=code))
-        message.add_alternative(_PASSWORD_RESET_HTML.format(code=code), subtype="html")
+        reset_url = self._build_password_reset_url(to_email=to_email, code=code)
+        if expires_in_minutes is None:
+            expiration_text = "O link permanece válido até você definir sua senha."
+            html_expiration_text = "O link permanece válido até você definir sua senha."
+        else:
+            expiration_text = f"O link expira em {expires_in_minutes} minutos."
+            html_expiration_text = (
+                f"O link expira em <strong>{expires_in_minutes} minutos</strong>."
+            )
+
+        message.set_content(
+            _PASSWORD_RESET_TEXT.format(
+                reset_url=reset_url,
+                expiration_text=expiration_text,
+            )
+        )
+        message.add_alternative(
+            _PASSWORD_RESET_HTML.format(
+                reset_url=escape(reset_url, quote=True),
+                expiration_text=html_expiration_text,
+            ),
+            subtype="html",
+        )
 
         try:
             await aiosmtplib.send(
@@ -62,3 +89,8 @@ class EmailSender:
         if settings.SMTP_FROM_NAME:
             return f"{settings.SMTP_FROM_NAME} <{settings.SMTP_USERNAME}>"
         return settings.SMTP_USERNAME
+
+    def _build_password_reset_url(self, to_email: str, code: str) -> str:
+        """Build a reset URL whose sensitive parameters stay in the URL fragment."""
+        fragment = urlencode({"email": to_email, "code": code})
+        return f"{settings.FRONTEND_URL.rstrip('/')}/forgot-password#{fragment}"

@@ -1,11 +1,14 @@
 """School Services - handles atomic creation of school accounts."""
 
 import datetime
+import secrets
 import uuid
 
-from sqlalchemy import func, select
+from fastapi import BackgroundTasks
+from sqlalchemy import func, insert, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from md_backend.models.api_models import SchoolBatchRow
 from md_backend.models.db_models import (
     PartnershipStatusEnum,
     SchoolCompanyPartnership,
@@ -15,12 +18,35 @@ from md_backend.models.db_models import (
     StudentProfile,
     UserProfile,
 )
+from md_backend.services.csv_processor_service import CSVProcessorService, CSVRowError
+from md_backend.services.password_reset_service import PasswordResetService
+from md_backend.utils.email_sender import EmailSender
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
+
+SCHOOL_BATCH_EXPECTED_HEADERS = {
+    "first_name",
+    "last_name",
+    "email",
+    "phone_number",
+    "is_private",
+}
 
 
 class SchoolService:
     """Service for school-related operations."""
+
+    def __init__(
+        self,
+        csv_processor: CSVProcessorService | None = None,
+        email_sender: EmailSender | None = None,
+        password_reset_service: PasswordResetService | None = None,
+    ) -> None:
+        """Initialize with optional overrides (defaults to the real collaborators)."""
+        self._csv_processor = csv_processor or CSVProcessorService()
+        self._password_reset_service = password_reset_service or PasswordResetService(
+            email_sender=email_sender
+        )
 
     async def create_school(
         self,
@@ -405,3 +431,178 @@ class SchoolService:
         ]
 
         return {"items": items, "total": len(items)}
+
+    async def import_school_batch(
+        self,
+        raw_content: bytes,
+        session: AsyncSession,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> dict:
+        """..."""
+        content = self._csv_processor.decode_csv(raw_content)
+        reader = self._csv_processor.validate_headers(content, SCHOOL_BATCH_EXPECTED_HEADERS)
+        schema_result = self._csv_processor.validate_rows(reader, SchoolBatchRow)
+
+        integrity_errors = await self._check_duplicate_emails(
+            valid_rows_with_line=schema_result.valid_rows_with_line,
+            session=session,
+        )
+
+        all_errors = sorted(schema_result.errors + integrity_errors, key=lambda err: err.row)
+        total_processed = schema_result.total_processed
+
+        # ← Filtra emails que falharam na checagem de integridade
+        duplicate_emails = {err.email for err in integrity_errors}
+        rows_to_insert = [
+            row for row in schema_result.valid_rows if row.email not in duplicate_emails
+        ]
+
+        if not rows_to_insert:
+            return self._build_partial_payload(
+                total_processed=total_processed,
+                created=0,
+                errors=all_errors,
+            )
+
+        return await self._persist_school_batch(
+            valid_rows=rows_to_insert,
+            total_processed=total_processed,
+            errors=all_errors,
+            session=session,
+            background_tasks=background_tasks,
+        )
+
+    async def _check_duplicate_emails(
+        self,
+        valid_rows_with_line: list[tuple[int, SchoolBatchRow]],
+        session: AsyncSession,
+    ) -> list[CSVRowError]:
+        """Run the single integrity query and flag any email already in use."""
+        if not valid_rows_with_line:
+            return []
+
+        emails_to_check = {row.email for _, row in valid_rows_with_line}
+        result = await session.execute(
+            select(UserProfile.email).where(UserProfile.email.in_(emails_to_check))
+        )
+        existing_emails = set(result.scalars().all())
+
+        if not existing_emails:
+            return []
+
+        return [
+            CSVRowError(
+                row=line_number,
+                email=row.email,
+                reason="Email já cadastrado no sistema",
+                first_name=row.first_name,
+                last_name=row.last_name or "",
+                phone_number=row.phone_number or "",
+                is_private=str(row.is_private),
+            )
+            for line_number, row in valid_rows_with_line
+            if row.email in existing_emails
+        ]
+
+    def _build_partial_payload(
+        self,
+        total_processed: int,
+        created: int,
+        errors: list[CSVRowError],
+    ) -> dict:
+        """Build the response payload for a partial or fully-failed import."""
+        if created == 0:
+            message = (
+                "Nenhum registro foi salvo. Todos os registros apresentaram erros de validação."
+            )
+        else:
+            message = (
+                f"{created} escola(s) importada(s) com sucesso. "
+                f"{len(errors)} registro(s) ignorado(s) por erros de validação."
+            )
+        return {
+            "status": "partial" if created > 0 else "aborted",
+            "total_processed": total_processed,
+            "created": created,
+            "failed": len(errors),
+            "message": message,
+            "errors": [
+                {
+                    "row": err.row,
+                    "email": err.email,
+                    "reason": err.reason,
+                    "first_name": err.first_name or None,
+                    "last_name": err.last_name or None,
+                    "phone_number": err.phone_number or None,
+                    "is_private": err.is_private or None,
+                }
+                for err in errors
+            ],
+        }
+
+    async def _persist_school_batch(
+        self,
+        valid_rows: list[SchoolBatchRow],
+        total_processed: int,
+        errors: list[CSVRowError],
+        session: AsyncSession,
+        background_tasks: BackgroundTasks | None,
+    ) -> dict:
+        users_payload = []
+        for row in valid_rows:
+            raw_password = secrets.token_urlsafe(16)
+            users_payload.append(
+                {
+                    "id": uuid.uuid4(),
+                    "email": row.email,
+                    "first_name": row.first_name,
+                    "last_name": row.last_name,
+                    "phone_number": row.phone_number,
+                    "password": await hash_password(raw_password),
+                }
+            )
+
+        stmt_users = (
+            insert(UserProfile).values(users_payload).returning(UserProfile.id, UserProfile.email)
+        )
+        inserted_users = (await session.execute(stmt_users)).all()
+
+        rows_by_email = {row.email: row for row in valid_rows}
+        schools_payload = [
+            {"user_id": user_id, "is_private": rows_by_email[email].is_private}
+            for user_id, email in inserted_users
+        ]
+        await session.execute(insert(SchoolProfile).values(schools_payload))
+
+        reset_notifications = []
+        for user_id, email in inserted_users:
+            reset_code = await self._password_reset_service.prepare_initial_password_setup(
+                user_id=user_id,
+                session=session,
+            )
+            reset_notifications.append((email, reset_code))
+
+        await session.commit()
+
+        for email, reset_code in reset_notifications:
+            await self._password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
+            )
+
+        if errors:
+            return self._build_partial_payload(
+                total_processed=total_processed,
+                created=len(inserted_users),
+                errors=errors,
+            )
+
+        return {
+            "status": "completed",
+            "total_processed": total_processed,
+            "created": len(inserted_users),
+            "failed": 0,
+            "message": f"{len(inserted_users)} escola(s) importada(s) com sucesso.",
+            "errors": [],
+        }

@@ -3,11 +3,17 @@
 import datetime
 import uuid
 
+from fastapi import BackgroundTasks
 from sqlalchemy import and_, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from md_backend.models.api_models import (
+    GuardianBatchErrorItem,
+    GuardianBatchResponse,
+    GuardianBatchRow,
+)
 from md_backend.models.db_models import (
     GuardianProfile,
     GuardianStatusEnum,
@@ -15,7 +21,13 @@ from md_backend.models.db_models import (
     StudentProfile,
     UserProfile,
 )
+from md_backend.services.csv_processor_service import CSVProcessorService
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.security import hash_password
+
+GUARDIAN_BATCH_HEADERS = {"first_name", "last_name", "email", "phone_number"}
+
+_password_reset_service = PasswordResetService()
 
 
 class GuardianService:
@@ -429,6 +441,117 @@ class GuardianService:
         link.deactivated_at = datetime.datetime.now(datetime.UTC)
         await session.commit()
         return True
+
+    async def import_from_csv(
+        self,
+        raw_content: bytes,
+        session: AsyncSession,
+        csv_processor: CSVProcessorService,
+        background_tasks: BackgroundTasks,
+    ) -> GuardianBatchResponse:
+        """Import guardians from a CSV payload and return an import summary."""
+        content = csv_processor.decode_csv(raw_content)
+        reader = csv_processor.validate_headers(content, GUARDIAN_BATCH_HEADERS)
+        validation = csv_processor.validate_rows(reader, GuardianBatchRow)
+
+        if validation.has_errors:
+            return GuardianBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(validation.errors),
+                message="Validation failed. No records were imported.",
+                errors=[
+                    GuardianBatchErrorItem(
+                        row=e.row,
+                        email=e.email,
+                        reason=e.reason,
+                        first_name=e.first_name,
+                        last_name=e.last_name,
+                    )
+                    for e in validation.errors
+                ],
+            )
+
+        created = 0
+        insert_errors: list[GuardianBatchErrorItem] = []
+        reset_notifications: list[tuple[str, str]] = []
+
+        for line_number, row in validation.valid_rows_with_line:
+            existing = await session.execute(
+                select(UserProfile).where(UserProfile.email == row.email)
+            )
+            if existing.scalar_one_or_none() is not None:
+                insert_errors.append(
+                    GuardianBatchErrorItem(
+                        row=line_number,
+                        email=row.email,
+                        reason="Email already registered.",
+                    )
+                )
+                continue
+
+            user = UserProfile(
+                first_name=row.first_name,
+                last_name=row.last_name,
+                email=row.email,
+                password=await hash_password(uuid.uuid4().hex),
+                phone_number=row.phone_number,
+            )
+            guardian = GuardianProfile(
+                user=user,
+                guardian_status=GuardianStatusEnum.APPROVED,
+            )
+            session.add(user)
+            session.add(guardian)
+
+            try:
+                await session.flush()
+                reset_code = await _password_reset_service.prepare_initial_password_setup(
+                    user_id=user.id,
+                    session=session,
+                )
+            except Exception:
+                await session.rollback()
+                insert_errors.append(
+                    GuardianBatchErrorItem(
+                        row=line_number,
+                        email=row.email,
+                        reason="Failed to persist record.",
+                    )
+                )
+                continue
+
+            reset_notifications.append((row.email, reset_code))
+            created += 1
+
+        if insert_errors:
+            await session.rollback()
+            return GuardianBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(insert_errors),
+                message="Insert failed. No records were imported.",
+                errors=insert_errors,
+            )
+
+        await session.commit()
+
+        for email, reset_code in reset_notifications:
+            await _password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
+            )
+
+        return GuardianBatchResponse(
+            status="completed",
+            total_processed=validation.total_processed,
+            created=created,
+            failed=0,
+            message=f"{created} guardian(s) imported successfully.",
+        )
 
     def _to_response_dict(
         self,

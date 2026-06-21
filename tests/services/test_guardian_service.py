@@ -3,12 +3,60 @@
 import asyncio
 import unittest
 import uuid
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
+from md_backend.models.db_models import GuardianProfile, GuardianStatusEnum
+from md_backend.services.csv_processor_service import CSVProcessorService
 from md_backend.services.guardian_service import GuardianService
+
+
+class TestGuardianBatchStatus(unittest.TestCase):
+    def test_batch_created_guardian_is_approved(self):
+        service = GuardianService()
+        existing_result = MagicMock()
+        existing_result.scalar_one_or_none.return_value = None
+        session = AsyncMock()
+        session.execute.return_value = existing_result
+        session.add = MagicMock()
+        background_tasks = MagicMock()
+        password_reset_service = MagicMock()
+        password_reset_service.prepare_initial_password_setup = AsyncMock(return_value="123456")
+        password_reset_service.dispatch_initial_password_setup_email = AsyncMock()
+        csv_content = (
+            b"first_name,last_name,email,phone_number\n"
+            b"Maria,Silva,maria.batch@example.com,11999999999\n"
+        )
+
+        with (
+            patch(
+                "md_backend.services.guardian_service.hash_password",
+                new_callable=AsyncMock,
+                return_value="hashed-password",
+            ),
+            patch(
+                "md_backend.services.guardian_service._password_reset_service",
+                password_reset_service,
+            ),
+        ):
+            result = asyncio.run(
+                service.import_from_csv(
+                    raw_content=csv_content,
+                    session=session,
+                    csv_processor=CSVProcessorService(),
+                    background_tasks=background_tasks,
+                )
+            )
+
+        guardian = next(
+            call.args[0]
+            for call in session.add.call_args_list
+            if isinstance(call.args[0], GuardianProfile)
+        )
+        self.assertEqual(guardian.guardian_status, GuardianStatusEnum.APPROVED)
+        self.assertEqual(result.status, "completed")
 
 
 class TestCreateGuardianIntegrityError(unittest.TestCase):
