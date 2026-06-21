@@ -6,14 +6,20 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from md_backend.models.api_models import StepCompleteRequest
-from md_backend.services.path_service import PathService
+from md_backend.models.api_models import (
+    StepCompleteRequest,
+    ValidateStepAnswerRequest,
+    ValidateStepAnswerResponse,
+)
+from md_backend.services.trail.progress_service import TrailProgressService
+from md_backend.services.trail.read_service import TrailReadService
 from md_backend.utils.access_control import can_access_student
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user
 
 path_router = APIRouter()
-_path_service = PathService()
+_read_service = TrailReadService()
+_progress_service = TrailProgressService(read_service=_read_service)
 
 
 @path_router.get("")
@@ -32,7 +38,7 @@ async def list_trails(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    trails = await _path_service.list_trails(session=session, student_id=student_id)
+    trails = await _read_service.list_trails(session=session, student_id=student_id)
     return JSONResponse(content=trails, status_code=status.HTTP_200_OK)
 
 
@@ -53,7 +59,7 @@ async def list_subject_trails(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    trails = await _path_service.list_subject_trail_details(
+    trails = await _read_service.list_subject_trail_details(
         session=session,
         student_id=student_id,
         subject_id=subject_id,
@@ -83,7 +89,7 @@ async def get_trail_detail(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    detail = await _path_service.get_trail_detail(
+    detail = await _read_service.get_trail_detail(
         session=session, student_id=student_id, path_id=path_id
     )
     if detail is None:
@@ -113,7 +119,7 @@ async def get_step_questions(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    flow = await _path_service.get_question_flow(
+    flow = await _read_service.get_question_flow(
         session=session, path_id=path_id, sub_path_id=sub_path_id
     )
     if flow is None:
@@ -143,7 +149,7 @@ async def complete_item(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    result = await _path_service.complete_item(
+    result = await _progress_service.complete(
         session=session,
         student_id=student_id,
         path_id=path_id,
@@ -153,6 +159,43 @@ async def complete_item(
     if result is None:
         return JSONResponse(
             content={"detail": "Trail item not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@path_router.post(
+    "/{path_id}/steps/{sub_path_id}/answers/validate",
+    response_model=ValidateStepAnswerResponse,
+)
+async def validate_step_answer(
+    student_id: uuid.UUID,
+    path_id: int,
+    sub_path_id: int,
+    request: ValidateStepAnswerRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Validate one selected quiz alternative without exposing the answer key."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if not allowed:
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await _progress_service.validate_answer(
+        session=session,
+        path_id=path_id,
+        sub_path_id=sub_path_id,
+        exercise_id=request.exercise_id,
+        option_id=request.option_id,
+    )
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Answer option not found in this quiz step"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
@@ -177,7 +220,7 @@ async def complete_step(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    result = await _path_service.complete_sub_path(
+    result = await _progress_service.complete(
         session=session,
         student_id=student_id,
         path_id=path_id,

@@ -1,13 +1,16 @@
 """Tests for the admin router."""
 
+import asyncio
 import io
 import unittest
 import uuid
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 
 import tests.keys_test  # noqa: F401
 from md_backend.main import app
+from md_backend.utils.database import engine
 from tests.helpers import create_approved_user, get_admin_headers, get_admin_id
 
 
@@ -389,10 +392,93 @@ class TestAdminRouter(unittest.TestCase):
         self.assertEqual(update_response.json()["title"], "Avaliação bimestral revisada")
         self.assertEqual(update_response.json()["subject"]["name"], "Português")
 
+        invalid_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Conteúdo sem descrição",
+                "subject_id": int(mathematics["id"]),
+                "description": "   ",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(invalid_response.status_code, 422)
+
         delete_response = self.test_client.delete(
             f"/api/admin/content/{created['id']}",
             headers=self.admin_headers,
         )
+        self.assertEqual(delete_response.status_code, 204)
+
+    def test_delete_content_removes_related_trail_resources_and_progress(self):
+        subjects_response = self.test_client.get("/api/admin/subjects", headers=self.admin_headers)
+        self.assertEqual(subjects_response.status_code, 200)
+        subject_id = subjects_response.json()[0]["id"]
+        student_id = _make_student(self.test_client, self.admin_headers)
+
+        content_response = self.test_client.post(
+            "/api/admin/content",
+            json={
+                "title": "Conteúdo com dependências",
+                "subject_id": int(subject_id),
+                "description": "Usado para testar exclusão completa.",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(content_response.status_code, 201)
+        content_id = content_response.json()["id"]
+
+        resource_response = self.test_client.post(
+            f"/api/admin/contents/{content_id}/resources",
+            data={
+                "title": "Material externo",
+                "type": "link",
+                "url_or_contents": "https://example.com/material",
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(resource_response.status_code, 201)
+
+        trail_response = self.test_client.post(
+            "/api/admin/trails/manual",
+            json={
+                "content_id": content_id,
+                "name": "Trilha dependente",
+                "description": "Gera exercício vinculado ao conteúdo.",
+                "eixo": ["habilidade teste"],
+                "question_count": 1,
+                "difficulty": 1,
+            },
+            headers=self.admin_headers,
+        )
+        self.assertEqual(trail_response.status_code, 201)
+        exercise_id = trail_response.json()["exercise_ids"][0]
+
+        async def _insert_student_refs():
+            async with engine.begin() as conn:
+                await conn.execute(
+                    text(
+                        "INSERT INTO student_content_progress "
+                        "(student_id, content_id, mastery_level) "
+                        "VALUES (:student_id, :content_id, 0.5)"
+                    ),
+                    {"student_id": student_id, "content_id": content_id},
+                )
+                await conn.execute(
+                    text(
+                        "INSERT INTO attempts "
+                        "(student_id, exercise_id, is_correct, time_spent_seconds, created_at) "
+                        "VALUES (:student_id, :exercise_id, false, 15, CURRENT_TIMESTAMP)"
+                    ),
+                    {"student_id": student_id, "exercise_id": exercise_id},
+                )
+
+        asyncio.run(_insert_student_refs())
+
+        delete_response = self.test_client.delete(
+            f"/api/admin/content/{content_id}",
+            headers=self.admin_headers,
+        )
+
         self.assertEqual(delete_response.status_code, 204)
 
     def test_upload_queue_delete_and_correction_session(self):

@@ -4,9 +4,15 @@ import datetime
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-from md_backend.models.db_models import ClassEnum, TaskStatusEnum
+from md_backend.models.db_models import (
+    ClassEnum,
+    DifficultyEnum,
+    RuleTypeEnum,
+    TaskStatusEnum,
+    TypeItemEnum,
+)
 
 
 class RegisterRequest(BaseModel):
@@ -366,7 +372,13 @@ class ContentUpsertRequest(BaseModel):
 
     title: str = Field(min_length=1)
     subject_id: int
-    description: str | None = None
+    description: str = Field(min_length=1)
+
+    @field_validator("title", "description", mode="before")
+    @classmethod
+    def strip_required_text(cls, value: str) -> str:
+        """Normalize required text fields before length validation."""
+        return value.strip() if isinstance(value, str) else value
 
 
 class ResourceUploadRequest(BaseModel):
@@ -673,6 +685,208 @@ class StepCompleteRequest(BaseModel):
     answers: list[StepAnswer] = []
 
 
+class ValidateStepAnswerRequest(BaseModel):
+    """Payload to validate one selected quiz alternative."""
+
+    exercise_id: int
+    option_id: int
+
+
+class ValidateStepAnswerResponse(BaseModel):
+    """Server-side validation result for one selected alternative."""
+
+    exercise_id: int
+    option_id: int
+    correct: bool
+
+
+class CreatePathRequest(BaseModel):
+    """Request body for admin trail creation."""
+
+    content_id: int
+    name: str | None = None
+    description: str | None = None
+
+
+class CreateManualTrailRequest(BaseModel):
+    """Request body for creating a manual quiz trail from existing content."""
+
+    content_id: int
+    name: str = Field(min_length=1)
+    description: str | None = None
+    eixo: list[str] = Field(min_length=1)
+    question_count: int = Field(default=5, ge=1, le=20)
+    difficulty: int = Field(default=1, ge=1, le=3)
+
+
+class CreateManualTrailResponse(BaseModel):
+    """Response for manual quiz trail creation."""
+
+    path_id: int
+    sub_path_id: int
+    exercise_ids: list[int]
+    item_ids: list[int]
+
+
+class StructuredTrailActivityRequest(BaseModel):
+    """Activity metadata for a structured trail step."""
+
+    type: str = Field(pattern=r"^(text|video|question)$")
+    question_count: int | None = Field(default=None, ge=1, le=20)
+    difficulty: int | None = Field(default=None, ge=1, le=3)
+
+    @model_validator(mode="after")
+    def validate_question_settings(self):
+        """Require quiz settings only for question activities."""
+        if self.type == "question":
+            if self.question_count is None or self.difficulty is None:
+                raise ValueError("question_count and difficulty are required for question steps")
+            return self
+        self.question_count = None
+        self.difficulty = None
+        return self
+
+
+class StructuredTrailSubStepRequest(BaseModel):
+    """A sub-step in a structured trail step."""
+
+    order: int = Field(ge=1)
+    title: str = Field(min_length=1)
+    description: str | None = None
+    content_id: int
+    activity: StructuredTrailActivityRequest
+
+
+class StructuredTrailStepRequest(BaseModel):
+    """A step in the structured trail authoring payload."""
+
+    order: int = Field(ge=1)
+    title: str = Field(min_length=1)
+    description: str | None = None
+    content_id: int | None = None
+    activity: StructuredTrailActivityRequest | None = None
+    sub_steps: list[StructuredTrailSubStepRequest] | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def normalize_legacy_activity(self):
+        """Accept the legacy one-activity step shape as a single sub-step."""
+        if self.sub_steps:
+            return self
+        if self.content_id is None or self.activity is None:
+            raise ValueError("sub_steps or legacy content_id/activity must be provided")
+        self.sub_steps = [
+            StructuredTrailSubStepRequest(
+                order=1,
+                title=self.title,
+                description=self.description,
+                content_id=self.content_id,
+                activity=self.activity,
+            )
+        ]
+        return self
+
+
+class StructuredTrailRequest(BaseModel):
+    """Request body for creating or replacing a full adaptive trail structure."""
+
+    title: str = Field(min_length=1)
+    description: str | None = None
+    subject_id: int
+    eixo: list[str] = Field(min_length=1)
+    steps: list[StructuredTrailStepRequest] = Field(min_length=1)
+
+
+class StructuredTrailResponse(BaseModel):
+    """Response for structured trail authoring."""
+
+    path_id: int
+    sub_path_ids: list[int]
+    exercise_ids: list[int]
+    item_ids: list[int]
+
+
+class UpdateManualTrailRequest(BaseModel):
+    """Request body for editing trail metadata."""
+
+    content_id: int | None = None
+    name: str = Field(min_length=1)
+    description: str | None = None
+
+
+class CreateSubPathRequest(BaseModel):
+    """Request body for adding a sub-path to a trail."""
+
+    difficulty: DifficultyEnum | None = None
+    order: int = 0
+
+
+class AddItemRequest(BaseModel):
+    """Request body for adding an existing resource or exercise to a sub-path."""
+
+    type_item: TypeItemEnum
+    resource_id: int | None = None
+    exercise_id: int | None = None
+    order: int = 0
+
+    @model_validator(mode="after")
+    def exactly_one_target(self):
+        """Require one target and keep it aligned with type_item."""
+        if (self.resource_id is None) == (self.exercise_id is None):
+            raise ValueError("exactly one of resource_id/exercise_id must be set")
+        if self.type_item == TypeItemEnum.RESOURCE and self.resource_id is None:
+            raise ValueError("resource_id is required for resource items")
+        if self.type_item == TypeItemEnum.EXERCISE and self.exercise_id is None:
+            raise ValueError("exercise_id is required for exercise items")
+        return self
+
+
+class AddTransitionRequest(BaseModel):
+    """Request body for adding an adaptive transition between sub-paths."""
+
+    sub_path_origin_id: int
+    sub_path_destination_id: int
+    rule_type: RuleTypeEnum
+    rule_value: int | None = None
+
+
+class IdResponse(BaseModel):
+    """Generic id response for trail authoring endpoints."""
+
+    id: int
+
+
+class GenerateQuestionsRequest(BaseModel):
+    """Request body for offline AI question generation."""
+
+    content_id: int | None = None
+    count: int = Field(default=5, ge=1, le=20)
+    difficulty: int = Field(default=1, ge=1, le=3)
+    eixo: list[str] = Field(min_length=1)
+
+
+class GeneratedOption(BaseModel):
+    """Generated answer option for author review."""
+
+    text: str
+    correct: bool
+
+
+class GeneratedQuestion(BaseModel):
+    """Generated objective question persisted as an exercise."""
+
+    statement: str
+    difficulty: int = Field(ge=1, le=3)
+    options: list[GeneratedOption] = Field(min_length=4, max_length=4)
+
+
+class GenerateQuestionsResponse(BaseModel):
+    """Response for generated content question bank."""
+
+    content_id: int
+    created_exercise_ids: list[int]
+    questions: list[GeneratedQuestion]
+
+
 class PartnershipStatusUpdateRequest(BaseModel):
     """Request body for PATCH /admin/partnerships/{id}/status."""
 
@@ -707,32 +921,6 @@ class PartnershipAdminListResponse(BaseModel):
 
     items: list[PartnershipAdminResponse]
     total: int
-
-
-class IniciarTrilhaRequest(BaseModel):
-    """Request body for starting a new question trail."""
-
-    materia: str = Field(min_length=1)
-    conteudo: str = Field(min_length=1)
-    eixo: list[str] = Field(min_length=1)
-
-
-class PerguntaResponse(BaseModel):
-    """Response model for a trail question."""
-
-    trilha_id: str
-    pergunta_id: str
-    pergunta: str
-    respostas: dict[str, str]
-    dificuldade: int
-    tentativas_restantes: int
-
-
-class ResponderPerguntaRequest(BaseModel):
-    """Request body for submitting an answer in a trail."""
-
-    pergunta_id: str
-    resposta: Literal["a", "b", "c", "d"]
 
 
 _STUDENT_CLASS_BY_CSV_YEAR = {

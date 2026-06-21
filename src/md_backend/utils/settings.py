@@ -56,9 +56,13 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # LLM (Google Gemini)
-    GEMINI_MODEL: str = "gemini-2.0-flash"
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GOOGLE_API_KEY: str = ""
     LLM_TEMPERATURE: float = 0.7
+    LLM_GENERATION_TEMPERATURE: float = 0.2
+    # Keep retries low so a quota/rate-limit (429) falls back fast instead of
+    # blocking the authoring request for minutes.
+    LLM_GENERATION_MAX_RETRIES: int = 1
 
     # Trilha (adaptive trail)
     TRILHA_TTL_SECONDS: int = 3600

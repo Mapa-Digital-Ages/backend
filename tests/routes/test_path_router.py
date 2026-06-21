@@ -68,7 +68,7 @@ def _seed_trail(student_id: str) -> dict:
             path_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO paths (contents_id, name, description) "
+                        "INSERT INTO paths (content_id, name, description) "
                         "VALUES (:cid, :n, :d) RETURNING id"
                     ),
                     {"cid": content_id, "n": path_name, "d": "trilha desc"},
@@ -107,7 +107,7 @@ def _seed_trail(student_id: str) -> dict:
             exercise_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO exercises (contents_id, statement, difficulty) "
+                        "INSERT INTO exercises (content_id, statement, difficulty) "
                         "VALUES (:cid, :s, 'EASY') RETURNING id"
                     ),
                     {"cid": content_id, "s": "Quanto é 2x+4=10?"},
@@ -132,7 +132,7 @@ def _seed_trail(student_id: str) -> dict:
             resource_item_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                        "INSERT INTO sub_paths_item (sub_path_id, type_item, resource_id) "
                         "VALUES (:spid, 'RESOURCE', :rid) RETURNING id"
                     ),
                     {"spid": sub_path_id, "rid": resource_id},
@@ -141,7 +141,7 @@ def _seed_trail(student_id: str) -> dict:
             exercise_item_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                        "INSERT INTO sub_paths_item (sub_path_id, type_item, exercise_id) "
                         "VALUES (:spid, 'EXERCISE', :eid) RETURNING id"
                     ),
                     {"spid": sub_path_id, "eid": exercise_id},
@@ -203,7 +203,7 @@ def _seed_incomplete_path() -> int:
             path_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO paths (contents_id, name, description) "
+                        "INSERT INTO paths (content_id, name, description) "
                         "VALUES (:cid, :n, 'd') RETURNING id"
                     ),
                     {"cid": content_id, "n": f"Empty Trail {uuid.uuid4().hex[:6]}"},
@@ -240,7 +240,7 @@ def _seed_path_with_optionless_exercise() -> dict:
             path_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO paths (contents_id, name, description) "
+                        "INSERT INTO paths (content_id, name, description) "
                         "VALUES (:cid, :n, 'd') RETURNING id"
                     ),
                     {"cid": content_id, "n": f"NoOpt Trail {uuid.uuid4().hex[:6]}"},
@@ -258,7 +258,7 @@ def _seed_path_with_optionless_exercise() -> dict:
             exercise_id = (
                 await conn.execute(
                     text(
-                        "INSERT INTO exercises (contents_id, statement, difficulty) "
+                        "INSERT INTO exercises (content_id, statement, difficulty) "
                         "VALUES (:cid, 'no options here', 'EASY') RETURNING id"
                     ),
                     {"cid": content_id},
@@ -266,7 +266,7 @@ def _seed_path_with_optionless_exercise() -> dict:
             ).scalar_one()
             await conn.execute(
                 text(
-                    "INSERT INTO sub_paths_item (sub_path_id, type_item, item_id) "
+                    "INSERT INTO sub_paths_item (sub_path_id, type_item, exercise_id) "
                     "VALUES (:spid, 'EXERCISE', :eid)"
                 ),
                 {"spid": sub_path_id, "eid": exercise_id},
@@ -331,7 +331,7 @@ class TestPathRouter(unittest.TestCase):
         self.assertIn("steps", trail)
         self.assertEqual(trail["subject"]["id"], "matematica-trail-test")
 
-    def test_detail_returns_real_titles_and_questions_without_answer_key(self):
+    def test_detail_returns_quiz_sub_steps_without_answer_key(self):
         resp = self.client.get(
             f"/api/student/{self.student_id}/trails/{self.path_id}",
             headers=self.student_headers,
@@ -341,10 +341,7 @@ class TestPathRouter(unittest.TestCase):
         sub_steps = next(
             s["sub_steps"] for s in steps if str(s["id"]) == str(self.seed["sub_path_id"])
         )
-        video = next(ss for ss in sub_steps if ss["kind"] == "video")
-        self.assertEqual(video["title"], "Vídeo de Introdução")
-        self.assertEqual(video["questions"], [])
-
+        self.assertEqual([ss["kind"] for ss in sub_steps], ["video", "question"])
         quiz = next(ss for ss in sub_steps if ss["kind"] == "question")
         self.assertEqual(quiz["id"], f"quiz-{self.seed['sub_path_id']}")
         self.assertEqual(len(quiz["questions"]), 1)
@@ -405,7 +402,7 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(body["current_sub_path"], s["next_sub_path_id"])
         self.assertEqual(body["path_status"], "on_going")
 
-    def test_complete_resource_item_marks_only_that_item_completed(self):
+    def test_complete_resource_item_marks_the_video_sub_step_completed(self):
         s = self.seed
         resp = self.client.post(
             f"/api/student/{self.student_id}/trails/{s['path_id']}"
@@ -414,22 +411,20 @@ class TestPathRouter(unittest.TestCase):
             json={"answers": []},
         )
         self.assertEqual(resp.status_code, 200)
-        body = resp.json()
-        self.assertEqual(body["id"], str(s["path_id"]))
-        first_step = next(st for st in body["steps"] if st["id"] == str(s["sub_path_id"]))
-        statuses = {sub_step["item_id"]: sub_step["status"] for sub_step in first_step["sub_steps"]}
-        self.assertEqual(statuses[str(s["resource_item_id"])], "completed")
-        self.assertEqual(statuses[str(s["exercise_item_id"])], "available")
-        self.assertEqual(body["progress"], 0)
+        step = next(st for st in resp.json()["steps"] if st["id"] == str(s["sub_path_id"]))
+        self.assertEqual(step["sub_steps"][0]["status"], "completed")
+        self.assertEqual(step["sub_steps"][1]["status"], "available")
 
     def test_completing_all_items_in_sub_path_advances_to_next_sub_path(self):
         s = self.seed
-        self.client.post(
+        resource_resp = self.client.post(
             f"/api/student/{self.student_id}/trails/{s['path_id']}"
             f"/items/{s['resource_item_id']}/complete",
             headers=self.student_headers,
             json={"answers": []},
         )
+        self.assertEqual(resource_resp.status_code, 200)
+
         resp = self.client.post(
             f"/api/student/{self.student_id}/trails/{s['path_id']}"
             f"/items/{s['exercise_item_id']}/complete",
@@ -443,6 +438,30 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(body["completed_steps"], 1)
         next_step = next(st for st in body["steps"] if st["id"] == str(s["next_sub_path_id"]))
         self.assertEqual(next_step["status"], "available")
+
+    def test_validate_answer_reports_selected_option_correctness(self):
+        s = self.seed
+        resp = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/answers/validate",
+            headers=self.student_headers,
+            json={"exercise_id": s["exercise_id"], "option_id": s["correct_option_id"]},
+        )
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["exercise_id"], s["exercise_id"])
+        self.assertEqual(body["option_id"], s["correct_option_id"])
+        self.assertTrue(body["correct"])
+
+    def test_validate_answer_rejects_option_outside_step(self):
+        s = self.seed
+        resp = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/answers/validate",
+            headers=self.student_headers,
+            json={"exercise_id": s["exercise_id"], "option_id": 999999},
+        )
+        self.assertEqual(resp.status_code, 404)
 
     def test_complete_last_step_marks_trail_completed(self):
         s = self.seed

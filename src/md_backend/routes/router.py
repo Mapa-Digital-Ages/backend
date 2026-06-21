@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from md_backend.routes.admin_router import admin_router
 from md_backend.routes.company_router import company_router
+from md_backend.routes.content_generation_router import content_generation_router
 from md_backend.routes.guardian_router import guardian_router
 from md_backend.routes.login_router import login_router
 from md_backend.routes.password_reset_router import password_reset_router
@@ -13,6 +14,7 @@ from md_backend.routes.school_router import school_router
 from md_backend.routes.setup_router import setup_router
 from md_backend.routes.student_router import student_router
 from md_backend.routes.subject_router import subject_router
+from md_backend.routes.trail_authoring_router import trail_authoring_router
 from md_backend.routes.upload_router import upload_router
 
 router = APIRouter()
@@ -29,3 +31,5 @@ router.include_router(company_router)
 router.include_router(upload_router)
 router.include_router(subject_router)
 router.include_router(resource_router)
+router.include_router(trail_authoring_router)
+router.include_router(content_generation_router)

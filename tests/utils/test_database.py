@@ -164,6 +164,37 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
         self.assertIn("ADD COLUMN IF NOT EXISTS file_url", sql)
         self.assertGreaterEqual(conn.savepoints, 1)
 
+    def test_trail_authoring_metadata_migration_adds_editable_columns(self):
+        import md_backend.utils.database as db
+
+        class Conn:
+            def __init__(self):
+                self.dialect = MagicMock()
+                self.dialect.name = "postgresql"
+                self.executed: list[str] = []
+                self.savepoints = 0
+
+            def begin_nested(self):
+                self.savepoints += 1
+                return Savepoint()
+
+            async def execute(self, statement):
+                self.executed.append(str(statement))
+
+        conn = Conn()
+
+        asyncio.run(db._migrate_trail_authoring_metadata(conn))
+
+        sql = "\n".join(conn.executed)
+        self.assertIn("paths ADD COLUMN IF NOT EXISTS eixo", sql)
+        self.assertIn("sub_paths ADD COLUMN IF NOT EXISTS content_id", sql)
+        self.assertIn("sub_paths ADD COLUMN IF NOT EXISTS title", sql)
+        self.assertIn("sub_paths ADD COLUMN IF NOT EXISTS description", sql)
+        self.assertIn("sub_paths_item ADD COLUMN IF NOT EXISTS group_key", sql)
+        self.assertIn("sub_paths_item ADD COLUMN IF NOT EXISTS title", sql)
+        self.assertIn("sub_paths_item ADD COLUMN IF NOT EXISTS description", sql)
+        self.assertGreaterEqual(conn.savepoints, 1)
+
     def test_postgres_url_sets_pool_kwargs(self):
         import md_backend.utils.database as db
         from md_backend.utils.settings import settings

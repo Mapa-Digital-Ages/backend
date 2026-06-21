@@ -221,6 +221,89 @@ async def _drop_partnership_student_support_table(conn: AsyncConnection) -> None
     await _execute_optional_ddl(conn, "DROP TABLE IF EXISTS partnership_student_support")
 
 
+async def _migrate_student_path_progress(conn: AsyncConnection) -> None:
+    """Align existing student_path_progress with the current ORM model."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        "ALTER TABLE student_path_progress ADD COLUMN IF NOT EXISTS "
+        "started_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+        "ALTER TABLE student_path_progress ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ NULL",
+        "ALTER TABLE student_path_progress ALTER COLUMN updated_at SET DEFAULT now()",
+        "UPDATE student_path_progress SET updated_at = now() WHERE updated_at IS NULL",
+        "ALTER TABLE student_path_progress ALTER COLUMN updated_at SET NOT NULL",
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
+async def _migrate_sub_path_ordering(conn: AsyncConnection) -> None:
+    """Add explicit ordering columns to sub_paths and sub_paths_item."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        'ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS "order" INTEGER NOT NULL DEFAULT 0',
+        'ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS "order" INTEGER NOT NULL DEFAULT 0',
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
+async def _migrate_trail_authoring_metadata(conn: AsyncConnection) -> None:
+    """Add editable trail authoring metadata to existing databases."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        "ALTER TABLE paths ADD COLUMN IF NOT EXISTS eixo TEXT NULL",
+        "ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS content_id INTEGER REFERENCES contents(id)",
+        "ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS title VARCHAR(255) NULL",
+        "ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS description TEXT NULL",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS group_key VARCHAR(64) NULL",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS title VARCHAR(255) NULL",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS description TEXT NULL",
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
+async def _migrate_sub_path_item_targets(conn: AsyncConnection) -> None:
+    """Replace the polymorphic sub_paths_item.item_id with real resource/exercise FKs."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS "
+        "resource_id INTEGER REFERENCES resources(id)",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS "
+        "exercise_id INTEGER REFERENCES exercises(id)",
+        # Backfill from the legacy polymorphic column, then drop it. Enum is stored
+        # as UPPERCASE member names (see backend-enum-convention).
+        "DO $$ BEGIN "
+        "IF EXISTS (SELECT 1 FROM information_schema.columns "
+        "WHERE table_name='sub_paths_item' AND column_name='item_id') THEN "
+        "UPDATE sub_paths_item SET exercise_id = item_id "
+        "WHERE type_item::text = 'EXERCISE' AND exercise_id IS NULL; "
+        "UPDATE sub_paths_item SET resource_id = item_id "
+        "WHERE type_item::text = 'RESOURCE' AND resource_id IS NULL; "
+        "ALTER TABLE sub_paths_item DROP COLUMN item_id; "
+        "END IF; END $$",
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
+async def _migrate_content_fk_naming(conn: AsyncConnection) -> None:
+    """Normalize legacy contents_id columns to content_id on paths and exercises."""
+    if conn.dialect.name != "postgresql":
+        return
+    for table in ("paths", "exercises"):
+        await _execute_optional_ddl(
+            conn,
+            "DO $$ BEGIN "
+            f"IF EXISTS (SELECT 1 FROM information_schema.columns "
+            f"WHERE table_name='{table}' AND column_name='contents_id') "
+            f"AND NOT EXISTS (SELECT 1 FROM information_schema.columns "
+            f"WHERE table_name='{table}' AND column_name='content_id') "
+            f"THEN ALTER TABLE {table} RENAME COLUMN contents_id TO content_id; "
+            "END IF; END $$",
+        )
+
+
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
@@ -233,3 +316,8 @@ async def init_db() -> None:
         await _migrate_sponsorship_tables(conn)
         await _ensure_user_last_name_nullable(conn)
         await _drop_partnership_student_support_table(conn)
+        await _migrate_student_path_progress(conn)
+        await _migrate_sub_path_ordering(conn)
+        await _migrate_trail_authoring_metadata(conn)
+        await _migrate_sub_path_item_targets(conn)
+        await _migrate_content_fk_naming(conn)
