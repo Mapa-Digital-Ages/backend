@@ -355,3 +355,35 @@ class TrailProgressService:
             item_id=item_id,
             answers=answers,
         )
+
+    async def validate_answer(
+        self,
+        session: AsyncSession,
+        path_id: int,
+        sub_path_id: int,
+        exercise_id: int,
+        option_id: int,
+    ) -> dict | None:
+        """Validate one selected option for an exercise in a trail quiz."""
+        row = (
+            await session.execute(
+                select(Option)
+                .join(SubPathItem, SubPathItem.exercise_id == Option.exercise_id)
+                .join(SubPath, SubPath.id == SubPathItem.sub_path_id)
+                .where(
+                    SubPath.path_id == path_id,
+                    SubPath.id == sub_path_id,
+                    SubPathItem.type_item == TypeItemEnum.EXERCISE,
+                    SubPathItem.exercise_id == exercise_id,
+                    Option.id == option_id,
+                    Option.exercise_id == exercise_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "exercise_id": exercise_id,
+            "option_id": option_id,
+            "correct": bool(row.correct),
+        }

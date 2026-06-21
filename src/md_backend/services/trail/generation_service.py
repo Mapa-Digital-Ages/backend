@@ -14,11 +14,25 @@ from md_backend.utils.settings import settings
 
 logger = get_logger(__name__)
 
-_SYSTEM_PROMPT = """Você é um gerador de questões objetivas em português para alunos do
-5º ao 9º ano. Gere UMA pergunta objetiva que teste DIRETAMENTE o eixo informado, com
-exatamente 4 alternativas e UMA correta. Respeite a dificuldade: 1=fácil, 2=médio,
-3=difícil. Não inclua letras como "a)" no texto das alternativas."""
-_HUMAN_PROMPT = "eixo: {eixo}\nconteudo: {conteudo}\nmateria: {materia}\ndificuldade: {dificuldade}"
+_SYSTEM_PROMPT = """Você é um gerador de questões objetivas de múltipla escolha em português
+(PT-BR) para alunos do 5º ao 9º ano. Gere a quantidade pedida de questões que testem
+DIRETAMENTE o eixo informado, no contexto do conteúdo dado.
+
+Regras obrigatórias:
+- Gere EXATAMENTE a quantidade pedida de questões, todas DISTINTAS entre si.
+- Varie os números, os contextos e o formato: misture cálculo direto e problemas
+  contextualizados (situações do dia a dia). Nunca repita o mesmo enunciado nem os mesmos
+  valores entre as questões.
+- Cada questão tem EXATAMENTE 4 alternativas e EXATAMENTE 1 correta.
+- Os distratores (alternativas erradas) devem ser plausíveis, refletindo erros comuns do
+  aluno (ex.: esquecer de inverter a operação). Nunca use textos genéricos como
+  "Alternativa incorreta" ou "Ideia principal de".
+- Não inclua letras/marcadores como "a)" no texto das alternativas.
+- Respeite a dificuldade pedida: 1=fácil, 2=médio, 3=difícil."""
+_HUMAN_PROMPT = (
+    "quantidade: {quantidade}\neixo: {eixo}\nconteudo: {conteudo}\n"
+    "materia: {materia}\ndificuldade: {dificuldade}"
+)
 _prompt = ChatPromptTemplate.from_messages([("system", _SYSTEM_PROMPT), ("human", _HUMAN_PROMPT)])
 _DIFFICULTY_MAP = {1: DifficultyEnum.EASY, 2: DifficultyEnum.MEDIUM, 3: DifficultyEnum.HARD}
 
@@ -36,6 +50,14 @@ class _LlmQuestion(BaseModel):
     statement: str = Field(..., description="Enunciado da pergunta objetiva.")
     difficulty: int = Field(..., ge=1, le=3)
     options: list[_LlmOption] = Field(..., min_length=4, max_length=4)
+
+
+class _LlmQuiz(BaseModel):
+    """A batch of distinct questions returned by the LLM in a single call."""
+
+    questions: list[_LlmQuestion] = Field(
+        ..., description="Lista de questões distintas entre si.", min_length=1
+    )
 
 
 class ContentGenerationService:
@@ -65,17 +87,23 @@ class ContentGenerationService:
         created_ids: list[int] = []
         questions_out: list[GeneratedQuestion] = []
 
-        for _ in range(count):
-            question = await self._generate_one(
-                materia=materia,
-                conteudo=content.name,
-                eixo=eixo,
-                difficulty=difficulty,
-            )
+        # The step defines the difficulty; store that level for every question
+        # instead of the LLM's self-assessment (which can drift from the request).
+        stored_difficulty = _DIFFICULTY_MAP.get(difficulty, DifficultyEnum.EASY)
+
+        questions = await self._generate_batch(
+            materia=materia,
+            conteudo=content.name,
+            eixo=eixo,
+            count=count,
+            difficulty=difficulty,
+        )
+
+        for question in questions:
             exercise = Exercise(
                 content_id=content_id,
                 statement=question.statement,
-                difficulty=_DIFFICULTY_MAP.get(question.difficulty, DifficultyEnum.EASY),
+                difficulty=stored_difficulty,
             )
             session.add(exercise)
             await session.flush()
@@ -91,7 +119,7 @@ class ContentGenerationService:
             questions_out.append(
                 GeneratedQuestion(
                     statement=question.statement,
-                    difficulty=question.difficulty,
+                    difficulty=difficulty,
                     options=[
                         GeneratedOption(text=option.text, correct=option.correct)
                         for option in question.options
@@ -106,54 +134,80 @@ class ContentGenerationService:
             "questions": [question.model_dump() for question in questions_out],
         }
 
-    async def _generate_one(
+    def _build_llm(self) -> ChatGoogleGenerativeAI:
+        """Construct the Gemini client with a low retry cap for fast fallback."""
+        return ChatGoogleGenerativeAI(
+            model=settings.GEMINI_MODEL,
+            api_key=settings.GOOGLE_API_KEY,
+            temperature=settings.LLM_GENERATION_TEMPERATURE,
+            max_retries=settings.LLM_GENERATION_MAX_RETRIES,
+        )
+
+    async def _generate_batch(
         self,
         materia: str,
         conteudo: str,
         eixo: list[str],
+        count: int,
         difficulty: int,
-    ) -> _LlmQuestion:
-        """Generate one question via LLM or deterministic fallback."""
+    ) -> list[_LlmQuestion]:
+        """Generate `count` distinct questions in one LLM call (or deterministic fallback).
+
+        A single batched call lets the model see all questions at once (so they vary),
+        and uses one request instead of `count` — avoiding free-tier rate limits.
+        """
         if not settings.GOOGLE_API_KEY:
-            return self._fallback_question(conteudo=conteudo, eixo=eixo, difficulty=difficulty)
+            return self._fallback_batch(
+                conteudo=conteudo, eixo=eixo, count=count, difficulty=difficulty
+            )
 
         try:
-            llm = ChatGoogleGenerativeAI(
-                model=settings.GEMINI_MODEL,
-                api_key=settings.GOOGLE_API_KEY,
-                temperature=settings.LLM_GENERATION_TEMPERATURE,
-            ).with_structured_output(_LlmQuestion)
+            llm = self._build_llm().with_structured_output(_LlmQuiz)
             chain = _prompt | llm
             result = await chain.ainvoke(
                 {
+                    "quantidade": count,
                     "eixo": eixo,
                     "conteudo": conteudo,
                     "materia": materia,
                     "dificuldade": difficulty,
                 }
             )
-            if sum(1 for option in result.options if option.correct) != 1:
-                raise ValueError("LLM returned a question without exactly one correct option")
-            return result  # type: ignore[return-value]
+            questions = list(result.questions)  # type: ignore[union-attr]
+            if len(questions) != count:
+                raise ValueError(f"LLM returned {len(questions)} questions, expected {count}")
+            for question in questions:
+                if sum(1 for option in question.options if option.correct) != 1:
+                    raise ValueError("LLM returned a question without exactly one correct option")
+            return questions
         except Exception as exc:  # noqa: BLE001
             logger.warning("Question generation failed; using fallback: %s", exc)
-            return self._fallback_question(conteudo=conteudo, eixo=eixo, difficulty=difficulty)
+            return self._fallback_batch(
+                conteudo=conteudo, eixo=eixo, count=count, difficulty=difficulty
+            )
 
-    def _fallback_question(
+    def _fallback_batch(
         self,
         conteudo: str,
         eixo: list[str],
+        count: int,
         difficulty: int,
-    ) -> _LlmQuestion:
-        """Return a deterministic offline question for local/dev/test environments."""
+    ) -> list[_LlmQuestion]:
+        """Return `count` distinct deterministic questions for offline/dev/test use."""
         eixo_principal = eixo[0] if eixo else conteudo
-        return _LlmQuestion(
-            statement=f"Sobre {conteudo}, qual alternativa representa {eixo_principal}?",
-            difficulty=difficulty,
-            options=[
-                _LlmOption(text=f"Ideia principal de {eixo_principal}.", correct=True),
-                _LlmOption(text="Alternativa incorreta A.", correct=False),
-                _LlmOption(text="Alternativa incorreta B.", correct=False),
-                _LlmOption(text="Alternativa incorreta C.", correct=False),
-            ],
-        )
+        return [
+            _LlmQuestion(
+                statement=(
+                    f"Questão {index} sobre {conteudo} (eixo: {eixo_principal}). "
+                    "Selecione a alternativa correta."
+                ),
+                difficulty=difficulty,
+                options=[
+                    _LlmOption(text=f"Resposta correta da questão {index}.", correct=True),
+                    _LlmOption(text=f"Distrator {index}-A.", correct=False),
+                    _LlmOption(text=f"Distrator {index}-B.", correct=False),
+                    _LlmOption(text=f"Distrator {index}-C.", correct=False),
+                ],
+            )
+            for index in range(1, count + 1)
+        ]

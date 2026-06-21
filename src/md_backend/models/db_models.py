@@ -6,7 +6,6 @@ import uuid
 from typing import Optional  # noqa: UP035
 
 from sqlalchemy import (
-    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -376,13 +375,6 @@ class TaskStatusEnum(enum.StrEnum):
     ADJUST = "adjust"
 
 
-class TrilhaStatusEnum(enum.StrEnum):
-    """Trail completion status."""
-
-    PASSED = "passed"
-    FAILED = "failed"
-
-
 class HumorEnum(enum.StrEnum):
     """Well being humor."""
 
@@ -510,6 +502,7 @@ class Path(Base):
     content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    eixo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SubPath(Base):
@@ -519,6 +512,11 @@ class SubPath(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     path_id: Mapped[int] = mapped_column(Integer, ForeignKey("paths.id"), nullable=False)
+    content_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("contents.id"), nullable=True
+    )
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     difficulty: Mapped[DifficultyEnum | None] = mapped_column(
         Enum(DifficultyEnum, name="difficulty_enum"), nullable=True
     )
@@ -542,6 +540,9 @@ class SubPathItem(Base):
         Enum(TypeItemEnum, name="type_item_enum"), nullable=False
     )
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    group_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     resource_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("resources.id"), nullable=True
     )
@@ -758,28 +759,4 @@ class StudentUploadBlob(Base):
 
     upload: Mapped["StudentUpload"] = relationship(
         "StudentUpload", back_populates="blob", single_parent=True
-    )
-
-
-class TrilhaResultado(Base):
-    """Persisted result of a completed question trail."""
-
-    __tablename__ = "trilha_resultado"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    trilha_id: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    student_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
-    )
-    materia: Mapped[str] = mapped_column(String(255), nullable=False)
-    conteudo: Mapped[str] = mapped_column(Text, nullable=False)
-    eixo: Mapped[list] = mapped_column(JSON, nullable=False)
-    status: Mapped[TrilhaStatusEnum] = mapped_column(
-        Enum(TrilhaStatusEnum, name="trilha_status_enum"), nullable=False
-    )
-    dificuldade_final: Mapped[int] = mapped_column(Integer, nullable=False)
-    tentativas_total: Mapped[int] = mapped_column(Integer, nullable=False)
-    started_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    finished_at: Mapped[datetime.datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now(), nullable=False
     )

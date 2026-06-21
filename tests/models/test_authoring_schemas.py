@@ -29,6 +29,13 @@ def test_add_item_rejects_target_that_does_not_match_type():
         AddItemRequest(type_item=TypeItemEnum.EXERCISE, resource_id=1)
 
 
+def test_add_item_accepts_single_matching_resource_target():
+    """Resource-backed sub-steps are valid for text and video activities."""
+    request = AddItemRequest(type_item=TypeItemEnum.RESOURCE, resource_id=1)
+
+    assert request.resource_id == 1
+
+
 def test_add_item_accepts_single_matching_target():
     """One matching target is valid."""
     request = AddItemRequest(type_item=TypeItemEnum.EXERCISE, exercise_id=5)

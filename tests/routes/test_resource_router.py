@@ -24,7 +24,11 @@ def _make_subject(client, admin_headers, name=None):
 def _make_content(client, admin_headers, subject_id):
     resp = client.post(
         "/api/admin/content",
-        json={"subject_id": subject_id, "title": f"Content {uuid.uuid4()}", "description": ""},
+        json={
+            "subject_id": subject_id,
+            "title": f"Content {uuid.uuid4()}",
+            "description": "Resource test content.",
+        },
         headers=admin_headers,
     )
     return int(resp.json()["id"])

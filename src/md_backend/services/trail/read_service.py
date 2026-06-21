@@ -116,12 +116,93 @@ class TrailReadService:
         items = await self._items_for_sub_path(session=session, sub_path_id=sub_path_id)
 
         sub_steps: list[dict] = []
-        quiz_questions: list[dict] = []
-        quiz_item_ids: list[int] = []
+        grouped_items: dict[str, list[SubPathItem]] = {}
+        group_order: list[str] = []
         order = 1
 
         for item in items:
-            if item.type_item == TypeItemEnum.EXERCISE:
+            if item.type_item == TypeItemEnum.EXERCISE and not item.group_key:
+                group_key = f"legacy-quiz-{sub_path_id}"
+            else:
+                group_key = item.group_key or f"item-{item.id}"
+            if group_key not in grouped_items:
+                grouped_items[group_key] = []
+                group_order.append(group_key)
+            grouped_items[group_key].append(item)
+
+        for group_key in group_order:
+            group_items = grouped_items[group_key]
+            first_item = group_items[0]
+
+            if first_item.type_item == TypeItemEnum.EXERCISE:
+                quiz_questions: list[dict] = []
+                quiz_item_ids: list[int] = []
+                for item in group_items:
+                    if item.type_item != TypeItemEnum.EXERCISE:
+                        continue
+                    exercise = item.exercise
+                    if exercise is None or not exercise.options:
+                        continue
+                    quiz_questions.append(
+                        {
+                            "id": str(exercise.id),
+                            "question": exercise.statement,
+                            "options": [
+                                {"id": str(option.id), "label": option.text}
+                                for option in exercise.options
+                            ],
+                            "subject": subject_payload,
+                        }
+                    )
+                    quiz_item_ids.append(item.id)
+
+                if quiz_questions:
+                    quiz_id = (
+                        f"quiz-{sub_path_id}"
+                        if group_key.startswith("legacy-quiz-")
+                        else f"quiz-{sub_path_id}-{group_key}"
+                    )
+                    sub_steps.append(
+                        {
+                            "id": quiz_id,
+                            "item_id": str(quiz_item_ids[0]),
+                            "item_ids": [str(item_id) for item_id in quiz_item_ids],
+                            "kind": "question",
+                            "title": first_item.title or "Questões",
+                            "description": first_item.description or "",
+                            "order": order,
+                            "status": "locked",
+                            "questions": quiz_questions,
+                        }
+                    )
+                    order += 1
+                continue
+
+            resource = first_item.resource
+            if resource is None:
+                continue
+            kind = "video" if resource.type == ResourceTypeEnum.VIDEO else "text"
+            sub_steps.append(
+                {
+                    "id": str(resource.id),
+                    "item_id": str(first_item.id),
+                    "item_ids": [str(first_item.id)],
+                    "kind": kind,
+                    "title": first_item.title or resource.title,
+                    "description": first_item.description or "",
+                    "order": order,
+                    "status": "locked",
+                    "questions": [],
+                }
+            )
+            order += 1
+
+        if not sub_steps:
+            quiz_questions: list[dict] = []
+            quiz_item_ids: list[int] = []
+            for item in items:
+                if item.type_item != TypeItemEnum.EXERCISE:
+                    continue
                 exercise = item.exercise
                 if exercise is None or not exercise.options:
                     continue
@@ -137,41 +218,21 @@ class TrailReadService:
                     }
                 )
                 quiz_item_ids.append(item.id)
-                continue
 
-            resource = item.resource
-            if resource is None:
-                continue
-            kind = "video" if resource.type == ResourceTypeEnum.VIDEO else "text"
-            sub_steps.append(
-                {
-                    "id": str(resource.id),
-                    "item_id": str(item.id),
-                    "item_ids": [str(item.id)],
-                    "kind": kind,
-                    "title": resource.title,
-                    "description": "",
-                    "order": order,
-                    "status": "locked",
-                    "questions": [],
-                }
-            )
-            order += 1
-
-        if quiz_questions:
-            sub_steps.append(
-                {
-                    "id": f"quiz-{sub_path_id}",
-                    "item_id": str(quiz_item_ids[0]),
-                    "item_ids": [str(item_id) for item_id in quiz_item_ids],
-                    "kind": "question",
-                    "title": "Questões",
-                    "description": "",
-                    "order": order,
-                    "status": "locked",
-                    "questions": quiz_questions,
-                }
-            )
+            if quiz_questions:
+                sub_steps.append(
+                    {
+                        "id": f"quiz-{sub_path_id}",
+                        "item_id": str(quiz_item_ids[0]),
+                        "item_ids": [str(item_id) for item_id in quiz_item_ids],
+                        "kind": "question",
+                        "title": "Questões",
+                        "description": "",
+                        "order": order,
+                        "status": "locked",
+                        "questions": quiz_questions,
+                    }
+                )
 
         completed_item_ids: set[int] = set()
         if sub_steps and step_status == "available":
@@ -386,8 +447,8 @@ class TrailReadService:
             steps.append(
                 {
                     "id": str(sub_path.id),
-                    "title": f"Etapa {order}",
-                    "description": None,
+                    "title": sub_path.title or f"Etapa {order}",
+                    "description": sub_path.description,
                     "order": order,
                     "status": step_status,
                     "sub_steps": sub_steps,

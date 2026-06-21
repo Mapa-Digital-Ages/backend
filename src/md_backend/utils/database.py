@@ -238,6 +238,22 @@ async def _migrate_sub_path_ordering(conn: AsyncConnection) -> None:
         await _execute_optional_ddl(conn, stmt)
 
 
+async def _migrate_trail_authoring_metadata(conn: AsyncConnection) -> None:
+    """Add editable trail authoring metadata to existing databases."""
+    if conn.dialect.name != "postgresql":
+        return
+    for stmt in [
+        "ALTER TABLE paths ADD COLUMN IF NOT EXISTS eixo TEXT NULL",
+        "ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS content_id INTEGER REFERENCES contents(id)",
+        "ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS title VARCHAR(255) NULL",
+        "ALTER TABLE sub_paths ADD COLUMN IF NOT EXISTS description TEXT NULL",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS group_key VARCHAR(64) NULL",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS title VARCHAR(255) NULL",
+        "ALTER TABLE sub_paths_item ADD COLUMN IF NOT EXISTS description TEXT NULL",
+    ]:
+        await _execute_optional_ddl(conn, stmt)
+
+
 async def _migrate_sub_path_item_targets(conn: AsyncConnection) -> None:
     """Replace the polymorphic sub_paths_item.item_id with real resource/exercise FKs."""
     if conn.dialect.name != "postgresql":
@@ -292,5 +308,6 @@ async def init_db() -> None:
         await _drop_partnership_student_support_table(conn)
         await _migrate_student_path_progress(conn)
         await _migrate_sub_path_ordering(conn)
+        await _migrate_trail_authoring_metadata(conn)
         await _migrate_sub_path_item_targets(conn)
         await _migrate_content_fk_naming(conn)

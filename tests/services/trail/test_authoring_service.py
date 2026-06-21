@@ -90,22 +90,17 @@ class TestTrailAuthoringService(unittest.IsolatedAsyncioTestCase):
                     rule_value=None,
                 )
 
-    async def test_create_full_path_from_existing_resource_and_exercise(self):
-        """The service assembles a path from existing content rows."""
+    async def test_add_item_accepts_resources_for_text_or_video_steps(self):
+        """Trail sub-items can reference resources for non-question steps."""
         async with AsyncSessionLocal() as session:
             content = await self._seed_content(session)
-            exercise = Exercise(
-                content_id=content.id,
-                statement="Quanto é 1+1?",
-                difficulty=DifficultyEnum.EASY,
-            )
             resource = Resource(
                 content_id=content.id,
                 type=ResourceTypeEnum.LINK,
                 title="Material",
                 file_url="https://example.com",
             )
-            session.add_all([exercise, resource])
+            session.add(resource)
             await session.flush()
 
             path_id = await self.service.create_path(session, content.id, "Trilha", "Desc")
@@ -115,12 +110,35 @@ class TestTrailAuthoringService(unittest.IsolatedAsyncioTestCase):
                 difficulty=DifficultyEnum.EASY,
                 order=1,
             )
-            resource_item_id = await self.service.add_item(
+
+            item_id = await self.service.add_item(
                 session,
                 sub_path_id=sub_path_id,
                 type_item=TypeItemEnum.RESOURCE,
                 resource_id=resource.id,
                 exercise_id=None,
+                order=1,
+            )
+
+            self.assertGreater(item_id, 0)
+
+    async def test_create_full_path_from_existing_exercise(self):
+        """The service assembles a quiz path from existing exercise rows."""
+        async with AsyncSessionLocal() as session:
+            content = await self._seed_content(session)
+            exercise = Exercise(
+                content_id=content.id,
+                statement="Quanto é 1+1?",
+                difficulty=DifficultyEnum.EASY,
+            )
+            session.add(exercise)
+            await session.flush()
+
+            path_id = await self.service.create_path(session, content.id, "Trilha", "Desc")
+            sub_path_id = await self.service.add_sub_path(
+                session,
+                path_id=path_id,
+                difficulty=DifficultyEnum.EASY,
                 order=1,
             )
             exercise_item_id = await self.service.add_item(
@@ -134,5 +152,4 @@ class TestTrailAuthoringService(unittest.IsolatedAsyncioTestCase):
 
             self.assertGreater(path_id, 0)
             self.assertGreater(sub_path_id, 0)
-            self.assertGreater(resource_item_id, 0)
             self.assertGreater(exercise_item_id, 0)
