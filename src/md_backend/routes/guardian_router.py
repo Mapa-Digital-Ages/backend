@@ -10,6 +10,7 @@ from md_backend.models.api_models import (
     GuardianBatchResponse,
     GuardianCreateRequest,
     GuardianListPaginatedResponse,
+    GuardianOptionResponse,
     GuardianResponse,
     GuardianUpdateRequest,
 )
@@ -21,6 +22,22 @@ from md_backend.utils.security import get_current_approved_user, get_current_sup
 guardian_service = GuardianService()
 csv_processor = CSVProcessorService()
 guardian_router = APIRouter(prefix="/guardian")
+
+
+@guardian_router.get("/options", response_model=list[GuardianOptionResponse])
+async def list_guardian_options(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """List approved guardians for student forms used by admins and schools."""
+    if not current_user.get("is_superadmin") and not current_user.get("is_school"):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    options = await guardian_service.get_approved_guardian_options(session=session)
+    return JSONResponse(content=options, status_code=status.HTTP_200_OK)
 
 
 @guardian_router.post(

@@ -49,6 +49,27 @@ def _create_student(client, admin_headers, email):
     return resp.json()["user_id"]
 
 
+def _create_school_headers(client, admin_headers):
+    email = f"guardian_options_school_{uuid.uuid4().hex[:8]}@example.com"
+    password = "schoolpass123"
+    resp = client.post(
+        "/api/school",
+        json={
+            "first_name": "Options",
+            "last_name": "School",
+            "email": email,
+            "password": password,
+            "is_private": True,
+        },
+        headers=admin_headers,
+    )
+    login = client.post(
+        "/api/login",
+        json={"email": email, "password": password},
+    )
+    return resp.json()["user_id"], {"Authorization": f"Bearer {login.json()['token']}"}
+
+
 class TestGuardianSelfRoutes(unittest.TestCase):
     """End-to-end tests for /guardian/me routes used by the parent module."""
 
@@ -210,6 +231,37 @@ class TestGuardianAdminRoutes(unittest.TestCase):
             "/api/guardian", params={"guardian_status": "waiting"}, headers=self.admin_headers
         )
         self.assertEqual(resp.status_code, 200)
+
+    def test_school_can_list_minimal_approved_guardian_options(self):
+        guardian_id, _ = _create_guardian(
+            self.client,
+            self.admin_headers,
+            f"guardian_option_{uuid.uuid4().hex[:6]}@example.com",
+        )
+        _, school_headers = _create_school_headers(self.client, self.admin_headers)
+
+        resp = self.client.get("/api/guardian/options", headers=school_headers)
+
+        self.assertEqual(resp.status_code, 200)
+        guardian = next(item for item in resp.json() if item["id"] == guardian_id)
+        self.assertEqual(
+            set(guardian),
+            {"id", "first_name", "last_name"},
+        )
+
+    def test_guardian_cannot_list_guardian_options(self):
+        token = create_approved_user(
+            self.client,
+            self.admin_headers,
+            f"guardian_options_denied_{uuid.uuid4().hex[:6]}@example.com",
+        )
+
+        resp = self.client.get(
+            "/api/guardian/options",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(resp.status_code, 403)
 
     def test_get_guardian_by_id_returns_200(self):
         email = f"guardian_getbyid_{uuid.uuid4().hex[:6]}@example.com"

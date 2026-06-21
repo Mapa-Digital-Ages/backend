@@ -122,6 +122,7 @@ async def get_current_approved_user(
         .options(
             selectinload(UserProfile.guardian_profile),
             selectinload(UserProfile.admin_profile),
+            selectinload(UserProfile.school_profile),
         )
         .where(UserProfile.id == user_id)
     )
@@ -154,12 +155,14 @@ async def get_current_approved_user(
 
     is_superadmin = bool(user.admin_profile and user.admin_profile.is_superadmin)
     is_guardian = user.guardian_profile is not None
+    is_school = user.school_profile is not None
 
     return {
         "user_id": str(user.id),
         "email": user.email,
         "is_superadmin": is_superadmin,
         "is_guardian": is_guardian,
+        "is_school": is_school,
     }
 
 
