@@ -2,6 +2,7 @@
 
 import datetime
 import uuid
+from typing import Literal
 
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
@@ -277,6 +278,73 @@ class SchoolListResponse(BaseModel):
     total: int
     page: int
     size: int
+
+
+class SchoolBatchRow(BaseModel):
+    """Schema for a single row of the school batch-import CSV.
+
+    Field names mirror the expected CSV headers exactly, so a dict built
+    from ``csv.DictReader`` can be unpacked straight into this model.
+    """
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+    phone_number: str | None = Field(default=None)
+    is_private: bool
+
+    @field_validator("last_name", mode="before")
+    @classmethod
+    def blank_last_name_to_none(cls, value):
+        """Treat an empty CSV cell as no last name instead of a literal ''."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+    @field_validator("phone_number", mode="before")
+    @classmethod
+    def blank_phone_to_none(cls, value):
+        """Treat an empty CSV cell as no phone number instead of a literal ''."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+    @field_validator("is_private", mode="before")
+    @classmethod
+    def parse_is_private(cls, value):
+        """Accept common CSV boolean spellings (true/false/1/0/yes/no)."""
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"true", "1", "yes", "y"}:
+                return True
+            if normalized in {"false", "0", "no", "n"}:
+                return False
+            raise ValueError("is_private must be a boolean-like value (true/false)")
+        return value
+
+
+class SchoolBatchErrorItem(BaseModel):
+    """Dados de um registro que falhou durante o batch import."""
+
+    row: int
+    email: str
+    reason: str
+    # Dados do elemento que deu erro
+    first_name: str | None = None
+    last_name: str | None = None
+    phone_number: str | None = None
+    is_private: bool | None = None
+
+
+class SchoolBatchResponse(BaseModel):
+    """Resposta unificada do batch import — sucesso total, parcial ou abortado."""
+
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[SchoolBatchErrorItem] = []
 
 
 class StudentUploadResponse(BaseModel):
@@ -845,3 +913,165 @@ class PartnershipAdminListResponse(BaseModel):
 
     items: list[PartnershipAdminResponse]
     total: int
+
+
+_STUDENT_CLASS_BY_CSV_YEAR = {
+    "5": ClassEnum.CLASS_5TH,
+    "6": ClassEnum.CLASS_6TH,
+    "7": ClassEnum.CLASS_7TH,
+    "8": ClassEnum.CLASS_8TH,
+    "9": ClassEnum.CLASS_9TH,
+}
+
+
+class StudentBatchRow(BaseModel):
+    """Schema for a single row of the student batch-import CSV."""
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+    phone_number: str | None = Field(default=None)
+    birth_date: datetime.date
+    student_class: ClassEnum
+    school_email: str | None = Field(default=None)
+    guardian_email: str | None = Field(default=None)
+
+    @field_validator("last_name", "phone_number", "school_email", "guardian_email", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        """Convert blank strings to None before validation."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+    @field_validator("birth_date", mode="before")
+    @classmethod
+    def parse_birth_date(cls, value):
+        """Parse a birth date string in YYYY-MM-DD to a date object.
+
+        Raises a ValueError from None when the format is invalid.
+        """
+        if isinstance(value, str):
+            try:
+                return datetime.date.fromisoformat(value.strip())
+            except ValueError as err:
+                raise ValueError("birth_date must be in YYYY-MM-DD format") from err
+        return value
+
+    @field_validator("student_class", mode="before")
+    @classmethod
+    def parse_student_class(cls, value):
+        """Convert the CSV school-year number into the internal ClassEnum.
+
+        Raises a ValueError from None when the value is invalid.
+        """
+        if isinstance(value, ClassEnum):
+            return value
+
+        if isinstance(value, str):
+            normalized = value.strip()
+            if normalized in _STUDENT_CLASS_BY_CSV_YEAR:
+                return _STUDENT_CLASS_BY_CSV_YEAR[normalized]
+            raise ValueError("student_class must be one of ['5', '6', '7', '8', '9']")
+        return value
+
+    def model_post_init(self, __context):
+        """Post-init hook to ensure at least one contact email is provided."""
+        if not self.school_email and not self.guardian_email:
+            raise ValueError("At least one of school_email or guardian_email must be provided")
+
+
+class StudentBatchErrorItem(BaseModel):
+    """Error item resulting from validating a student batch row."""
+
+    row: int
+    email: str
+    reason: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class StudentBatchResponse(BaseModel):
+    """Response model for student batch import results."""
+
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[StudentBatchErrorItem] = []
+
+
+class GuardianBatchRow(BaseModel):
+    """Schema for a single row of the guardian batch-import CSV."""
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+    phone_number: str | None = Field(default=None)
+
+    @field_validator("last_name", "phone_number", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        """Convert blank strings to None before validation."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+
+class GuardianBatchErrorItem(BaseModel):
+    """Error item resulting from validating a guardian batch row."""
+
+    row: int
+    email: str
+    reason: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class GuardianBatchResponse(BaseModel):
+    """Response model for guardian batch import results."""
+
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[GuardianBatchErrorItem] = []
+
+
+class CompanyBatchRow(BaseModel):
+    """Schema for a single row of the company batch-import CSV."""
+
+    first_name: str = Field(min_length=1)
+    last_name: str | None = Field(default=None)
+    email: EmailStr
+
+    @field_validator("last_name", mode="before")
+    @classmethod
+    def blank_to_none(cls, value):
+        """Convert blank last_name strings to None before validation."""
+        if isinstance(value, str) and value.strip() == "":
+            return None
+        return value
+
+
+class CompanyBatchErrorItem(BaseModel):
+    """Error item resulting from validating a company batch row."""
+
+    row: int
+    email: str
+    reason: str
+    first_name: str | None = None
+    last_name: str | None = None
+
+
+class CompanyBatchResponse(BaseModel):
+    """Response model for company batch import results."""
+
+    status: Literal["completed", "partial", "aborted"]
+    total_processed: int
+    created: int
+    failed: int
+    message: str
+    errors: list[CompanyBatchErrorItem] = []

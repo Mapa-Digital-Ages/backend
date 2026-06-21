@@ -3,12 +3,13 @@
 import uuid
 from typing import Any
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
 from fastapi.responses import JSONResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    CompanyBatchResponse,
     CompanyPartnershipListResponse,
     CompanyResponse,
     CreateCompanyRequest,
@@ -19,11 +20,13 @@ from md_backend.models.api_models import (
 )
 from md_backend.models.db_models import PartnershipStatusEnum
 from md_backend.services.company_service import CompanyService
+from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 from md_backend.services.school_service import SchoolService
 from md_backend.utils.database import get_db_session
-from md_backend.utils.security import get_current_approved_user
+from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 company_service = CompanyService()
+csv_processor = CSVProcessorService()
 school_service = SchoolService()
 company_router = APIRouter(prefix="/company", tags=["Company"])
 _VISIBLE_PARTNERSHIP_STATUSES = {"pending", "approved"}
@@ -58,6 +61,37 @@ async def create_company(
         )
 
     return result
+
+
+@company_router.post(
+    "/batch",
+    response_model=CompanyBatchResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def batch_import_companies(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Batch import companies from a CSV file. Superadmin only."""
+    raw = await file.read()
+    try:
+        result = await company_service.import_from_csv(
+            raw_content=raw,
+            session=session,
+            csv_processor=csv_processor,
+            background_tasks=background_tasks,
+        )
+    except CSVHeaderError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    http_status = (
+        status.HTTP_200_OK if result.status == "completed" else status.HTTP_400_BAD_REQUEST
+    )
+    return JSONResponse(content=result.model_dump(), status_code=http_status)
 
 
 @company_router.get("", response_model=list[CompanyResponse])

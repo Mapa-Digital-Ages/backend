@@ -336,3 +336,59 @@ class TestGuardianAdminRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         students = resp.json().get("students", [])
         self.assertTrue(any(s["user_id"] == student_id for s in students))
+
+
+class TestGuardianBatchImport(unittest.TestCase):
+    """Integration tests for POST /api/guardian/batch."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        header = "first_name,last_name,email,phone_number\n"
+        lines = [
+            f"{r.get('first_name', '')},"
+            f"{r.get('last_name', '')},{r.get('email', '')},"
+            f"{r.get('phone_number', '')}"
+            for r in rows
+        ]
+        return (header + "\n".join(lines)).encode("utf-8")
+
+    def test_empty_phone_number_is_accepted_and_stored_as_null(self):
+        email = f"guardian_batch_{uuid.uuid4().hex[:6]}@example.com"
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Maria",
+                    "last_name": "Souza",
+                    "email": email,
+                    "phone_number": "",
+                }
+            ]
+        )
+
+        response = self.client.post(
+            "/api/guardian/batch",
+            files={"file": ("guardians.csv", csv_bytes, "text/csv")},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "completed")
+        self.assertEqual(body["created"], 1)
+        self.assertEqual(body["failed"], 0)
+
+        list_resp = self.client.get(
+            "/api/guardian", params={"email": email}, headers=self.admin_headers
+        )
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertIsNone(items[0]["phone_number"])
+        self.assertEqual(items[0]["guardian_status"], "approved")

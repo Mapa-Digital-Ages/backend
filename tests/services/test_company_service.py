@@ -1,6 +1,7 @@
 """Unit and integration tests for CompanyService and /company router."""
 
 import asyncio
+import io
 import unittest
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -649,3 +650,75 @@ class TestUpdateCompanyRequestDTO(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             UpdateCompanyRequest(email="not-an-email")
+
+
+class TestCompanyBatchImport(unittest.TestCase):
+    """Integration tests for POST /api/company/batch."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from md_backend.main import app
+
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        buffer = io.StringIO()
+        buffer.write("first_name,last_name,email\n")
+        for r in rows:
+            buffer.write(
+                f"{r.get('first_name', '')},{r.get('last_name', '')},{r.get('email', '')}\n"
+            )
+        return buffer.getvalue().encode("utf-8")
+
+    def test_duplicate_email_returns_400_and_created_zero(self):
+        duplicate_email = f"company_batch_dup_{uuid.uuid4().hex[:6]}@example.com"
+
+        self.client.post(
+            "/api/company",
+            json={
+                "first_name": "Existing",
+                "last_name": "Company",
+                "email": duplicate_email,
+                "password": "pass12345",
+                "spots": 5,
+            },
+            headers=self.admin_headers,
+        )
+
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Empresa1",
+                    "last_name": "A",
+                    "email": f"empresa1_{uuid.uuid4().hex[:6]}@example.com",
+                },
+                {
+                    "first_name": "Empresa2",
+                    "last_name": "B",
+                    "email": f"empresa2_{uuid.uuid4().hex[:6]}@example.com",
+                },
+                {
+                    "first_name": "Empresa3",
+                    "last_name": "C",
+                    "email": f"empresa3_{uuid.uuid4().hex[:6]}@example.com",
+                },
+                {"first_name": "Duplicada", "last_name": "D", "email": duplicate_email},
+            ]
+        )
+
+        response = self.client.post(
+            "/api/company/batch",
+            files={"file": ("companies.csv", csv_bytes, "text/csv")},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["status"], "aborted")
+        self.assertEqual(body["created"], 0)
