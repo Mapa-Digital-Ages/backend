@@ -92,13 +92,20 @@ async def create_student(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Restricted to superadmin or approved guardian users."""
+    """Create a student as an admin, guardian, or the student's own school."""
     is_superadmin = current_user.get("is_superadmin")
     is_guardian = current_user.get("is_guardian")
+    is_school = current_user.get("is_school")
 
-    if not is_superadmin and not is_guardian:
+    if not is_superadmin and not is_guardian and not is_school:
         return JSONResponse(
             content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    if is_school and str(request.school_id) != current_user["user_id"]:
+        return JSONResponse(
+            content={"detail": "Schools may only create their own students"},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -126,7 +133,7 @@ async def create_student(
             guardian_id=uuid.UUID(current_user["user_id"]),
             student_id=uuid.UUID(result["user_id"]),
         )
-    elif is_superadmin and request.guardian_id is not None:
+    elif (is_superadmin or is_school) and request.guardian_id is not None:
         await guardian_service.link_student_to_guardian(
             session=session,
             guardian_id=request.guardian_id,

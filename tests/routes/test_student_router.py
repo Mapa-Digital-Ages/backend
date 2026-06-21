@@ -68,6 +68,29 @@ def _create_guardian_with_token(
     return guardian_id, _login_token(client, guardian_email, password)
 
 
+def _create_school_with_headers(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    email: str | None = None,
+    password: str = "schoolpass123",
+) -> tuple[str, dict[str, str]]:
+    school_email = email or f"school_{uuid.uuid4().hex[:8]}@example.com"
+    response = client.post(
+        "/api/school",
+        json={
+            "first_name": "School",
+            "last_name": "Owner",
+            "email": school_email,
+            "password": password,
+            "is_private": True,
+        },
+        headers=admin_headers,
+    )
+    school_id = response.json()["user_id"]
+    token = _login_token(client, school_email, password)
+    return school_id, {"Authorization": f"Bearer {token}"}
+
+
 def _link_guardian_to_student(
     client: TestClient,
     admin_headers: dict[str, str],
@@ -320,6 +343,53 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(login_response.status_code, 200)
         self.assertEqual(login_response.json()["role"], "student")
+
+    def test_school_can_create_own_student_and_link_approved_guardian(self):
+        from md_backend.models.db_models import StudentGuardian
+        from md_backend.utils.database import AsyncSessionLocal
+
+        school_id, school_headers = _create_school_with_headers(self.client, self.admin_headers)
+        guardian_id, _ = _create_guardian_with_token(self.client, self.admin_headers)
+        payload = {
+            **_student_payload(f"school_owned_{uuid.uuid4().hex[:8]}@example.com"),
+            "school_id": school_id,
+            "guardian_id": guardian_id,
+        }
+
+        response = self.client.post("/api/student", json=payload, headers=school_headers)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["school_id"], school_id)
+        student_id = uuid.UUID(response.json()["user_id"])
+
+        async def fetch_link():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(StudentGuardian).where(
+                        StudentGuardian.guardian_id == uuid.UUID(guardian_id),
+                        StudentGuardian.student_id == student_id,
+                        StudentGuardian.deactivated_at.is_(None),
+                    )
+                )
+                return result.scalar_one_or_none()
+
+        self.assertIsNotNone(asyncio.run(fetch_link()))
+
+    def test_school_cannot_create_student_for_another_school(self):
+        _, school_headers = _create_school_with_headers(self.client, self.admin_headers)
+        other_school_id, _ = _create_school_with_headers(self.client, self.admin_headers)
+        payload = {
+            **_student_payload(f"wrong_school_{uuid.uuid4().hex[:8]}@example.com"),
+            "school_id": other_school_id,
+        }
+
+        response = self.client.post("/api/student", json=payload, headers=school_headers)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"],
+            "Schools may only create their own students",
+        )
 
     # ------------------------------------------------------------------
     # GET /student (list)

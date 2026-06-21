@@ -26,6 +26,7 @@ def _build_user(
     guardian_status=GuardianStatusEnum.APPROVED,
     has_admin=False,
     is_superadmin=False,
+    has_school=False,
 ):
     user = MagicMock()
     user.id = uuid.uuid4()
@@ -45,6 +46,7 @@ def _build_user(
         user.admin_profile = admin
     else:
         user.admin_profile = None
+    user.school_profile = MagicMock() if has_school else None
     return user
 
 
@@ -155,6 +157,14 @@ class TestGetCurrentApprovedUser(unittest.TestCase):
             get_current_approved_user(payload=self._payload(user.id), session=session)
         )
         self.assertTrue(result["is_superadmin"])
+
+    def test_school_returns_school_true(self):
+        user = _build_user(has_school=True)
+        session = _session_with_user(user)
+        result = asyncio.run(
+            get_current_approved_user(payload=self._payload(user.id), session=session)
+        )
+        self.assertTrue(result["is_school"])
 
 
 class TestGetCurrentSuperadmin(unittest.TestCase):

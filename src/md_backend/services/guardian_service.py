@@ -187,6 +187,27 @@ class GuardianService:
             "size": size,
         }
 
+    async def get_approved_guardian_options(self, session: AsyncSession) -> list[dict]:
+        """Return the minimal data needed to select an approved guardian."""
+        result = await session.execute(
+            select(UserProfile)
+            .join(GuardianProfile, GuardianProfile.user_id == UserProfile.id)
+            .where(
+                UserProfile.is_active.is_(True),
+                GuardianProfile.deactivated_at.is_(None),
+                GuardianProfile.guardian_status == GuardianStatusEnum.APPROVED,
+            )
+            .order_by(UserProfile.first_name, UserProfile.last_name, UserProfile.id)
+        )
+        return [
+            {
+                "id": str(user.id),
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            }
+            for user in result.scalars().all()
+        ]
+
     async def get_guardian_by_id(
         self, session: AsyncSession, guardian_id: uuid.UUID
     ) -> dict | None:

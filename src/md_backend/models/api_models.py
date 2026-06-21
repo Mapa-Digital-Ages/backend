@@ -226,6 +226,14 @@ class GuardianListPaginatedResponse(BaseModel):
     size: int
 
 
+class GuardianOptionResponse(BaseModel):
+    """Minimal guardian data exposed in student relationship selectors."""
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str | None
+
+
 class CreateSchoolRequest(BaseModel):
     """Request body for POST /school."""
 
