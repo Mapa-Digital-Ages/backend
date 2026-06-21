@@ -87,7 +87,7 @@ class TrailReadService:
         self, session: AsyncSession, sub_path_id: int
     ) -> list[SubPathItem]:
         """Load sub-path items with their target content."""
-        return (
+        return list(
             (
                 await session.execute(
                     select(SubPathItem)

@@ -164,6 +164,7 @@ class TrailProgressService:
                 destination_id=transition.sub_path_destination_id,
             )
             for transition in transitions
+            if transition.rule_type is not None
         ]
         fallback_next_id = await self._fallback_next_sub_path(
             session=session, path_id=path_id, sub_path_id=sub_path_id
@@ -186,7 +187,7 @@ class TrailProgressService:
                 await session.execute(select(Option).where(Option.id == answer["option_id"]))
             ).scalar_one_or_none()
             exercise_matches = option is not None and option.exercise_id == answer["exercise_id"]
-            if expected_exercise_id is not None:
+            if option is not None and expected_exercise_id is not None:
                 exercise_matches = exercise_matches and option.exercise_id == expected_exercise_id
             is_correct = bool(option is not None and option.correct and exercise_matches)
             if is_correct:
@@ -244,10 +245,11 @@ class TrailProgressService:
             ).one_or_none()
             if row is None:
                 return None
-            item, sub_path = row
+            selected_item, sub_path = row
+            item = selected_item
             sub_path_id = sub_path.id
-            if item.type_item == TypeItemEnum.EXERCISE:
-                expected_exercise_id = item.exercise_id
+            if selected_item.type_item == TypeItemEnum.EXERCISE:
+                expected_exercise_id = selected_item.exercise_id
         elif sub_path_id is None:
             return None
 

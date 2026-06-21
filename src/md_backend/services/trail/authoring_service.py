@@ -150,7 +150,7 @@ class TrailAuthoringService:
     async def _serialize_sub_steps(
         self,
         session: AsyncSession,
-        items: list[SubPathItem],
+        items: Sequence[SubPathItem],
     ) -> list[dict]:
         """Serialize sub-path items as editable admin sub-steps."""
         grouped: dict[str, list[SubPathItem]] = {}
