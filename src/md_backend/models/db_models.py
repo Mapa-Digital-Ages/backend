@@ -85,19 +85,34 @@ class UserProfile(Base):
 
     # 1:1 Relationships
     admin_profile: Mapped[Optional["AdminProfile"]] = relationship(
-        "AdminProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "AdminProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     student_profile: Mapped[Optional["StudentProfile"]] = relationship(
-        "StudentProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "StudentProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     company_profile: Mapped[Optional["CompanyProfile"]] = relationship(
-        "CompanyProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "CompanyProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     school_profile: Mapped[Optional["SchoolProfile"]] = relationship(
-        "SchoolProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "SchoolProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     guardian_profile: Mapped[Optional["GuardianProfile"]] = relationship(
-        "GuardianProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "GuardianProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     password_reset_codes: Mapped[list["PasswordResetCode"]] = relationship(
         "PasswordResetCode", back_populates="user", cascade="all, delete-orphan"
@@ -188,9 +203,12 @@ class CompanyProfile(Base):
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="company_profile")
     schools: Mapped[list["SchoolProfile"]] = relationship(
-        "SchoolProfile", secondary="school_company_partnership", back_populates="companies"
+        "SchoolProfile",
+        secondary="school_company_partnership",
+        back_populates="companies",
     )
 
 
@@ -203,17 +221,19 @@ class SchoolProfile(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
     )
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
     deactivated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="school_profile")
     students: Mapped[list["StudentProfile"]] = relationship(
         "StudentProfile", back_populates="school"
     )
     companies: Mapped[list["CompanyProfile"]] = relationship(
-        "CompanyProfile", secondary="school_company_partnership", back_populates="schools"
+        "CompanyProfile",
+        secondary="school_company_partnership",
+        back_populates="schools",
     )
 
     sponsorship_requests: Mapped[list["SponsorshipRequest"]] = relationship(
@@ -228,7 +248,10 @@ class SponsorshipRequest(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False, index=True
+        Uuid(as_uuid=True),
+        ForeignKey("school_profile.user_id"),
+        nullable=False,
+        index=True,
     )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -447,6 +470,7 @@ class Resource(Base):
     )
 
     content: Mapped["Content"] = relationship("Content", back_populates="resources")
+    url_or_contents: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class Exercise(Base):
@@ -644,7 +668,10 @@ class WellBeing(Base):
     __tablename__ = "well_being"
 
     student_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), primary_key=True, nullable=False
+        Uuid(as_uuid=True),
+        ForeignKey("student_profile.user_id"),
+        primary_key=True,
+        nullable=False,
     )
     date: Mapped[datetime.date] = mapped_column(
         Date, primary_key=True, server_default=func.current_date()

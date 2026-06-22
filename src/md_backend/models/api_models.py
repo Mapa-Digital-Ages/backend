@@ -261,6 +261,7 @@ class UpdateSchoolRequest(BaseModel):
     last_name: str | None = Field(default=None, min_length=1)
     email: EmailStr | None = None
     is_private: bool | None = None
+    requested_spots: int | None = None
 
 
 class SchoolResponse(BaseModel):
@@ -273,6 +274,7 @@ class SchoolResponse(BaseModel):
     last_name: str | None
     is_private: bool
 
+    requested_spots: int | None
     is_active: bool
     deactivated_at: str | None
     created_at: str
@@ -393,6 +395,7 @@ class ResourceUploadRequest(BaseModel):
         default=None,
         description="URL for link type resources or additional content",
     )
+    description: str | None = None
 
 
 class UpdateUploadRequest(BaseModel):
@@ -463,6 +466,7 @@ class CompanyResponse(BaseModel):
     name: str
     spots: int
 
+    available_spots: int
     status: str
     created_at: str
 

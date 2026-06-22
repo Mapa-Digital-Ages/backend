@@ -8,7 +8,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 
-import tests.keys_test  # noqa: F401
+import tests.keys_test  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from md_backend.main import app
 from md_backend.utils.database import engine
 from tests.helpers import create_approved_user, get_admin_headers, get_admin_id

@@ -44,6 +44,9 @@ jobs:
           echo "LLM_GENERATION_MAX_RETRIES=${{ secrets.LLM_GENERATION_MAX_RETRIES }}" >> .env
           echo "TRILHA_TTL_SECONDS=${{ secrets.TRILHA_TTL_SECONDS }}" >> .env
 
+
+          echo "SMTP_USERNAME=${{ secrets.SMTP_USERNAME }}" >> .env
+          echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> .env
       - name: Subir containers de produção
         run: |
           docker compose -f docker-compose-prod.yml down

@@ -67,5 +67,8 @@ class Settings(BaseSettings):
     # Trilha (adaptive trail)
     TRILHA_TTL_SECONDS: int = 3600
 
+    # Cloudfront
+    CLOUDFRONT_URL: str | None = None
+
 
 settings = Settings()  # type: ignore

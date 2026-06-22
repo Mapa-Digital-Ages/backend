@@ -307,14 +307,12 @@ async def _migrate_content_fk_naming(conn: AsyncConnection) -> None:
 async def init_db() -> None:
     """Create all database tables and apply lightweight schema compatibility fixes."""
     async with engine.begin() as conn:
-        await _migrate_sponsorship_tables(conn)
         await conn.run_sync(Base.metadata.create_all)
         await _ensure_item_progress_table(conn)
         await _ensure_user_last_name_nullable(conn)
         await _ensure_password_reset_expiry_nullable(conn)
         await _migrate_resources_table(conn)
         await _migrate_sponsorship_tables(conn)
-        await _ensure_user_last_name_nullable(conn)
         await _drop_partnership_student_support_table(conn)
         await _migrate_student_path_progress(conn)
         await _migrate_sub_path_ordering(conn)
