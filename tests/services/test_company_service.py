@@ -165,6 +165,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
         self.ctx = TestClient(app, raise_server_exceptions=False)
         self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -186,6 +187,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.post(
             "/api/company",
             json=self._payload("create_ok@company.com", spots=80),
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
         body = resp.json()
@@ -205,6 +207,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.post(
             "/api/company",
             json=self._payload(email) | {"last_name": None},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["name"], "Empresa")
@@ -226,7 +229,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         email = "company_missing_last@test.com"
         payload = self._payload(email)
         del payload["last_name"]
-        resp = self.client.post("/api/company", json=payload)
+        resp = self.client.post("/api/company", json=payload, headers=self.admin_headers)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["name"], "Empresa")
 
@@ -242,7 +245,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_created_company_logs_in_with_company_role(self):
         email = "company_role@test.com"
-        resp = self.client.post("/api/company", json=self._payload(email, spots=80))
+        resp = self.client.post(
+            "/api/company", json=self._payload(email, spots=80), headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 201)
 
         login_resp = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
@@ -250,8 +255,12 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertEqual(login_resp.json()["role"], "company")
 
     def test_create_company_duplicate_email_returns_409(self):
-        self.client.post("/api/company", json=self._payload("company_dup@test.com"))
-        resp = self.client.post("/api/company", json=self._payload("company_dup@test.com"))
+        self.client.post(
+            "/api/company", json=self._payload("company_dup@test.com"), headers=self.admin_headers
+        )
+        resp = self.client.post(
+            "/api/company", json=self._payload("company_dup@test.com"), headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 409)
         self.assertIn("ja cadastrado", resp.json()["detail"].lower())
 
@@ -261,7 +270,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
             new=AsyncMock(side_effect=IntegrityError("forced", {}, Exception("forced"))),
         ):
             resp = self.client.post(
-                "/api/company", json=self._payload("company_integrity@test.com")
+                "/api/company",
+                json=self._payload("company_integrity@test.com"),
+                headers=self.admin_headers,
             )
 
         self.assertEqual(resp.status_code, 409)
@@ -269,11 +280,13 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_create_company_invalid_email_returns_422(self):
         payload = self._payload("not-an-email")
-        resp = self.client.post("/api/company", json=payload)
+        resp = self.client.post("/api/company", json=payload, headers=self.admin_headers)
         self.assertEqual(resp.status_code, 422)
 
     def test_create_company_missing_required_fields_returns_422(self):
-        resp = self.client.post("/api/company", json={"email": "incomplete@test.com"})
+        resp = self.client.post(
+            "/api/company", json={"email": "incomplete@test.com"}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 422)
 
     # ------------------------------------------------------------------
@@ -281,10 +294,18 @@ class TestCompanyServiceIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_list_companies(self):
-        self.client.post("/api/company", json=self._payload("company_list_a@test.com"))
-        self.client.post("/api/company", json=self._payload("company_list_b@test.com"))
+        self.client.post(
+            "/api/company",
+            json=self._payload("company_list_a@test.com"),
+            headers=self.admin_headers,
+        )
+        self.client.post(
+            "/api/company",
+            json=self._payload("company_list_b@test.com"),
+            headers=self.admin_headers,
+        )
 
-        resp = self.client.get("/api/company")
+        resp = self.client.get("/api/company", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(isinstance(body, list))
@@ -303,9 +324,12 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "password": "senha1234",
                 "spots": 100,
             },
+            headers=self.admin_headers,
         )
 
-        resp = self.client.get("/api/company", params={"name": "olimpo"})
+        resp = self.client.get(
+            "/api/company", params={"name": "olimpo"}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 200)
         items = resp.json()
         self.assertTrue(len(items) >= 1)
@@ -324,6 +348,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "password": "senha1234",
                 "spots": 20,
             },
+            headers=self.admin_headers,
         )
         inactive_resp = self.client.post(
             "/api/company",
@@ -334,12 +359,13 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "password": "senha1234",
                 "spots": 20,
             },
+            headers=self.admin_headers,
         )
         self.assertEqual(active_resp.status_code, 201)
         self.assertEqual(inactive_resp.status_code, 201)
 
         inactive_id = inactive_resp.json()["user_id"]
-        self.client.delete(f"/api/company/{inactive_id}")
+        self.client.delete(f"/api/company/{inactive_id}", headers=self.admin_headers)
 
         admin_headers = get_admin_headers(self.client)
         resp = self.client.get(
@@ -357,11 +383,13 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_get_company_by_id_returns_correct_data(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_getbyid@test.com", spots=42)
+            "/api/company",
+            json=self._payload("company_getbyid@test.com", spots=42),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
-        resp = self.client.get(f"/api/company/{company_id}")
+        resp = self.client.get(f"/api/company/{company_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["user_id"], company_id)
@@ -371,7 +399,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertNotIn("password", body)
 
     def test_get_company_by_id_not_found_returns_404(self):
-        resp = self.client.get(f"/api/company/{uuid.uuid4()}")
+        resp = self.client.get(f"/api/company/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 404)
 
     # ------------------------------------------------------------------
@@ -380,7 +408,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_update_company_partial_updates_all_fields(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_upd_full@test.com")
+            "/api/company",
+            json=self._payload("company_upd_full@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
@@ -392,6 +422,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "email": "company_upd_full_new@test.com",
                 "spots": 200,
             },
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -404,13 +435,16 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         from md_backend.utils.database import AsyncSessionLocal
 
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_clear_last@test.com")
+            "/api/company",
+            json=self._payload("company_clear_last@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"last_name": None},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["name"], "Empresa")
@@ -426,15 +460,20 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertIsNone(user.last_name)
 
     def test_update_company_email_conflict_returns_409(self):
-        self.client.post("/api/company", json=self._payload("company_taken@test.com"))
+        self.client.post(
+            "/api/company", json=self._payload("company_taken@test.com"), headers=self.admin_headers
+        )
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_to_update@test.com")
+            "/api/company",
+            json=self._payload("company_to_update@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"email": "company_taken@test.com"},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 409)
 
@@ -442,12 +481,15 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/api/company/{uuid.uuid4()}",
             json={"first_name": "Fantasma"},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 404)
 
     def test_update_company_with_phone_and_is_active(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_phone_active@test.com")
+            "/api/company",
+            json=self._payload("company_phone_active@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
@@ -455,6 +497,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"phone_number": "123456789", "is_active": False},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -464,12 +507,15 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp2 = self.client.patch(
             f"/api/company/{company_id}",
             json={"is_active": True},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp2.status_code, 200)
 
     def test_update_company_invalid_spots_returns_400(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_invalid_spots@test.com", spots=10)
+            "/api/company",
+            json=self._payload("company_invalid_spots@test.com", spots=10),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
@@ -477,6 +523,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"spots": -1},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Nao e possivel reduzir o total de vagas para", resp.json()["detail"])
@@ -489,10 +536,14 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         from md_backend.models.db_models import CompanyProfile, UserProfile
         from md_backend.utils.database import AsyncSessionLocal
 
-        create_resp = self.client.post("/api/company", json=self._payload("company_deact@test.com"))
+        create_resp = self.client.post(
+            "/api/company",
+            json=self._payload("company_deact@test.com"),
+            headers=self.admin_headers,
+        )
         company_id = create_resp.json()["user_id"]
 
-        resp = self.client.delete(f"/api/company/{company_id}")
+        resp = self.client.delete(f"/api/company/{company_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 204)
 
         async def fetch():
@@ -507,7 +558,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertIsNotNone(user.deactivated_at)
 
     def test_deactivate_company_not_found_returns_404(self):
-        resp = self.client.delete(f"/api/company/{uuid.uuid4()}")
+        resp = self.client.delete(f"/api/company/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 404)
 
 
@@ -521,6 +572,7 @@ class TestCompanyPartnershipsListing(unittest.TestCase):
 
         self.ctx = TestClient(app, raise_server_exceptions=False)
         self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -535,6 +587,7 @@ class TestCompanyPartnershipsListing(unittest.TestCase):
                 "password": "senha1234",
                 "spots": spots,
             },
+            headers=self.admin_headers,
         )
         return resp.json()["user_id"]
 
