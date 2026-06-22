@@ -86,6 +86,7 @@ class TestAdminRouter(unittest.TestCase):
                 "password": company_password,
                 "spots": 20,
             },
+            headers=self.admin_headers,
         )
         company_id = company_response.json()["user_id"]
         company_login = self.test_client.post(
