@@ -221,8 +221,27 @@ class TestInitialPasswordSetup(unittest.TestCase):
             )
         )
 
-        sender.send_password_reset.assert_awaited_once_with(
+        sender.send_initial_password_setup.assert_awaited_once_with(
             to_email="new.user@example.com",
             code="975310",
-            expires_in_minutes=None,
         )
+
+    def test_initial_setup_email_uses_batch_link_sender_in_background(self):
+        sender = AsyncMock()
+        service = PasswordResetService(email_sender=sender)
+        background_tasks = MagicMock()
+
+        asyncio.run(
+            service.dispatch_initial_password_setup_email(
+                email="batch.user@example.com",
+                code="864209",
+                background_tasks=background_tasks,
+            )
+        )
+
+        background_tasks.add_task.assert_called_once_with(
+            sender.send_initial_password_setup,
+            to_email="batch.user@example.com",
+            code="864209",
+        )
+        sender.send_password_reset.assert_not_awaited()

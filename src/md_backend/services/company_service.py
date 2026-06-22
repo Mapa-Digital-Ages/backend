@@ -348,6 +348,7 @@ class CompanyService:
             "phone_number": company.user.phone_number,
             "name": build_full_name(company.user.first_name, company.user.last_name),
             "spots": company.spots,
+            "available_spots": company.available_spots,
             "status": "aguardando",
             "created_at": company.user.created_at.isoformat(),
         }
