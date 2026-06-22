@@ -421,6 +421,7 @@ class TestAdminServicePartnershipStatus(unittest.TestCase):
         )
 
         self.assertIsNone(result)
+        session.commit.assert_not_called()
 
         self.assertIsNone(result)
         session.commit.assert_not_called()

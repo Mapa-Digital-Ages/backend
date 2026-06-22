@@ -272,7 +272,6 @@ class SchoolResponse(BaseModel):
     first_name: str
     last_name: str | None
     is_private: bool
-
     is_active: bool
     deactivated_at: str | None
     created_at: str
@@ -462,7 +461,6 @@ class CompanyResponse(BaseModel):
     phone_number: str | None = None
     name: str
     spots: int
-
     status: str
     created_at: str
 
