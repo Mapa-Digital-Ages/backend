@@ -576,7 +576,6 @@ class SubPathItem(Base):
 
     resource: Mapped["Resource | None"] = relationship("Resource")
     exercise: Mapped["Exercise | None"] = relationship("Exercise")
-    item_id: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 class PathTransition(Base):
