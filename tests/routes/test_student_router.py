@@ -68,6 +68,29 @@ def _create_guardian_with_token(
     return guardian_id, _login_token(client, guardian_email, password)
 
 
+def _create_school_with_headers(
+    client: TestClient,
+    admin_headers: dict[str, str],
+    email: str | None = None,
+    password: str = "schoolpass123",
+) -> tuple[str, dict[str, str]]:
+    school_email = email or f"school_{uuid.uuid4().hex[:8]}@example.com"
+    response = client.post(
+        "/api/school",
+        json={
+            "first_name": "School",
+            "last_name": "Owner",
+            "email": school_email,
+            "password": password,
+            "is_private": True,
+        },
+        headers=admin_headers,
+    )
+    school_id = response.json()["user_id"]
+    token = _login_token(client, school_email, password)
+    return school_id, {"Authorization": f"Bearer {token}"}
+
+
 def _link_guardian_to_student(
     client: TestClient,
     admin_headers: dict[str, str],
@@ -320,6 +343,53 @@ class TestStudentRouterIntegration(unittest.TestCase):
         )
         self.assertEqual(login_response.status_code, 200)
         self.assertEqual(login_response.json()["role"], "student")
+
+    def test_school_can_create_own_student_and_link_approved_guardian(self):
+        from md_backend.models.db_models import StudentGuardian
+        from md_backend.utils.database import AsyncSessionLocal
+
+        school_id, school_headers = _create_school_with_headers(self.client, self.admin_headers)
+        guardian_id, _ = _create_guardian_with_token(self.client, self.admin_headers)
+        payload = {
+            **_student_payload(f"school_owned_{uuid.uuid4().hex[:8]}@example.com"),
+            "school_id": school_id,
+            "guardian_id": guardian_id,
+        }
+
+        response = self.client.post("/api/student", json=payload, headers=school_headers)
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["school_id"], school_id)
+        student_id = uuid.UUID(response.json()["user_id"])
+
+        async def fetch_link():
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(
+                    select(StudentGuardian).where(
+                        StudentGuardian.guardian_id == uuid.UUID(guardian_id),
+                        StudentGuardian.student_id == student_id,
+                        StudentGuardian.deactivated_at.is_(None),
+                    )
+                )
+                return result.scalar_one_or_none()
+
+        self.assertIsNotNone(asyncio.run(fetch_link()))
+
+    def test_school_cannot_create_student_for_another_school(self):
+        _, school_headers = _create_school_with_headers(self.client, self.admin_headers)
+        other_school_id, _ = _create_school_with_headers(self.client, self.admin_headers)
+        payload = {
+            **_student_payload(f"wrong_school_{uuid.uuid4().hex[:8]}@example.com"),
+            "school_id": other_school_id,
+        }
+
+        response = self.client.post("/api/student", json=payload, headers=school_headers)
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(
+            response.json()["detail"],
+            "Schools may only create their own students",
+        )
 
     # ------------------------------------------------------------------
     # GET /student (list)
@@ -1235,8 +1305,14 @@ class TestWellBeingAuthorizationAndHistory(unittest.TestCase):
         today = datetime.date.today()
         params = {"from": today.isoformat(), "to": today.isoformat()}
 
+        response = self.client.get(
+            f"/api/student/{self.student_id}/well-being/history",
+            params=params,
+            headers=self._auth_headers(self.student_token),
+        )
+        self.assertEqual(response.status_code, 200)
+
         for headers in (
-            self._auth_headers(self.student_token),
             self._auth_headers(self.other_student_token),
             self._auth_headers(self.other_guardian_token),
         ):
@@ -1493,3 +1569,62 @@ class TestStudentCalendar(unittest.TestCase):
     def test_unauthenticated_returns_401(self):
         response = self.client.get(f"/api/student/{self.student_id}/calendar")
         self.assertEqual(response.status_code, 401)
+
+
+class TestStudentBatchImport(unittest.TestCase):
+    """Integration tests for POST /api/student/batch."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        header = (
+            "first_name,last_name,email,phone_number,"
+            "birth_date,student_class,school_email,guardian_email\n"
+        )
+        lines = [
+            f"{r.get('first_name', '')},{r.get('last_name', '')},"
+            f"{r.get('email', '')},{r.get('phone_number', '')},"
+            f"{r.get('birth_date', '')},{r.get('student_class', '')},"
+            f"{r.get('school_email', '')},{r.get('guardian_email', '')}"
+            for r in rows
+        ]
+        return (header + "\n".join(lines)).encode("utf-8")
+
+    def test_nonexistent_school_email_returns_400_aborted_with_row(self):
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Ana",
+                    "last_name": "Silva",
+                    "email": f"ana_{uuid.uuid4().hex[:6]}@example.com",
+                    "phone_number": "",
+                    "birth_date": "2010-03-15",
+                    "student_class": "5",
+                    "school_email": "escola_inexistente@example.com",
+                    "guardian_email": "",
+                }
+            ]
+        )
+
+        response = self.client.post(
+            "/api/student/batch",
+            files={"file": ("students.csv", csv_bytes, "text/csv")},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["status"], "aborted")
+        self.assertEqual(body["created"], 0)
+        self.assertGreater(body["failed"], 0)
+        self.assertEqual(len(body["errors"]), 1)
+        error = body["errors"][0]
+        self.assertEqual(error["row"], 2)
+        self.assertIn("escola_inexistente@example.com", error["reason"])
+        print(response.status_code, response.json())

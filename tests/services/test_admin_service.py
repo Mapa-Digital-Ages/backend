@@ -6,8 +6,14 @@ import unittest
 import uuid
 from unittest.mock import AsyncMock, MagicMock
 
-import tests.keys_test  # noqa: F401
-from md_backend.models.db_models import GuardianStatusEnum
+import tests.keys_test  # noqa: F401  # pyright: ignore[reportUnusedImport]
+from md_backend.models.db_models import (
+    GuardianStatusEnum,
+    PartnershipStatusEnum,
+    SchoolCompanyPartnership,
+    SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
+)
 from md_backend.services.admin_service import AdminService
 
 
@@ -245,4 +251,174 @@ class TestAdminServiceUpdateStatus(unittest.TestCase):
 
         assert result is not None
         self.assertIn("error", result)
+        session.commit.assert_not_called()
+
+
+def _make_partnership(granted_spots: int = 5):
+    p = MagicMock(spec=SchoolCompanyPartnership)
+    p.id = uuid.uuid4()
+    p.school_id = uuid.uuid4()
+    p.company_id = uuid.uuid4()
+    p.request_id = uuid.uuid4()
+    p.granted_spots = granted_spots
+    p.status = PartnershipStatusEnum.PENDING
+    p.created_at = MagicMock()
+    p.created_at.isoformat.return_value = "2024-01-01T00:00:00"
+    return p
+
+
+def _make_sponsorship(remaining_spots: int, requested_spots: int = 10):
+    s = MagicMock(spec=SponsorshipRequest)
+    s.id = uuid.uuid4()
+    s.title = "Pedido de bolsas"
+    s.remaining_spots = remaining_spots
+    s.requested_spots = requested_spots
+    s.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+    return s
+
+
+def _session_with_partnership(partnership, sponsorship):
+    session = AsyncMock()
+
+    nested_cm = MagicMock()
+    nested_cm.__aenter__ = AsyncMock(return_value=None)
+    nested_cm.__aexit__ = AsyncMock(return_value=False)
+    session.begin_nested = MagicMock(return_value=nested_cm)
+
+    partnership_result = MagicMock()
+    partnership_result.one_or_none.return_value = (
+        partnership,
+        sponsorship,
+        _make_user(
+            user_id=partnership.school_id,
+            email="school@test.com",
+            first_name="Partner",
+            last_name="School",
+            has_guardian=False,
+        ),
+        _make_user(
+            user_id=partnership.company_id,
+            email="company@test.com",
+            first_name="Partner",
+            last_name="Company",
+            has_guardian=False,
+        ),
+    )
+
+    session.add = MagicMock()
+    session.execute = AsyncMock(side_effect=[partnership_result])
+    return session
+
+
+class TestAdminServiceListPartnerships(unittest.TestCase):
+    def test_list_partnerships_returns_enriched_items(self):
+        partnership = _make_partnership(granted_spots=5)
+        sponsorship = _make_sponsorship(remaining_spots=7, requested_spots=12)
+        school = _make_user(
+            user_id=partnership.school_id,
+            email="school@test.com",
+            first_name="Admin",
+            last_name="Partner School",
+            has_guardian=False,
+        )
+        company = _make_user(
+            user_id=partnership.company_id,
+            email="company@test.com",
+            first_name="Admin",
+            last_name="Partner Company",
+            has_guardian=False,
+        )
+
+        result_proxy = MagicMock()
+        result_proxy.all.return_value = [(partnership, sponsorship, school, company)]
+        session = AsyncMock()
+        session.execute = AsyncMock(return_value=result_proxy)
+
+        result = asyncio.run(AdminService().list_partnerships(session))
+
+        self.assertEqual(result["total"], 1)
+        item = result["items"][0]
+        self.assertEqual(item["school_name"], "Admin Partner School")
+        self.assertEqual(item["company_name"], "Admin Partner Company")
+        self.assertEqual(item["request_title"], "Pedido de bolsas")
+        self.assertEqual(item["requested_spots"], 12)
+        self.assertEqual(item["remaining_spots"], 7)
+        self.assertEqual(item["granted_spots"], 5)
+        self.assertEqual(item["status"], "pending")
+
+
+class TestAdminServicePartnershipStatus(unittest.TestCase):
+    def test_approve_sets_fulfilled_when_no_remaining_spots(self):
+        """Aprovação com remaining_spots == 0 define request como FULFILLED."""
+        partnership = _make_partnership(granted_spots=10)
+        sponsorship = _make_sponsorship(remaining_spots=0, requested_spots=10)
+        session = _session_with_partnership(partnership, sponsorship)
+
+        asyncio.run(AdminService().update_partnership_status(session, partnership.id, "APPROVED"))
+
+        self.assertEqual(partnership.status, PartnershipStatusEnum.APPROVED)
+        self.assertEqual(sponsorship.status, SponsorshipRequestStatusEnum.FULFILLED)
+
+    def test_approve_sets_partially_fulfilled_when_spots_remain(self):
+        """Aprovação com remaining_spots > 0 define request como PARTIALLY_FULFILLED."""
+        partnership = _make_partnership(granted_spots=3)
+        sponsorship = _make_sponsorship(remaining_spots=7, requested_spots=10)
+        session = _session_with_partnership(partnership, sponsorship)
+
+        asyncio.run(AdminService().update_partnership_status(session, partnership.id, "APPROVED"))
+
+        self.assertEqual(partnership.status, PartnershipStatusEnum.APPROVED)
+        self.assertEqual(sponsorship.status, SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED)
+
+    def test_reject_returns_spots_to_remaining(self):
+        """Rejeição devolve granted_spots ao remaining_spots da request."""
+        partnership = _make_partnership(granted_spots=5)
+        sponsorship = _make_sponsorship(remaining_spots=2, requested_spots=10)
+        session = _session_with_partnership(partnership, sponsorship)
+
+        asyncio.run(AdminService().update_partnership_status(session, partnership.id, "REJECTED"))
+
+        self.assertEqual(sponsorship.remaining_spots, 7)
+        self.assertEqual(partnership.status, PartnershipStatusEnum.REJECTED)
+
+    def test_reject_sets_open_when_all_spots_returned(self):
+        """Rejeição que restaura todas as vagas define request como OPEN."""
+        partnership = _make_partnership(granted_spots=10)
+        sponsorship = _make_sponsorship(remaining_spots=0, requested_spots=10)
+        session = _session_with_partnership(partnership, sponsorship)
+
+        asyncio.run(AdminService().update_partnership_status(session, partnership.id, "REJECTED"))
+
+        self.assertEqual(sponsorship.remaining_spots, 10)
+        self.assertEqual(sponsorship.status, SponsorshipRequestStatusEnum.OPEN)
+
+    def test_reject_sets_partially_fulfilled_when_spots_partially_returned(self):
+        """Rejeição parcial mantém request como PARTIALLY_FULFILLED."""
+        partnership = _make_partnership(granted_spots=3)
+        sponsorship = _make_sponsorship(remaining_spots=0, requested_spots=10)
+        session = _session_with_partnership(partnership, sponsorship)
+
+        asyncio.run(AdminService().update_partnership_status(session, partnership.id, "REJECTED"))
+
+        self.assertEqual(sponsorship.remaining_spots, 3)
+        self.assertEqual(sponsorship.status, SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED)
+
+    def test_returns_none_when_partnership_not_found(self):
+        """Retorna None quando a parceria não existe."""
+        session = AsyncMock()
+
+        nested_cm = MagicMock()
+        nested_cm.__aenter__ = AsyncMock(return_value=None)
+        nested_cm.__aexit__ = AsyncMock(return_value=False)
+        session.begin_nested = MagicMock(return_value=nested_cm)
+
+        not_found = MagicMock()
+        not_found.one_or_none.return_value = None
+        session.execute = AsyncMock(return_value=not_found)
+
+        result = asyncio.run(
+            AdminService().update_partnership_status(session, uuid.uuid4(), "APPROVED")
+        )
+
+        self.assertIsNone(result)
         session.commit.assert_not_called()

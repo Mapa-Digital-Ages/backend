@@ -49,6 +49,27 @@ def _create_student(client, admin_headers, email):
     return resp.json()["user_id"]
 
 
+def _create_school_headers(client, admin_headers):
+    email = f"guardian_options_school_{uuid.uuid4().hex[:8]}@example.com"
+    password = "schoolpass123"
+    resp = client.post(
+        "/api/school",
+        json={
+            "first_name": "Options",
+            "last_name": "School",
+            "email": email,
+            "password": password,
+            "is_private": True,
+        },
+        headers=admin_headers,
+    )
+    login = client.post(
+        "/api/login",
+        json={"email": email, "password": password},
+    )
+    return resp.json()["user_id"], {"Authorization": f"Bearer {login.json()['token']}"}
+
+
 class TestGuardianSelfRoutes(unittest.TestCase):
     """End-to-end tests for /guardian/me routes used by the parent module."""
 
@@ -211,6 +232,37 @@ class TestGuardianAdminRoutes(unittest.TestCase):
         )
         self.assertEqual(resp.status_code, 200)
 
+    def test_school_can_list_minimal_approved_guardian_options(self):
+        guardian_id, _ = _create_guardian(
+            self.client,
+            self.admin_headers,
+            f"guardian_option_{uuid.uuid4().hex[:6]}@example.com",
+        )
+        _, school_headers = _create_school_headers(self.client, self.admin_headers)
+
+        resp = self.client.get("/api/guardian/options", headers=school_headers)
+
+        self.assertEqual(resp.status_code, 200)
+        guardian = next(item for item in resp.json() if item["id"] == guardian_id)
+        self.assertEqual(
+            set(guardian),
+            {"id", "first_name", "last_name"},
+        )
+
+    def test_guardian_cannot_list_guardian_options(self):
+        token = create_approved_user(
+            self.client,
+            self.admin_headers,
+            f"guardian_options_denied_{uuid.uuid4().hex[:6]}@example.com",
+        )
+
+        resp = self.client.get(
+            "/api/guardian/options",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        self.assertEqual(resp.status_code, 403)
+
     def test_get_guardian_by_id_returns_200(self):
         email = f"guardian_getbyid_{uuid.uuid4().hex[:6]}@example.com"
         guardian_id, _ = _create_guardian(self.client, self.admin_headers, email)
@@ -336,3 +388,59 @@ class TestGuardianAdminRoutes(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         students = resp.json().get("students", [])
         self.assertTrue(any(s["user_id"] == student_id for s in students))
+
+
+class TestGuardianBatchImport(unittest.TestCase):
+    """Integration tests for POST /api/guardian/batch."""
+
+    def setUp(self):
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        header = "first_name,last_name,email,phone_number\n"
+        lines = [
+            f"{r.get('first_name', '')},"
+            f"{r.get('last_name', '')},{r.get('email', '')},"
+            f"{r.get('phone_number', '')}"
+            for r in rows
+        ]
+        return (header + "\n".join(lines)).encode("utf-8")
+
+    def test_empty_phone_number_is_accepted_and_stored_as_null(self):
+        email = f"guardian_batch_{uuid.uuid4().hex[:6]}@example.com"
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Maria",
+                    "last_name": "Souza",
+                    "email": email,
+                    "phone_number": "",
+                }
+            ]
+        )
+
+        response = self.client.post(
+            "/api/guardian/batch",
+            files={"file": ("guardians.csv", csv_bytes, "text/csv")},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["status"], "completed")
+        self.assertEqual(body["created"], 1)
+        self.assertEqual(body["failed"], 0)
+
+        list_resp = self.client.get(
+            "/api/guardian", params={"email": email}, headers=self.admin_headers
+        )
+        self.assertEqual(list_resp.status_code, 200)
+        items = list_resp.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertIsNone(items[0]["phone_number"])
+        self.assertEqual(items[0]["guardian_status"], "approved")

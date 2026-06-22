@@ -3,13 +3,14 @@
 import datetime
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
     CalendarTaskSyncItemRequest,
     CalendarUpsertRequest,
+    StudentBatchResponse,
     StudentListResponse,
     StudentRequest,
     StudentResponse,
@@ -19,6 +20,8 @@ from md_backend.models.api_models import (
     WellBeingResponse,
 )
 from md_backend.models.db_models import HumorEnum
+from md_backend.routes.path_router import path_router
+from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 from md_backend.services.guardian_service import GuardianService
 from md_backend.services.student_service import StudentService
 from md_backend.utils.access_control import (
@@ -31,6 +34,7 @@ from md_backend.utils.security import get_current_approved_user, get_current_sup
 
 student_service = StudentService()
 guardian_service = GuardianService()
+csv_processor = CSVProcessorService()
 student_router = APIRouter(prefix="/student")
 
 
@@ -63,7 +67,10 @@ async def _can_read_well_being_history(
         return True
 
     user_id = uuid.UUID(current_user["user_id"])
-    return await guardian_owns_student(session, user_id, student_id)
+    if await guardian_owns_student(session, user_id, student_id):
+        return True
+
+    return user_id == student_id and await is_active_student(session, user_id)
 
 
 async def _can_write_well_being(
@@ -85,13 +92,20 @@ async def create_student(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Create a new student. Restricted to superadmin or approved guardian users."""
+    """Create a student as an admin, guardian, or the student's own school."""
     is_superadmin = current_user.get("is_superadmin")
     is_guardian = current_user.get("is_guardian")
+    is_school = current_user.get("is_school")
 
-    if not is_superadmin and not is_guardian:
+    if not is_superadmin and not is_guardian and not is_school:
         return JSONResponse(
             content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    if is_school and str(request.school_id) != current_user["user_id"]:
+        return JSONResponse(
+            content={"detail": "Schools may only create their own students"},
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
@@ -119,7 +133,7 @@ async def create_student(
             guardian_id=uuid.UUID(current_user["user_id"]),
             student_id=uuid.UUID(result["user_id"]),
         )
-    elif is_superadmin and request.guardian_id is not None:
+    elif (is_superadmin or is_school) and request.guardian_id is not None:
         await guardian_service.link_student_to_guardian(
             session=session,
             guardian_id=request.guardian_id,
@@ -235,6 +249,7 @@ async def update_student(
 @student_router.delete(
     "/{student_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(get_current_superadmin)],
 )
 async def delete_student(
@@ -255,7 +270,7 @@ async def delete_student(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @student_router.patch(
@@ -642,3 +657,37 @@ async def upsert_calendar_day(
         tasks=tasks_data,
     )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@student_router.post(
+    "/batch",
+    response_model=StudentBatchResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def batch_import_students(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Batch import students from a CSV file. Superadmin only."""
+    raw = await file.read()
+    try:
+        result = await student_service.import_from_csv(
+            raw_content=raw,
+            session=session,
+            csv_processor=csv_processor,
+            background_tasks=background_tasks,
+        )
+    except CSVHeaderError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    http_status = (
+        status.HTTP_200_OK if result.status == "completed" else status.HTTP_400_BAD_REQUEST
+    )
+    return JSONResponse(content=result.model_dump(), status_code=http_status)
+
+
+student_router.include_router(path_router, prefix="/{student_id}/trails")

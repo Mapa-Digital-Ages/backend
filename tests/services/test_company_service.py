@@ -1,6 +1,7 @@
 """Unit and integration tests for CompanyService and /company router."""
 
 import asyncio
+import io
 import unittest
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -9,6 +10,11 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 import tests.keys_test  # noqa: F401
+from md_backend.models.db_models import (
+    PartnershipStatusEnum,
+    SchoolCompanyPartnership,
+    SponsorshipRequest,
+)
 from md_backend.services.company_service import CompanyService
 from tests.helpers import get_admin_headers
 
@@ -41,6 +47,113 @@ class TestCompanyServiceUnit(unittest.TestCase):
         mock_session.commit.assert_not_called()
         mock_session.flush.assert_not_called()
 
+    def test_list_company_partnerships_excludes_rejected_status(self):
+        service = CompanyService()
+
+        company_result = MagicMock()
+        company_result.scalar_one_or_none.return_value = MagicMock()
+
+        partnerships_result = MagicMock()
+        partnerships_result.all.return_value = []
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[company_result, partnerships_result])
+
+        result = asyncio.run(service.list_company_partnerships(uuid.uuid4(), mock_session))
+
+        self.assertEqual(result, {"items": [], "total": 0})
+        partnership_query = mock_session.execute.await_args_list[1].args[0]
+        self.assertIn(
+            "school_company_partnership.status !=",
+            str(partnership_query),
+        )
+
+    def test_list_company_partnerships_can_filter_approved(self):
+        service = CompanyService()
+        company_id = uuid.uuid4()
+        partnership_id = uuid.uuid4()
+
+        company_result = MagicMock()
+        company_result.scalar_one_or_none.return_value = MagicMock()
+
+        partnership = MagicMock(spec=SchoolCompanyPartnership)
+        partnership.id = partnership_id
+        partnership.school_id = uuid.uuid4()
+        partnership.company_id = company_id
+        partnership.request_id = uuid.uuid4()
+        partnership.granted_spots = 3
+        partnership.status = PartnershipStatusEnum.APPROVED
+        partnership.created_at.isoformat.return_value = "2026-01-01T00:00:00"
+
+        request = MagicMock(spec=SponsorshipRequest)
+        request.title = "Pedido aprovado"
+
+        school_user = MagicMock()
+        school_user.first_name = "Escola"
+        school_user.last_name = "Apoiada"
+
+        partnerships_result = MagicMock()
+        partnerships_result.all.return_value = [(partnership, request, school_user)]
+
+        mock_session = AsyncMock()
+        mock_session.execute = AsyncMock(side_effect=[company_result, partnerships_result])
+
+        result = asyncio.run(
+            service.list_company_partnerships(
+                company_id,
+                mock_session,
+                status_filter=PartnershipStatusEnum.APPROVED,
+            )
+        )
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["granted_spots"], 3)
+        self.assertNotIn("supported_student_ids", result["items"][0])
+        partnership_query = mock_session.execute.await_args_list[1].args[0]
+        self.assertIn(
+            "school_company_partnership.status =",
+            str(partnership_query),
+        )
+
+    def test_end_partnership_soft_deletes_partnership_and_frees_spots(self):
+        service = CompanyService()
+        company_id = uuid.uuid4()
+        partnership_id = uuid.uuid4()
+
+        partnership = MagicMock(spec=SchoolCompanyPartnership)
+        partnership.id = partnership_id
+        partnership.school_id = uuid.uuid4()
+        partnership.company_id = company_id
+        partnership.request_id = uuid.uuid4()
+        partnership.granted_spots = 4
+        partnership.status = PartnershipStatusEnum.APPROVED
+        partnership.created_at.isoformat.return_value = "2026-01-01T00:00:00"
+        partnership.is_active = True
+        partnership.deactivated_at = None
+
+        request = MagicMock(spec=SponsorshipRequest)
+        request.requested_spots = 10
+        request.remaining_spots = 2
+
+        nested_cm = MagicMock()
+        nested_cm.__aenter__ = AsyncMock(return_value=None)
+        nested_cm.__aexit__ = AsyncMock(return_value=False)
+
+        partnership_result = MagicMock()
+        partnership_result.one_or_none.return_value = (partnership, request)
+
+        mock_session = AsyncMock()
+        mock_session.begin_nested = MagicMock(return_value=nested_cm)
+        mock_session.execute = AsyncMock(side_effect=[partnership_result])
+
+        result = asyncio.run(service.end_partnership(company_id, partnership_id, mock_session))
+
+        self.assertIsNotNone(result)
+        self.assertFalse(partnership.is_active)
+        self.assertIsNotNone(partnership.deactivated_at)
+        self.assertEqual(request.remaining_spots, 6)
+        mock_session.commit.assert_awaited_once()
+
 
 class TestCompanyServiceIntegration(unittest.TestCase):
     """Integration tests against /company via FastAPI TestClient."""
@@ -52,6 +165,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
         self.ctx = TestClient(app, raise_server_exceptions=False)
         self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
 
     def tearDown(self):
         self.ctx.__exit__(None, None, None)
@@ -73,6 +187,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.post(
             "/api/company",
             json=self._payload("create_ok@company.com", spots=80),
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
         body = resp.json()
@@ -80,7 +195,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         uuid.UUID(body["user_id"])
         self.assertEqual(body["email"], "create_ok@company.com")
         self.assertEqual(body["spots"], 80)
-        self.assertEqual(body["available_spots"], 80)
+
         self.assertNotIn("password", body)
         self.assertNotIn("hashed_password", body)
 
@@ -92,6 +207,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.post(
             "/api/company",
             json=self._payload(email) | {"last_name": None},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["name"], "Empresa")
@@ -113,7 +229,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         email = "company_missing_last@test.com"
         payload = self._payload(email)
         del payload["last_name"]
-        resp = self.client.post("/api/company", json=payload)
+        resp = self.client.post("/api/company", json=payload, headers=self.admin_headers)
         self.assertEqual(resp.status_code, 201)
         self.assertEqual(resp.json()["name"], "Empresa")
 
@@ -129,7 +245,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_created_company_logs_in_with_company_role(self):
         email = "company_role@test.com"
-        resp = self.client.post("/api/company", json=self._payload(email, spots=80))
+        resp = self.client.post(
+            "/api/company", json=self._payload(email, spots=80), headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 201)
 
         login_resp = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
@@ -137,8 +255,12 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertEqual(login_resp.json()["role"], "company")
 
     def test_create_company_duplicate_email_returns_409(self):
-        self.client.post("/api/company", json=self._payload("company_dup@test.com"))
-        resp = self.client.post("/api/company", json=self._payload("company_dup@test.com"))
+        self.client.post(
+            "/api/company", json=self._payload("company_dup@test.com"), headers=self.admin_headers
+        )
+        resp = self.client.post(
+            "/api/company", json=self._payload("company_dup@test.com"), headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 409)
         self.assertIn("ja cadastrado", resp.json()["detail"].lower())
 
@@ -148,7 +270,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
             new=AsyncMock(side_effect=IntegrityError("forced", {}, Exception("forced"))),
         ):
             resp = self.client.post(
-                "/api/company", json=self._payload("company_integrity@test.com")
+                "/api/company",
+                json=self._payload("company_integrity@test.com"),
+                headers=self.admin_headers,
             )
 
         self.assertEqual(resp.status_code, 409)
@@ -156,11 +280,13 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_create_company_invalid_email_returns_422(self):
         payload = self._payload("not-an-email")
-        resp = self.client.post("/api/company", json=payload)
+        resp = self.client.post("/api/company", json=payload, headers=self.admin_headers)
         self.assertEqual(resp.status_code, 422)
 
     def test_create_company_missing_required_fields_returns_422(self):
-        resp = self.client.post("/api/company", json={"email": "incomplete@test.com"})
+        resp = self.client.post(
+            "/api/company", json={"email": "incomplete@test.com"}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 422)
 
     # ------------------------------------------------------------------
@@ -168,10 +294,18 @@ class TestCompanyServiceIntegration(unittest.TestCase):
     # ------------------------------------------------------------------
 
     def test_list_companies(self):
-        self.client.post("/api/company", json=self._payload("company_list_a@test.com"))
-        self.client.post("/api/company", json=self._payload("company_list_b@test.com"))
+        self.client.post(
+            "/api/company",
+            json=self._payload("company_list_a@test.com"),
+            headers=self.admin_headers,
+        )
+        self.client.post(
+            "/api/company",
+            json=self._payload("company_list_b@test.com"),
+            headers=self.admin_headers,
+        )
 
-        resp = self.client.get("/api/company")
+        resp = self.client.get("/api/company", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertTrue(isinstance(body, list))
@@ -190,9 +324,12 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "password": "senha1234",
                 "spots": 100,
             },
+            headers=self.admin_headers,
         )
 
-        resp = self.client.get("/api/company", params={"name": "olimpo"})
+        resp = self.client.get(
+            "/api/company", params={"name": "olimpo"}, headers=self.admin_headers
+        )
         self.assertEqual(resp.status_code, 200)
         items = resp.json()
         self.assertTrue(len(items) >= 1)
@@ -211,6 +348,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "password": "senha1234",
                 "spots": 20,
             },
+            headers=self.admin_headers,
         )
         inactive_resp = self.client.post(
             "/api/company",
@@ -221,12 +359,13 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "password": "senha1234",
                 "spots": 20,
             },
+            headers=self.admin_headers,
         )
         self.assertEqual(active_resp.status_code, 201)
         self.assertEqual(inactive_resp.status_code, 201)
 
         inactive_id = inactive_resp.json()["user_id"]
-        self.client.delete(f"/api/company/{inactive_id}")
+        self.client.delete(f"/api/company/{inactive_id}", headers=self.admin_headers)
 
         admin_headers = get_admin_headers(self.client)
         resp = self.client.get(
@@ -244,21 +383,23 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_get_company_by_id_returns_correct_data(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_getbyid@test.com", spots=42)
+            "/api/company",
+            json=self._payload("company_getbyid@test.com", spots=42),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
-        resp = self.client.get(f"/api/company/{company_id}")
+        resp = self.client.get(f"/api/company/{company_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
         self.assertEqual(body["user_id"], company_id)
         self.assertEqual(body["email"], "company_getbyid@test.com")
         self.assertEqual(body["spots"], 42)
-        self.assertEqual(body["available_spots"], 42)
+
         self.assertNotIn("password", body)
 
     def test_get_company_by_id_not_found_returns_404(self):
-        resp = self.client.get(f"/api/company/{uuid.uuid4()}")
+        resp = self.client.get(f"/api/company/{uuid.uuid4()}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 404)
 
     # ------------------------------------------------------------------
@@ -267,7 +408,9 @@ class TestCompanyServiceIntegration(unittest.TestCase):
 
     def test_update_company_partial_updates_all_fields(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_upd_full@test.com")
+            "/api/company",
+            json=self._payload("company_upd_full@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
@@ -279,6 +422,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
                 "email": "company_upd_full_new@test.com",
                 "spots": 200,
             },
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -291,13 +435,16 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         from md_backend.utils.database import AsyncSessionLocal
 
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_clear_last@test.com")
+            "/api/company",
+            json=self._payload("company_clear_last@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"last_name": None},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["name"], "Empresa")
@@ -313,15 +460,20 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertIsNone(user.last_name)
 
     def test_update_company_email_conflict_returns_409(self):
-        self.client.post("/api/company", json=self._payload("company_taken@test.com"))
+        self.client.post(
+            "/api/company", json=self._payload("company_taken@test.com"), headers=self.admin_headers
+        )
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_to_update@test.com")
+            "/api/company",
+            json=self._payload("company_to_update@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"email": "company_taken@test.com"},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 409)
 
@@ -329,12 +481,15 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/api/company/{uuid.uuid4()}",
             json={"first_name": "Fantasma"},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 404)
 
     def test_update_company_with_phone_and_is_active(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_phone_active@test.com")
+            "/api/company",
+            json=self._payload("company_phone_active@test.com"),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
@@ -342,6 +497,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"phone_number": "123456789", "is_active": False},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 200)
         body = resp.json()
@@ -351,12 +507,15 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp2 = self.client.patch(
             f"/api/company/{company_id}",
             json={"is_active": True},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp2.status_code, 200)
 
     def test_update_company_invalid_spots_returns_400(self):
         create_resp = self.client.post(
-            "/api/company", json=self._payload("company_invalid_spots@test.com", spots=10)
+            "/api/company",
+            json=self._payload("company_invalid_spots@test.com", spots=10),
+            headers=self.admin_headers,
         )
         company_id = create_resp.json()["user_id"]
 
@@ -364,6 +523,7 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         resp = self.client.patch(
             f"/api/company/{company_id}",
             json={"spots": -1},
+            headers=self.admin_headers,
         )
         self.assertEqual(resp.status_code, 400)
         self.assertIn("Nao e possivel reduzir o total de vagas para", resp.json()["detail"])
@@ -376,10 +536,14 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         from md_backend.models.db_models import CompanyProfile, UserProfile
         from md_backend.utils.database import AsyncSessionLocal
 
-        create_resp = self.client.post("/api/company", json=self._payload("company_deact@test.com"))
+        create_resp = self.client.post(
+            "/api/company",
+            json=self._payload("company_deact@test.com"),
+            headers=self.admin_headers,
+        )
         company_id = create_resp.json()["user_id"]
 
-        resp = self.client.delete(f"/api/company/{company_id}")
+        resp = self.client.delete(f"/api/company/{company_id}", headers=self.admin_headers)
         self.assertEqual(resp.status_code, 204)
 
         async def fetch():
@@ -394,7 +558,128 @@ class TestCompanyServiceIntegration(unittest.TestCase):
         self.assertIsNotNone(user.deactivated_at)
 
     def test_deactivate_company_not_found_returns_404(self):
-        resp = self.client.delete(f"/api/company/{uuid.uuid4()}")
+        resp = self.client.delete(f"/api/company/{uuid.uuid4()}", headers=self.admin_headers)
+        self.assertEqual(resp.status_code, 404)
+
+
+class TestCompanyPartnershipsListing(unittest.TestCase):
+    """Tests for GET /company/{id}/partnerships and list_company_partnerships."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from md_backend.main import app
+
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _create_company(self, email, spots=50):
+        resp = self.client.post(
+            "/api/company",
+            json={
+                "first_name": "Empresa",
+                "last_name": "Parc",
+                "email": email,
+                "password": "senha1234",
+                "spots": spots,
+            },
+            headers=self.admin_headers,
+        )
+        return resp.json()["user_id"]
+
+    def _company_headers(self, email):
+        self._create_company(email)
+        resp = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
+        return {"Authorization": f"Bearer {resp.json()['token']}"}
+
+    def test_list_partnerships_returns_enriched_items(self):
+        from md_backend.services.company_service import CompanyService
+        from md_backend.services.school_service import SchoolService
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def seed():
+            async with AsyncSessionLocal() as session:
+                company = await CompanyService().create_company(
+                    first_name="Empresa",
+                    last_name="Doadora",
+                    email="partner_company@test.com",
+                    password="senha1234",
+                    spots=100,
+                    session=session,
+                )
+                school = await SchoolService().create_school(
+                    first_name="Escola",
+                    last_name="Beneficiada",
+                    email="partner_school@test.com",
+                    password="senha1234",
+                    is_private=False,
+                    session=session,
+                )
+                request = await SchoolService().create_sponsorship_request(
+                    school_id=uuid.UUID(school["user_id"]),
+                    title="Apoio 2026",
+                    requested_spots=30,
+                    session=session,
+                )
+                await CompanyService().create_partnership(
+                    company_id=uuid.UUID(company["user_id"]),
+                    request_id=uuid.UUID(request["id"]),
+                    granted_spots=10,
+                    session=session,
+                )
+                listed = await CompanyService().list_company_partnerships(
+                    uuid.UUID(company["user_id"]),
+                    session,
+                )
+                return company, school, request, listed
+
+        company, school, request, listed = asyncio.run(seed())
+
+        self.assertEqual(listed["total"], 1)
+        item = listed["items"][0]
+        self.assertEqual(item["company_id"], company["user_id"])
+        self.assertEqual(item["school_id"], school["user_id"])
+        self.assertEqual(item["school_name"], "Escola Beneficiada")
+        self.assertEqual(item["request_title"], "Apoio 2026")
+        self.assertEqual(item["request_id"], request["id"])
+        self.assertEqual(item["granted_spots"], 10)
+
+    def test_list_partnerships_service_returns_none_for_unknown_company(self):
+        from md_backend.services.company_service import CompanyService
+        from md_backend.utils.database import AsyncSessionLocal
+
+        async def run():
+            async with AsyncSessionLocal() as session:
+                return await CompanyService().list_company_partnerships(uuid.uuid4(), session)
+
+        self.assertIsNone(asyncio.run(run()))
+
+    def test_list_partnerships_own_company_returns_200(self):
+        email = "partner_self@test.com"
+        company_id = self._create_company(email)
+        login = self.client.post("/api/login", json={"email": email, "password": "senha1234"})
+        headers = {"Authorization": f"Bearer {login.json()['token']}"}
+
+        resp = self.client.get(f"/api/company/{company_id}/partnerships", headers=headers)
+        self.assertEqual(resp.status_code, 200)
+        body = resp.json()
+        self.assertEqual(body["total"], 0)
+        self.assertEqual(body["items"], [])
+
+    def test_list_partnerships_forbidden_for_other_company(self):
+        headers_a = self._company_headers("partner_a@test.com")
+        company_b_id = self._create_company("partner_b@test.com")
+
+        resp = self.client.get(f"/api/company/{company_b_id}/partnerships", headers=headers_a)
+        self.assertEqual(resp.status_code, 403)
+
+    def test_list_partnerships_not_found_returns_404_for_admin(self):
+        admin_headers = get_admin_headers(self.client)
+        resp = self.client.get(f"/api/company/{uuid.uuid4()}/partnerships", headers=admin_headers)
         self.assertEqual(resp.status_code, 404)
 
 
@@ -418,3 +703,75 @@ class TestUpdateCompanyRequestDTO(unittest.TestCase):
 
         with self.assertRaises(ValidationError):
             UpdateCompanyRequest(email="not-an-email")
+
+
+class TestCompanyBatchImport(unittest.TestCase):
+    """Integration tests for POST /api/company/batch."""
+
+    def setUp(self):
+        from fastapi.testclient import TestClient
+
+        from md_backend.main import app
+
+        self.ctx = TestClient(app, raise_server_exceptions=False)
+        self.client = self.ctx.__enter__()
+        self.admin_headers = get_admin_headers(self.client)
+
+    def tearDown(self):
+        self.ctx.__exit__(None, None, None)
+
+    def _make_csv(self, rows: list[dict]) -> bytes:
+        buffer = io.StringIO()
+        buffer.write("first_name,last_name,email\n")
+        for r in rows:
+            buffer.write(
+                f"{r.get('first_name', '')},{r.get('last_name', '')},{r.get('email', '')}\n"
+            )
+        return buffer.getvalue().encode("utf-8")
+
+    def test_duplicate_email_returns_400_and_created_zero(self):
+        duplicate_email = f"company_batch_dup_{uuid.uuid4().hex[:6]}@example.com"
+
+        self.client.post(
+            "/api/company",
+            json={
+                "first_name": "Existing",
+                "last_name": "Company",
+                "email": duplicate_email,
+                "password": "pass12345",
+                "spots": 5,
+            },
+            headers=self.admin_headers,
+        )
+
+        csv_bytes = self._make_csv(
+            [
+                {
+                    "first_name": "Empresa1",
+                    "last_name": "A",
+                    "email": f"empresa1_{uuid.uuid4().hex[:6]}@example.com",
+                },
+                {
+                    "first_name": "Empresa2",
+                    "last_name": "B",
+                    "email": f"empresa2_{uuid.uuid4().hex[:6]}@example.com",
+                },
+                {
+                    "first_name": "Empresa3",
+                    "last_name": "C",
+                    "email": f"empresa3_{uuid.uuid4().hex[:6]}@example.com",
+                },
+                {"first_name": "Duplicada", "last_name": "D", "email": duplicate_email},
+            ]
+        )
+
+        response = self.client.post(
+            "/api/company/batch",
+            files={"file": ("companies.csv", csv_bytes, "text/csv")},
+            headers=self.admin_headers,
+        )
+
+        self.assertEqual(response.status_code, 400)
+        body = response.json()
+        self.assertEqual(body["status"], "aborted")
+        self.assertEqual(body["created"], 0)

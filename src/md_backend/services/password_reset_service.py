@@ -38,6 +38,61 @@ class PasswordResetService:
         """Initialize with an optional sender override (defaults to the real EmailSender)."""
         self._email_sender = email_sender or EmailSender()
 
+    async def prepare_initial_password_setup(
+        self,
+        user_id: object,
+        session: AsyncSession,
+    ) -> str:
+        """Add a reset code for a newly created user to the current transaction."""
+        reset_code = _generate_reset_code()
+        session.add(
+            PasswordResetCode(
+                user_id=user_id,
+                code_hash=await hash_password(reset_code),
+                expires_at=None,
+            )
+        )
+        return reset_code
+
+    async def dispatch_initial_password_setup_email(
+        self,
+        email: str,
+        code: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> None:
+        """Send a non-expiring, single-use initial password setup link."""
+        if background_tasks is not None:
+            background_tasks.add_task(
+                self._email_sender.send_password_reset,
+                to_email=email,
+                code=code,
+                expires_in_minutes=None,
+            )
+            return
+
+        await self._email_sender.send_password_reset(
+            to_email=email,
+            code=code,
+            expires_in_minutes=None,
+        )
+
+    async def dispatch_reset_email(
+        self,
+        email: str,
+        code: str,
+        background_tasks: BackgroundTasks | None = None,
+    ) -> None:
+        """Send or enqueue the email for a previously persisted reset code."""
+        if background_tasks is not None:
+            background_tasks.add_task(
+                self._email_sender.send_password_reset,
+                to_email=email,
+                code=code,
+            )
+            return
+
+        await self._email_sender.send_password_reset(to_email=email, code=code)
+
     async def request_reset(
         self,
         email: str,
@@ -76,12 +131,11 @@ class PasswordResetService:
         session.add(reset_entry)
         await session.commit()
 
-        if background_tasks is not None:
-            background_tasks.add_task(
-                self._email_sender.send_password_reset, to_email=email, code=reset_code
-            )
-        else:
-            await self._email_sender.send_password_reset(to_email=email, code=reset_code)
+        await self.dispatch_reset_email(
+            email=email,
+            code=reset_code,
+            background_tasks=background_tasks,
+        )
 
         return {"detail": "Password reset code generated"}
 
@@ -132,8 +186,8 @@ class PasswordResetService:
         )
 
         for reset_entry in result.scalars():
-            expires_at = _ensure_aware_utc(reset_entry.expires_at)
-            if expires_at <= now:
+            expires_at = reset_entry.expires_at
+            if expires_at is not None and _ensure_aware_utc(expires_at) <= now:
                 continue
             if await verify_password(code, reset_entry.code_hash):
                 return reset_entry

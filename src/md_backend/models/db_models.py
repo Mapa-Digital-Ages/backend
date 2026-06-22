@@ -8,6 +8,7 @@ from typing import Optional  # noqa: UP035
 from sqlalchemy import (
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Enum,
@@ -17,6 +18,7 @@ from sqlalchemy import (
     Numeric,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -37,6 +39,23 @@ class GuardianStatusEnum(enum.StrEnum):
     """Guardian approval status."""
 
     WAITING = "waiting"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+
+
+class SponsorshipRequestStatusEnum(enum.StrEnum):
+    """Sponsorship request status."""
+
+    OPEN = "open"
+    PARTIALLY_FULFILLED = "partially_fulfilled"
+    FULFILLED = "fulfilled"
+    CANCELLED = "cancelled"
+
+
+class PartnershipStatusEnum(enum.StrEnum):
+    """School-Company partnership status."""
+
+    PENDING = "pending"
     APPROVED = "approved"
     REJECTED = "rejected"
 
@@ -66,19 +85,34 @@ class UserProfile(Base):
 
     # 1:1 Relationships
     admin_profile: Mapped[Optional["AdminProfile"]] = relationship(
-        "AdminProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "AdminProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     student_profile: Mapped[Optional["StudentProfile"]] = relationship(
-        "StudentProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "StudentProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     company_profile: Mapped[Optional["CompanyProfile"]] = relationship(
-        "CompanyProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "CompanyProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     school_profile: Mapped[Optional["SchoolProfile"]] = relationship(
-        "SchoolProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "SchoolProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     guardian_profile: Mapped[Optional["GuardianProfile"]] = relationship(
-        "GuardianProfile", back_populates="user", cascade="all, delete-orphan", uselist=False
+        "GuardianProfile",
+        back_populates="user",
+        cascade="all, delete-orphan",
+        uselist=False,
     )
     password_reset_codes: Mapped[list["PasswordResetCode"]] = relationship(
         "PasswordResetCode", back_populates="user", cascade="all, delete-orphan"
@@ -92,10 +126,15 @@ class PasswordResetCode(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), nullable=False, index=True
+        Uuid(as_uuid=True),
+        ForeignKey("user_profile.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     consumed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -112,7 +151,7 @@ class AdminProfile(Base):
     __tablename__ = "admin_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     subject_area: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -129,7 +168,7 @@ class StudentProfile(Base):
     __tablename__ = "student_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     student_class: Mapped[ClassEnum] = mapped_column(
@@ -160,7 +199,7 @@ class CompanyProfile(Base):
     __tablename__ = "company_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     available_spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -170,7 +209,9 @@ class CompanyProfile(Base):
 
     user: Mapped["UserProfile"] = relationship("UserProfile", back_populates="company_profile")
     schools: Mapped[list["SchoolProfile"]] = relationship(
-        "SchoolProfile", secondary="school_company_partnership", back_populates="companies"
+        "SchoolProfile",
+        secondary="school_company_partnership",
+        back_populates="companies",
     )
 
 
@@ -180,7 +221,7 @@ class SchoolProfile(Base):
     __tablename__ = "school_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
     requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -193,7 +234,43 @@ class SchoolProfile(Base):
         "StudentProfile", back_populates="school"
     )
     companies: Mapped[list["CompanyProfile"]] = relationship(
-        "CompanyProfile", secondary="school_company_partnership", back_populates="schools"
+        "CompanyProfile",
+        secondary="school_company_partnership",
+        back_populates="schools",
+    )
+
+    sponsorship_requests: Mapped[list["SponsorshipRequest"]] = relationship(
+        "SponsorshipRequest", back_populates="school"
+    )
+
+
+class SponsorshipRequest(Base):
+    """Sponsorship request made by a school."""
+
+    __tablename__ = "sponsorship_request"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    school_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("school_profile.user_id"),
+        nullable=False,
+        index=True,
+    )
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    requested_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    remaining_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[SponsorshipRequestStatusEnum] = mapped_column(
+        Enum(SponsorshipRequestStatusEnum, name="sponsorship_request_status_enum"),
+        nullable=False,
+        default=SponsorshipRequestStatusEnum.OPEN,
+    )
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+    school: Mapped["SchoolProfile"] = relationship(
+        "SchoolProfile", back_populates="sponsorship_requests"
     )
 
 
@@ -203,7 +280,7 @@ class GuardianProfile(Base):
     __tablename__ = "guardian_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     guardian_status: Mapped[GuardianStatusEnum] = mapped_column(
         Enum(GuardianStatusEnum, name="guardian_status_enum"),
@@ -221,15 +298,25 @@ class GuardianProfile(Base):
 
 
 class SchoolCompanyPartnership(Base):
-    """N:M Relationship between School and Company."""
+    """N:M Relationship between School and Company representing a contract."""
 
     __tablename__ = "school_company_partnership"
 
+    id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     school_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("school_profile.user_id"), nullable=False
     )
     company_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("company_profile.user_id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("company_profile.user_id"), nullable=False
+    )
+    request_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("sponsorship_request.id"), nullable=False
+    )
+    granted_spots: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[PartnershipStatusEnum] = mapped_column(
+        Enum(PartnershipStatusEnum, name="partnership_status_enum"),
+        nullable=False,
+        default=PartnershipStatusEnum.PENDING,
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     created_at: Mapped[datetime.datetime] = mapped_column(
@@ -269,12 +356,28 @@ class DifficultyEnum(enum.StrEnum):
     VERY_HARD = "very_hard"
 
 
+class ResourceTypeEnum(enum.StrEnum):
+    """Resource content type."""
+
+    VIDEO = "video"
+    PDF = "pdf"
+    PRESENTATION = "presentation"
+    LINK = "link"
+    DOCUMENT = "document"
+
+
 class PathStatusEnum(enum.StrEnum):
     """Path progress status."""
 
     ON_GOING = "on_going"
     COMPLETED = "completed"
     PAUSED = "paused"
+
+
+class ItemProgressStatusEnum(enum.StrEnum):
+    """Sub-path item progress status."""
+
+    COMPLETED = "completed"
 
 
 class TypeItemEnum(enum.StrEnum):
@@ -338,6 +441,10 @@ class Content(Base):
         nullable=False,
     )
 
+    subject: Mapped["Subject"] = relationship("Subject")
+    exercises: Mapped[list["Exercise"]] = relationship("Exercise", back_populates="content")
+    resources: Mapped[list["Resource"]] = relationship("Resource", back_populates="content")
+
 
 class Resource(Base):
     """Resource table."""
@@ -345,9 +452,27 @@ class Resource(Base):
     __tablename__ = "resources"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
-    type: Mapped[str] = mapped_column(String(255), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    type: Mapped[ResourceTypeEnum] = mapped_column(
+        Enum(ResourceTypeEnum, name="resource_type_enum"), nullable=False
+    )
     title: Mapped[str] = mapped_column(String(255), nullable=False)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    storage_key: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    file_url: Mapped[str] = mapped_column(String(1024), nullable=False)
+    created_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+    content: Mapped["Content"] = relationship("Content", back_populates="resources")
     url_or_contents: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
@@ -357,10 +482,15 @@ class Exercise(Base):
     __tablename__ = "exercises"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
     statement: Mapped[str] = mapped_column(Text, nullable=False)
     difficulty: Mapped[DifficultyEnum] = mapped_column(
         Enum(DifficultyEnum, name="difficulty_enum"), nullable=False
+    )
+
+    content: Mapped["Content"] = relationship("Content", back_populates="exercises")
+    options: Mapped[list["Option"]] = relationship(
+        "Option", back_populates="exercise", order_by="Option.id"
     )
 
 
@@ -373,6 +503,8 @@ class Option(Base):
     exercise_id: Mapped[int] = mapped_column(Integer, ForeignKey("exercises.id"), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+    exercise: Mapped["Exercise"] = relationship("Exercise", back_populates="options")
 
 
 class Attempt(Base):
@@ -396,9 +528,10 @@ class Path(Base):
     __tablename__ = "paths"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    contents_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
+    content_id: Mapped[int] = mapped_column(Integer, ForeignKey("contents.id"), nullable=False)
     name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    eixo: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class SubPath(Base):
@@ -408,22 +541,46 @@ class SubPath(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     path_id: Mapped[int] = mapped_column(Integer, ForeignKey("paths.id"), nullable=False)
+    content_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("contents.id"), nullable=True
+    )
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     difficulty: Mapped[DifficultyEnum | None] = mapped_column(
         Enum(DifficultyEnum, name="difficulty_enum"), nullable=True
     )
+    order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class SubPathItem(Base):
     """Items inside a sub-path."""
 
     __tablename__ = "sub_paths_item"
+    __table_args__ = (
+        CheckConstraint(
+            "(resource_id IS NOT NULL) <> (exercise_id IS NOT NULL)",
+            name="ck_sub_path_item_exactly_one_target",
+        ),
+    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     sub_path_id: Mapped[int] = mapped_column(Integer, ForeignKey("sub_paths.id"), nullable=False)
     type_item: Mapped[TypeItemEnum] = mapped_column(
         Enum(TypeItemEnum, name="type_item_enum"), nullable=False
     )
-    item_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    order: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    group_key: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resource_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("resources.id"), nullable=True
+    )
+    exercise_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("exercises.id"), nullable=True
+    )
+
+    resource: Mapped["Resource | None"] = relationship("Resource")
+    exercise: Mapped["Exercise | None"] = relationship("Exercise")
 
 
 class PathTransition(Base):
@@ -458,7 +615,50 @@ class StudentPathProgress(Base):
         Integer, ForeignKey("sub_paths.id"), nullable=False
     )
     path_status: Mapped[PathStatusEnum | None] = mapped_column(
-        Enum(PathStatusEnum, name="path_status_enum"), nullable=True
+        Enum(PathStatusEnum, name="path_status_enum"),
+        nullable=True,
+        default=PathStatusEnum.ON_GOING,
+    )
+    started_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    updated_at: Mapped[datetime.datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
+class StudentSubPathItemProgress(Base):
+    """Student progress tracking for individual sub-path items."""
+
+    __tablename__ = "student_sub_path_item_progress"
+    __table_args__ = (
+        UniqueConstraint(
+            "student_id",
+            "sub_path_item_id",
+            name="uq_student_sub_path_item_progress_student_item",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    student_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), nullable=False
+    )
+    path_id: Mapped[int] = mapped_column(Integer, ForeignKey("paths.id"), nullable=False)
+    sub_path_id: Mapped[int] = mapped_column(Integer, ForeignKey("sub_paths.id"), nullable=False)
+    sub_path_item_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("sub_paths_item.id"), nullable=False
+    )
+    status: Mapped[ItemProgressStatusEnum] = mapped_column(
+        Enum(ItemProgressStatusEnum, name="item_progress_status_enum"), nullable=False
+    )
+    completed_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
     )
     updated_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
@@ -471,7 +671,10 @@ class WellBeing(Base):
     __tablename__ = "well_being"
 
     student_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("student_profile.user_id"), primary_key=True, nullable=False
+        Uuid(as_uuid=True),
+        ForeignKey("student_profile.user_id"),
+        primary_key=True,
+        nullable=False,
     )
     date: Mapped[datetime.date] = mapped_column(
         Date, primary_key=True, server_default=func.current_date()

@@ -47,6 +47,25 @@ class Settings(BaseSettings):
     SMTP_USERNAME: str = ""
     SMTP_PASSWORD: str = ""
     SMTP_FROM_NAME: str = "Mapa Digital"
+    FRONTEND_URL: str = "http://localhost:5173"
+
+    # Cloudfront
+    CLOUDFRONT_URL: str | None = None
+
+    # Redis
+    REDIS_URL: str = "redis://localhost:6379/0"
+
+    # LLM (Google Gemini)
+    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GOOGLE_API_KEY: str = ""
+    LLM_TEMPERATURE: float = 0.7
+    LLM_GENERATION_TEMPERATURE: float = 0.2
+    # Keep retries low so a quota/rate-limit (429) falls back fast instead of
+    # blocking the authoring request for minutes.
+    LLM_GENERATION_MAX_RETRIES: int = 1
+
+    # Trilha (adaptive trail)
+    TRILHA_TTL_SECONDS: int = 3600
 
     # Cloudfront
     CLOUDFRONT_URL: str | None = None

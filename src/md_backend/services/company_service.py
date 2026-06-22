@@ -3,14 +3,34 @@
 import datetime
 import uuid
 
-from sqlalchemy import func, select
+from fastapi import BackgroundTasks
+from sqlalchemy import func, insert, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from sqlalchemy.sql.elements import ColumnElement
 
-from md_backend.models.db_models import CompanyProfile, UserProfile
+from md_backend.models.api_models import (
+    CompanyBatchErrorItem,
+    CompanyBatchResponse,
+    CompanyBatchRow,
+)
+from md_backend.models.db_models import (
+    CompanyProfile,
+    PartnershipStatusEnum,
+    SchoolCompanyPartnership,
+    SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
+    UserProfile,
+)
+from md_backend.services.csv_processor_service import CSVProcessorService
+from md_backend.services.password_reset_service import PasswordResetService
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
+
+COMPANY_BATCH_HEADERS = {"first_name", "last_name", "email"}
+
+_password_reset_service = PasswordResetService()
 
 
 class CompanyService:
@@ -62,6 +82,109 @@ class CompanyService:
             "status": "aguardando",
             "created_at": user.created_at.isoformat(),
         }
+
+    async def import_from_csv(
+        self,
+        raw_content: bytes,
+        session: AsyncSession,
+        csv_processor: CSVProcessorService,
+        background_tasks: BackgroundTasks,
+    ) -> CompanyBatchResponse:
+        """Import companies from a CSV payload and return an import summary.
+
+        Decodes and validates CSV rows, inserts new companies and schedules
+        password emails via background tasks.
+        """
+        content = csv_processor.decode_csv(raw_content)
+        reader = csv_processor.validate_headers(content, COMPANY_BATCH_HEADERS)
+        validation = csv_processor.validate_rows(reader, CompanyBatchRow)
+
+        if validation.has_errors:
+            return CompanyBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=len(validation.errors),
+                message="Validation failed. No records were imported.",
+                errors=[
+                    CompanyBatchErrorItem(
+                        row=e.row,
+                        email=e.email,
+                        reason=e.reason,
+                        first_name=e.first_name,
+                        last_name=e.last_name,
+                    )
+                    for e in validation.errors
+                ],
+            )
+
+        created = 0
+        reset_notifications: list[tuple[str, str]] = []
+        abort_error: CompanyBatchErrorItem | None = None
+
+        for line_number, row in validation.valid_rows_with_line:
+            try:
+                user_result = await session.execute(
+                    insert(UserProfile)
+                    .values(
+                        first_name=row.first_name,
+                        last_name=row.last_name,
+                        email=row.email,
+                        password=await hash_password(uuid.uuid4().hex),
+                    )
+                    .returning(UserProfile.id)
+                )
+                user_id = user_result.scalar_one()
+
+                await session.execute(
+                    insert(CompanyProfile).values(
+                        user_id=user_id,
+                        spots=0,
+                        available_spots=0,
+                    )
+                )
+                reset_code = await _password_reset_service.prepare_initial_password_setup(
+                    user_id=user_id,
+                    session=session,
+                )
+            except IntegrityError:
+                await session.rollback()
+                abort_error = CompanyBatchErrorItem(
+                    row=line_number,
+                    email=row.email,
+                    reason="Email already registered.",
+                )
+                break
+
+            reset_notifications.append((row.email, reset_code))
+            created += 1
+
+        if abort_error is not None:
+            return CompanyBatchResponse(
+                status="aborted",
+                total_processed=validation.total_processed,
+                created=0,
+                failed=1,
+                message="Insert failed. No records were imported.",
+                errors=[abort_error],
+            )
+
+        await session.commit()
+
+        for email, reset_code in reset_notifications:
+            await _password_reset_service.dispatch_initial_password_setup_email(
+                email=email,
+                code=reset_code,
+                background_tasks=background_tasks,
+            )
+
+        return CompanyBatchResponse(
+            status="completed",
+            total_processed=validation.total_processed,
+            created=created,
+            failed=0,
+            message=f"{created} company/companies imported successfully.",
+        )
 
     async def list_companies(
         self, session: AsyncSession, name: str | None = None, page: int = 1, size: int = 10
@@ -228,4 +351,191 @@ class CompanyService:
             "available_spots": company.available_spots,
             "status": "aguardando",
             "created_at": company.user.created_at.isoformat(),
+        }
+
+    async def create_partnership(
+        self,
+        company_id: uuid.UUID,
+        request_id: uuid.UUID,
+        granted_spots: int,
+        session: AsyncSession,
+    ) -> dict | str | None:
+        """Create a donation intent (partnership) for a sponsorship request.
+
+        Returns:
+            dict  — success, the created partnership.
+            None  — company or sponsorship request not found.
+            "overbooking" — granted_spots exceeds remaining_spots.
+        """
+        from md_backend.models.db_models import (
+            CompanyProfile,
+            PartnershipStatusEnum,
+            SponsorshipRequest,
+            SponsorshipRequestStatusEnum,
+        )
+
+        # Verify company exists
+        company_result = await session.execute(
+            select(CompanyProfile).where(CompanyProfile.user_id == company_id)
+        )
+        if company_result.scalar_one_or_none() is None:
+            return None
+
+        # Lock the sponsorship request row to prevent overbooking under concurrency
+        req_result = await session.execute(
+            select(SponsorshipRequest).where(SponsorshipRequest.id == request_id).with_for_update()
+        )
+        sponsorship = req_result.scalar_one_or_none()
+
+        if sponsorship is None:
+            return None
+
+        if granted_spots > sponsorship.remaining_spots:
+            return "overbooking"
+
+        # Reserve spots
+        sponsorship.remaining_spots -= granted_spots
+
+        # Update sponsorship status
+        if sponsorship.remaining_spots == 0:
+            sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
+        else:
+            sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+
+        partnership = SchoolCompanyPartnership(
+            school_id=sponsorship.school_id,
+            company_id=company_id,
+            request_id=request_id,
+            granted_spots=granted_spots,
+            status=PartnershipStatusEnum.PENDING,
+        )
+        session.add(partnership)
+
+        await session.commit()
+        await session.refresh(partnership)
+
+        return {
+            "id": str(partnership.id),
+            "school_id": str(partnership.school_id),
+            "company_id": str(partnership.company_id),
+            "request_id": str(partnership.request_id),
+            "granted_spots": partnership.granted_spots,
+            "status": partnership.status,
+            "created_at": partnership.created_at.isoformat(),
+        }
+
+    async def list_company_partnerships(
+        self,
+        company_id: uuid.UUID,
+        session: AsyncSession,
+        status_filter: PartnershipStatusEnum | None = None,
+    ) -> dict | None:
+        """Return all active partnerships for a company.
+
+        Each item is enriched with the school name and the originating request title,
+        so the caller can render the company's "supported schools" list directly.
+
+        Returns None if the company does not exist.
+        """
+        company_result = await session.execute(
+            select(CompanyProfile).where(CompanyProfile.user_id == company_id)
+        )
+        if company_result.scalar_one_or_none() is None:
+            return None
+
+        filters = [
+            SchoolCompanyPartnership.company_id == company_id,
+            SchoolCompanyPartnership.is_active.is_(True),
+            SchoolCompanyPartnership.status != PartnershipStatusEnum.REJECTED,
+        ]
+        if status_filter is not None:
+            filters.append(SchoolCompanyPartnership.status == status_filter)
+
+        query = (
+            select(SchoolCompanyPartnership, SponsorshipRequest, UserProfile)
+            .join(
+                SponsorshipRequest,
+                SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
+            )
+            .join(UserProfile, UserProfile.id == SchoolCompanyPartnership.school_id)
+            .where(*filters)
+            .order_by(SchoolCompanyPartnership.created_at.desc())
+        )
+
+        result = await session.execute(query)
+        rows = result.all()
+
+        items = [
+            {
+                "id": str(partnership.id),
+                "school_id": str(partnership.school_id),
+                "school_name": build_full_name(user.first_name, user.last_name),
+                "company_id": str(partnership.company_id),
+                "request_id": str(partnership.request_id),
+                "request_title": request.title,
+                "granted_spots": partnership.granted_spots,
+                "status": partnership.status,
+                "created_at": partnership.created_at.isoformat(),
+            }
+            for partnership, request, user in rows
+        ]
+
+        return {"items": items, "total": len(items)}
+
+    async def end_partnership(
+        self,
+        company_id: uuid.UUID,
+        partnership_id: uuid.UUID,
+        session: AsyncSession,
+    ) -> dict | None | str:
+        """End an active partnership and free up its granted spots."""
+        async with session.begin_nested():
+            partnership_result = await session.execute(
+                select(SchoolCompanyPartnership, SponsorshipRequest)
+                .outerjoin(
+                    SponsorshipRequest,
+                    SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
+                )
+                .where(
+                    SchoolCompanyPartnership.id == partnership_id,
+                    SchoolCompanyPartnership.company_id == company_id,
+                    SchoolCompanyPartnership.is_active.is_(True),
+                )
+                .with_for_update(of=SchoolCompanyPartnership)
+            )
+            row = partnership_result.one_or_none()
+
+            if row is None:
+                return None
+
+            partnership, sponsorship = row
+            if sponsorship is None:
+                return "request_not_found"
+
+            now = datetime.datetime.now(datetime.UTC)
+            partnership.is_active = False
+            partnership.deactivated_at = now
+
+            if partnership.status != PartnershipStatusEnum.REJECTED:
+                sponsorship.remaining_spots = min(
+                    sponsorship.requested_spots,
+                    sponsorship.remaining_spots + partnership.granted_spots,
+                )
+                if sponsorship.remaining_spots >= sponsorship.requested_spots:
+                    sponsorship.status = SponsorshipRequestStatusEnum.OPEN
+                elif sponsorship.remaining_spots > 0:
+                    sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+                else:
+                    sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
+
+        await session.commit()
+
+        return {
+            "id": str(partnership.id),
+            "school_id": str(partnership.school_id),
+            "company_id": str(partnership.company_id),
+            "request_id": str(partnership.request_id),
+            "granted_spots": partnership.granted_spots,
+            "status": partnership.status,
+            "created_at": partnership.created_at.isoformat(),
         }

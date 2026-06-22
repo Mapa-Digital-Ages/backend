@@ -4,13 +4,17 @@ import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import aliased, selectinload
 
 from md_backend.models.db_models import (
     AdminProfile,
     CompanyProfile,
     GuardianProfile,
     GuardianStatusEnum,
+    PartnershipStatusEnum,
+    SchoolCompanyPartnership,
+    SponsorshipRequest,
+    SponsorshipRequestStatusEnum,
     StudentProfile,
     UserProfile,
 )
@@ -56,6 +60,43 @@ def _serialize_user(user: UserProfile) -> dict:
         "role": _derive_role(user),
         "is_superadmin": is_superadmin,
         "created_at": user.created_at.isoformat(),
+    }
+
+
+def _partnership_status_value(status: PartnershipStatusEnum | str) -> str:
+    return status.value if isinstance(status, PartnershipStatusEnum) else str(status)
+
+
+def _serialize_partnership(
+    partnership: SchoolCompanyPartnership,
+    sponsorship: SponsorshipRequest,
+    school_user: UserProfile | None,
+    company_user: UserProfile | None,
+) -> dict:
+    school_name = (
+        build_full_name(school_user.first_name, school_user.last_name)
+        if school_user is not None
+        else ""
+    )
+    company_name = (
+        build_full_name(company_user.first_name, company_user.last_name)
+        if company_user is not None
+        else ""
+    )
+
+    return {
+        "id": str(partnership.id),
+        "school_id": str(partnership.school_id),
+        "school_name": school_name,
+        "company_id": str(partnership.company_id),
+        "company_name": company_name,
+        "request_id": str(partnership.request_id),
+        "request_title": sponsorship.title,
+        "requested_spots": sponsorship.requested_spots,
+        "remaining_spots": sponsorship.remaining_spots,
+        "granted_spots": partnership.granted_spots,
+        "status": _partnership_status_value(partnership.status),
+        "created_at": partnership.created_at.isoformat(),
     }
 
 
@@ -132,3 +173,113 @@ class AdminService:
         await session.commit()
 
         return _serialize_user(user)
+
+    async def list_partnerships(
+        self,
+        session: AsyncSession,
+        status_filter: str | None = None,
+    ) -> dict:
+        """List all SchoolCompanyPartnership records, optionally filtered by status."""
+        school_user = aliased(UserProfile)
+        company_user = aliased(UserProfile)
+
+        query = (
+            select(SchoolCompanyPartnership, SponsorshipRequest, school_user, company_user)
+            .join(
+                SponsorshipRequest,
+                SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
+            )
+            .join(school_user, school_user.id == SchoolCompanyPartnership.school_id)
+            .join(company_user, company_user.id == SchoolCompanyPartnership.company_id)
+            .order_by(SchoolCompanyPartnership.created_at.desc())
+        )
+
+        if status_filter is not None:
+            query = query.where(
+                SchoolCompanyPartnership.status == PartnershipStatusEnum(status_filter)
+            )
+
+        result = await session.execute(query)
+        rows = result.all()
+
+        items = [
+            _serialize_partnership(partnership, sponsorship, school, company)
+            for partnership, sponsorship, school, company in rows
+        ]
+
+        return {"items": items, "total": len(items)}
+
+    async def update_partnership_status(
+        self,
+        session: AsyncSession,
+        partnership_id: uuid.UUID,
+        new_status: str,
+    ) -> dict | None | str:
+        """Approve or reject a partnership inside a single database transaction.
+
+        Returns:
+            dict  — success, the updated partnership.
+            None  — partnership not found.
+            "request_not_found" — linked SponsorshipRequest missing (data integrity issue).
+        """
+        target_status = PartnershipStatusEnum(new_status.lower())
+        school_user = aliased(UserProfile)
+        company_user = aliased(UserProfile)
+
+        async with session.begin_nested():
+            # Lock the partnership row and load the display data needed by the admin UI.
+            partnership_result = await session.execute(
+                select(SchoolCompanyPartnership, SponsorshipRequest, school_user, company_user)
+                .outerjoin(
+                    SponsorshipRequest,
+                    SponsorshipRequest.id == SchoolCompanyPartnership.request_id,
+                )
+                .outerjoin(school_user, school_user.id == SchoolCompanyPartnership.school_id)
+                .outerjoin(company_user, company_user.id == SchoolCompanyPartnership.company_id)
+                .where(SchoolCompanyPartnership.id == partnership_id)
+                .with_for_update(of=SchoolCompanyPartnership)
+            )
+            row = partnership_result.one_or_none()
+
+            if row is None:
+                return None
+
+            partnership, sponsorship, school, company = row
+
+            if sponsorship is None:
+                return "request_not_found"
+
+            previous_status = partnership.status
+
+            if target_status == PartnershipStatusEnum.APPROVED:
+                if previous_status == PartnershipStatusEnum.REJECTED:
+                    if partnership.granted_spots > sponsorship.remaining_spots:
+                        return "overbooking"
+                    sponsorship.remaining_spots -= partnership.granted_spots
+
+                partnership.status = target_status
+
+                if sponsorship.remaining_spots == 0:
+                    sponsorship.status = SponsorshipRequestStatusEnum.FULFILLED
+                else:
+                    sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+
+            elif target_status == PartnershipStatusEnum.REJECTED:
+                partnership.status = target_status
+
+                if previous_status != PartnershipStatusEnum.REJECTED:
+                    sponsorship.remaining_spots = min(
+                        sponsorship.requested_spots,
+                        sponsorship.remaining_spots + partnership.granted_spots,
+                    )
+
+                # Re-evaluate the request status
+                if sponsorship.remaining_spots >= sponsorship.requested_spots:
+                    sponsorship.status = SponsorshipRequestStatusEnum.OPEN
+                elif sponsorship.remaining_spots > 0:
+                    sponsorship.status = SponsorshipRequestStatusEnum.PARTIALLY_FULFILLED
+                # If remaining_spots == 0, status remains unchanged.
+
+        await session.commit()
+
+        return _serialize_partnership(partnership, sponsorship, school, company)

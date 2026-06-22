@@ -2,22 +2,42 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Query, status
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Query, UploadFile, status
+from fastapi.responses import JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from md_backend.models.api_models import (
+    GuardianBatchResponse,
     GuardianCreateRequest,
     GuardianListPaginatedResponse,
+    GuardianOptionResponse,
     GuardianResponse,
     GuardianUpdateRequest,
 )
+from md_backend.services.csv_processor_service import CSVHeaderError, CSVProcessorService
 from md_backend.services.guardian_service import GuardianService
 from md_backend.utils.database import get_db_session
 from md_backend.utils.security import get_current_approved_user, get_current_superadmin
 
 guardian_service = GuardianService()
+csv_processor = CSVProcessorService()
 guardian_router = APIRouter(prefix="/guardian")
+
+
+@guardian_router.get("/options", response_model=list[GuardianOptionResponse])
+async def list_guardian_options(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """List approved guardians for student forms used by admins and schools."""
+    if not current_user.get("is_superadmin") and not current_user.get("is_school"):
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    options = await guardian_service.get_approved_guardian_options(session=session)
+    return JSONResponse(content=options, status_code=status.HTTP_200_OK)
 
 
 @guardian_router.post(
@@ -118,7 +138,7 @@ async def update_my_guardian(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+@guardian_router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, response_model=None)
 async def delete_my_guardian(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
@@ -134,7 +154,7 @@ async def delete_my_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @guardian_router.get(
@@ -193,6 +213,7 @@ async def update_guardian(
 @guardian_router.delete(
     "/{guardian_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(get_current_superadmin)],
 )
 async def delete_guardian(
@@ -208,7 +229,38 @@ async def delete_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@guardian_router.post(
+    "/batch",
+    response_model=GuardianBatchResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
+async def batch_import_guardians(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_db_session),
+):
+    """Batch import guardians from a CSV file. Superadmin only."""
+    raw = await file.read()
+    try:
+        result = await guardian_service.import_from_csv(
+            raw_content=raw,
+            session=session,
+            csv_processor=csv_processor,
+            background_tasks=background_tasks,
+        )
+    except CSVHeaderError as exc:
+        return JSONResponse(
+            content={"detail": str(exc)},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+
+    http_status = (
+        status.HTTP_200_OK if result.status == "completed" else status.HTTP_400_BAD_REQUEST
+    )
+    return JSONResponse(content=result.model_dump(), status_code=http_status)
 
 
 @guardian_router.post(
@@ -241,6 +293,7 @@ async def link_student_to_guardian(
 @guardian_router.delete(
     "/{guardian_id}/students/{student_id}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_model=None,
     dependencies=[Depends(get_current_superadmin)],
 )
 async def unlink_student_from_guardian(
@@ -259,4 +312,4 @@ async def unlink_student_from_guardian(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
-    return JSONResponse(content=None, status_code=status.HTTP_204_NO_CONTENT)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

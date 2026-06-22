@@ -36,6 +36,14 @@ jobs:
           echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID }}" >> .env
           echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY }}" >> .env
           echo "CLOUDFRONT_URL=${{ secrets.CLOUDFRONT_URL }}" >> .env
+          echo "FRONTEND_URL=${{ secrets.FRONTEND_URL }}" >> .env
+          echo "GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}" >> .env
+          echo "GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }}" >> .env
+          echo "LLM_TEMPERATURE=${{ secrets.LLM_TEMPERATURE }}" >> .env
+          echo "LLM_GENERATION_TEMPERATURE=${{ secrets.LLM_GENERATION_TEMPERATURE }}" >> .env
+          echo "LLM_GENERATION_MAX_RETRIES=${{ secrets.LLM_GENERATION_MAX_RETRIES }}" >> .env
+          echo "TRILHA_TTL_SECONDS=${{ secrets.TRILHA_TTL_SECONDS }}" >> .env
+
 
           echo "SMTP_USERNAME=${{ secrets.SMTP_USERNAME }}" >> .env
           echo "SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}" >> .env
