@@ -63,17 +63,15 @@ class PasswordResetService:
         """Send a non-expiring, single-use initial password setup link."""
         if background_tasks is not None:
             background_tasks.add_task(
-                self._email_sender.send_password_reset,
+                self._email_sender.send_initial_password_setup,
                 to_email=email,
                 code=code,
-                expires_in_minutes=None,
             )
             return
 
-        await self._email_sender.send_password_reset(
+        await self._email_sender.send_initial_password_setup(
             to_email=email,
             code=code,
-            expires_in_minutes=None,
         )
 
     async def dispatch_reset_email(
