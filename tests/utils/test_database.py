@@ -2,12 +2,13 @@
 
 import asyncio
 import importlib
+import importlib.util
 import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
-import tests.keys_test  # noqa: F401
+import tests.keys_test  # noqa: F401  # pyright: ignore[reportUnusedImport]
 from md_backend.main import app
 from md_backend.utils.database import AsyncSessionLocal
 
@@ -120,7 +121,7 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
         conn = Conn()
 
-        asyncio.run(db._migrate_sponsorship_tables(conn))
+        asyncio.run(db._migrate_sponsorship_tables(conn))  # type: ignore[reportArgumentType]
 
         sql = "\n".join(conn.executed)
         self.assertNotIn("DROP COLUMN IF EXISTS requested_spots", sql)
@@ -156,7 +157,7 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
         conn = Conn()
 
-        asyncio.run(db._migrate_resources_table(conn))
+        asyncio.run(db._migrate_resources_table(conn))  # type: ignore[reportArgumentType]
 
         sql = "\n".join(conn.executed)
         self.assertIn("ALTER COLUMN type TYPE resource_type_enum", sql)
@@ -183,7 +184,7 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
         conn = Conn()
 
-        asyncio.run(db._migrate_trail_authoring_metadata(conn))
+        asyncio.run(db._migrate_trail_authoring_metadata(conn))  # type: ignore[reportArgumentType]
 
         sql = "\n".join(conn.executed)
         self.assertIn("paths ADD COLUMN IF NOT EXISTS eixo", sql)
@@ -201,7 +202,9 @@ class TestDatabasePostgresEngineConfig(unittest.TestCase):
 
         spec = importlib.util.spec_from_file_location("isolated_database_config", db.__file__)
         self.assertIsNotNone(spec)
+        assert spec is not None
         self.assertIsNotNone(spec.loader)
+        assert spec.loader is not None
         module = importlib.util.module_from_spec(spec)
 
         with (
