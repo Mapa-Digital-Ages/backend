@@ -408,18 +408,23 @@ class GuardianService:
         if student_result.scalar_one_or_none() is None:
             return False
 
-        # Check if already linked
-        existing = await session.execute(
+        # Check if a row exists (active or soft-deleted)
+        existing_result = await session.execute(
             select(StudentGuardian).where(
                 and_(
                     StudentGuardian.guardian_id == guardian_id,
                     StudentGuardian.student_id == student_id,
-                    StudentGuardian.deactivated_at.is_(None),
                 )
             )
         )
-        if existing.scalar_one_or_none() is not None:
-            return False  # Already linked
+        existing = existing_result.scalar_one_or_none()
+        if existing is not None:
+            if existing.deactivated_at is None:
+                return False  # Already linked and active
+            # Revive soft-deleted link
+            existing.deactivated_at = None
+            await session.commit()
+            return True
 
         try:
             link = StudentGuardian(guardian_id=guardian_id, student_id=student_id)

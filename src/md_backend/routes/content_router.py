@@ -7,8 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from md_backend.models.api_models import ContentUpsertRequest
 from md_backend.services.content_service import ContentService
 from md_backend.utils.database import get_db_session
+from md_backend.utils.security import get_current_superadmin
 
-content_router = APIRouter()
+content_router = APIRouter(dependencies=[Depends(get_current_superadmin)])
 content_service = ContentService()
 
 

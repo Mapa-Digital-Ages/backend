@@ -126,7 +126,10 @@ class PasswordResetCode(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), nullable=False, index=True
+        Uuid(as_uuid=True),
+        ForeignKey("user_profile.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
     expires_at: Mapped[datetime.datetime | None] = mapped_column(
@@ -148,7 +151,7 @@ class AdminProfile(Base):
     __tablename__ = "admin_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     subject_area: Mapped[int | None] = mapped_column(Integer, nullable=True)
     is_superadmin: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
@@ -165,7 +168,7 @@ class StudentProfile(Base):
     __tablename__ = "student_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     birth_date: Mapped[datetime.date] = mapped_column(Date, nullable=False)
     student_class: Mapped[ClassEnum] = mapped_column(
@@ -196,7 +199,7 @@ class CompanyProfile(Base):
     __tablename__ = "company_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     available_spots: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
@@ -218,7 +221,7 @@ class SchoolProfile(Base):
     __tablename__ = "school_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     is_private: Mapped[bool] = mapped_column(Boolean, nullable=False)
     requested_spots: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -277,7 +280,7 @@ class GuardianProfile(Base):
     __tablename__ = "guardian_profile"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid(as_uuid=True), ForeignKey("user_profile.id"), primary_key=True
+        Uuid(as_uuid=True), ForeignKey("user_profile.id", ondelete="CASCADE"), primary_key=True
     )
     guardian_status: Mapped[GuardianStatusEnum] = mapped_column(
         Enum(GuardianStatusEnum, name="guardian_status_enum"),
