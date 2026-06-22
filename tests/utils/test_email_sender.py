@@ -52,7 +52,7 @@ class TestEmailSenderSmtp(unittest.TestCase):
         mocked_settings.SMTP_FROM_NAME = "Mapa Digital"
         mocked_settings.FRONTEND_URL = "http://localhost:5173"
 
-    def test_sends_message_with_reset_link_without_visible_code(self):
+    def test_regular_reset_email_sends_visible_code_without_setup_link(self):
         sender = EmailSender()
 
         with (
@@ -69,22 +69,15 @@ class TestEmailSenderSmtp(unittest.TestCase):
         kwargs = mocked_send.await_args.kwargs
 
         self.assertEqual(message["To"], "dest@test.com")
-        self.assertEqual(message["Subject"], "Defina sua senha — Mapa Digital")
+        self.assertEqual(message["Subject"], "Código para redefinir sua senha — Mapa Digital")
         self.assertIn("sender@example.com", message["From"])
         self.assertIn("Mapa Digital", message["From"])
 
         body_parts = [part.get_content() for part in message.iter_parts()]
-        expected_url = "http://localhost:5173/forgot-password#email=dest%40test.com&code=987654"
-        self.assertTrue(
-            any(
-                expected_url in part or expected_url.replace("&", "&amp;") in part
-                for part in body_parts
-            )
-        )
-        visible_text = "\n".join(body_parts).replace(expected_url, "")
-        visible_text = visible_text.replace(expected_url.replace("&", "&amp;"), "")
-        self.assertNotIn("Seu código", visible_text)
-        self.assertNotIn("987654", visible_text)
+        body = "\n".join(body_parts)
+        self.assertIn("987654", body)
+        self.assertIn("expira em 15 minutos", body)
+        self.assertNotIn("/forgot-password", body)
 
         self.assertEqual(kwargs["hostname"], "smtp.example.com")
         self.assertEqual(kwargs["port"], 587)
@@ -111,7 +104,7 @@ class TestEmailSenderSmtp(unittest.TestCase):
         mocked_logger.exception.assert_called_once()
         self.assertIn("dest@test.com", mocked_logger.exception.call_args.args)
 
-    def test_non_expiring_setup_email_does_not_show_an_expiration_deadline(self):
+    def test_initial_setup_email_keeps_non_expiring_batch_link(self):
         sender = EmailSender()
 
         with (
@@ -122,15 +115,16 @@ class TestEmailSenderSmtp(unittest.TestCase):
         ):
             self._enabled_settings(mocked_settings)
             asyncio.run(
-                sender.send_password_reset(
+                sender.send_initial_password_setup(
                     to_email="dest@test.com",
                     code="123456",
-                    expires_in_minutes=None,
                 )
             )
 
         message = mocked_send.await_args.args[0]
         body = "\n".join(part.get_content() for part in message.iter_parts())
+        expected_url = "http://localhost:5173/forgot-password#email=dest%40test.com&code=123456"
+        self.assertTrue(expected_url in body or expected_url.replace("&", "&amp;") in body)
         self.assertIn("permanece válido até você definir sua senha", body)
         self.assertNotIn("expira em 15 minutos", body)
 
