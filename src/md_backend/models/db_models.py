@@ -129,7 +129,9 @@ class PasswordResetCode(Base):
         Uuid(as_uuid=True), ForeignKey("user_profile.id"), nullable=False, index=True
     )
     code_hash: Mapped[str] = mapped_column(String(128), nullable=False)
-    expires_at: Mapped[datetime.datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime.datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     consumed_at: Mapped[datetime.datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
