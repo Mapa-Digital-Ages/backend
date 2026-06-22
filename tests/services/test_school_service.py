@@ -733,6 +733,7 @@ class TestPartnershipIntegration(unittest.TestCase):
                 "password": company_a_password,
                 "spots": 100,
             },
+            headers=self.admin_headers,
         )
         self.company_a_id = company_a_resp.json()["user_id"]
         login_a = self.client.post(
@@ -752,6 +753,7 @@ class TestPartnershipIntegration(unittest.TestCase):
                 "password": company_b_password,
                 "spots": 100,
             },
+            headers=self.admin_headers,
         )
         self.company_b_id = company_b_resp.json()["user_id"]
         login_b = self.client.post(

@@ -32,7 +32,12 @@ company_router = APIRouter(prefix="/company", tags=["Company"])
 _VISIBLE_PARTNERSHIP_STATUSES = {"pending", "approved"}
 
 
-@company_router.post("", response_model=CompanyResponse, status_code=status.HTTP_201_CREATED)
+@company_router.post(
+    "",
+    response_model=CompanyResponse,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def create_company(
     request: CreateCompanyRequest,
     session: AsyncSession = Depends(get_db_session),
@@ -94,7 +99,11 @@ async def batch_import_companies(
     return JSONResponse(content=result.model_dump(), status_code=http_status)
 
 
-@company_router.get("", response_model=list[CompanyResponse])
+@company_router.get(
+    "",
+    response_model=list[CompanyResponse],
+    dependencies=[Depends(get_current_approved_user)],
+)
 async def list_companies(
     name: str | None = Query(None, description="Busca parcial por nome"),
     page: int = Query(1, ge=1, description="Numero da pagina"),
@@ -131,7 +140,11 @@ async def list_public_requests(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@company_router.get("/{user_id}", response_model=CompanyResponse)
+@company_router.get(
+    "/{user_id}",
+    response_model=CompanyResponse,
+    dependencies=[Depends(get_current_approved_user)],
+)
 async def get_company(
     user_id: uuid.UUID,
     session: AsyncSession = Depends(get_db_session),
@@ -150,6 +163,7 @@ async def get_company(
     "/{user_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     response_model=None,
+    dependencies=[Depends(get_current_superadmin)],
 )
 async def delete_company(
     user_id: uuid.UUID,
@@ -165,7 +179,11 @@ async def delete_company(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@company_router.patch("/{user_id}", response_model=CompanyResponse)
+@company_router.patch(
+    "/{user_id}",
+    response_model=CompanyResponse,
+    dependencies=[Depends(get_current_superadmin)],
+)
 async def update_company(
     user_id: uuid.UUID,
     request: UpdateCompanyRequest,

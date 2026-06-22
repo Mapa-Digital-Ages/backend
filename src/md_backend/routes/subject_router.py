@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from md_backend.models.api_models import SubjectRequest, SubjectUpdateRequest
 from md_backend.services.subject_service import SubjectService
 from md_backend.utils.database import get_db_session
+from md_backend.utils.security import get_current_superadmin
 
 subject_router = APIRouter(prefix="/subjects")
 subject_service = SubjectService()
@@ -31,7 +32,7 @@ async def get_subject(subject_id: int, session: AsyncSession = Depends(get_db_se
     return JSONResponse(content=subject, status_code=status.HTTP_200_OK)
 
 
-@subject_router.post("")
+@subject_router.post("", dependencies=[Depends(get_current_superadmin)])
 async def create_subject(
     request: SubjectRequest,
     session: AsyncSession = Depends(get_db_session),
@@ -48,7 +49,7 @@ async def create_subject(
     return JSONResponse(content=subject, status_code=status.HTTP_201_CREATED)
 
 
-@subject_router.patch("/{subject_id}")
+@subject_router.patch("/{subject_id}", dependencies=[Depends(get_current_superadmin)])
 async def update_subject(
     subject_id: int,
     request: SubjectUpdateRequest,
@@ -74,7 +75,7 @@ async def update_subject(
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
 
 
-@subject_router.delete("/{subject_id}")
+@subject_router.delete("/{subject_id}", dependencies=[Depends(get_current_superadmin)])
 async def delete_subject(subject_id: int, session: AsyncSession = Depends(get_db_session)):
     """Delete a subject when no content or task references it."""
     result = await subject_service.delete_subject(session=session, subject_id=subject_id)

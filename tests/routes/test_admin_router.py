@@ -170,6 +170,7 @@ class TestAdminRouter(unittest.TestCase):
                 "last_name": "User",
                 "spots": 10,
             },
+            headers=self.admin_headers,
         )
         response = self.test_client.get(
             "/api/admin/users", params={"role": "company"}, headers=self.admin_headers
