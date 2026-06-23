@@ -34,6 +34,13 @@ class TrailReadService:
             "color": subject.color,
         }
 
+    @staticmethod
+    def _sub_step_group_key(item: SubPathItem, sub_path_id: int) -> str:
+        """Return the same grouping key used to render one UI sub-step."""
+        if item.type_item == TypeItemEnum.EXERCISE and not item.group_key:
+            return f"legacy-quiz-{sub_path_id}"
+        return item.group_key or f"item-{item.id}"
+
     async def _completed_item_ids(
         self,
         session: AsyncSession,
@@ -121,10 +128,7 @@ class TrailReadService:
         order = 1
 
         for item in items:
-            if item.type_item == TypeItemEnum.EXERCISE and not item.group_key:
-                group_key = f"legacy-quiz-{sub_path_id}"
-            else:
-                group_key = item.group_key or f"item-{item.id}"
+            group_key = self._sub_step_group_key(item, sub_path_id)
             if group_key not in grouped_items:
                 grouped_items[group_key] = []
                 group_order.append(group_key)
@@ -260,10 +264,144 @@ class TrailReadService:
                 result.append(item.id)
         return result
 
+    async def sub_step_progress_by_path(
+        self,
+        session: AsyncSession,
+        student_ids: list[uuid.UUID],
+        path_ids: list[int],
+    ) -> dict[tuple[uuid.UUID, int], dict[str, int]]:
+        """Calculate path progress from completed UI sub-step groups."""
+        if not student_ids or not path_ids:
+            return {}
+
+        position_rows = (
+            await session.execute(
+                select(SubPath.path_id, SubPath.id, SubPath.order)
+                .where(SubPath.path_id.in_(path_ids))
+                .order_by(SubPath.path_id, SubPath.order, SubPath.id)
+            )
+        ).all()
+        sub_path_positions: dict[int, dict[int, tuple[int, int]]] = {}
+        for path_id, sub_path_id, sub_path_order in position_rows:
+            sub_path_positions.setdefault(path_id, {})[sub_path_id] = (
+                sub_path_order,
+                sub_path_id,
+            )
+
+        item_rows = (
+            await session.execute(
+                select(SubPathItem, SubPath.path_id, SubPath.id, SubPath.order)
+                .join(SubPath, SubPath.id == SubPathItem.sub_path_id)
+                .where(SubPath.path_id.in_(path_ids))
+                .order_by(SubPath.path_id, SubPath.order, SubPath.id, SubPathItem.order)
+                .options(
+                    selectinload(SubPathItem.exercise).selectinload(Exercise.options),
+                )
+            )
+        ).all()
+
+        groups_by_path: dict[int, dict[tuple[int, str], set[int]]] = {}
+        for item, path_id, sub_path_id, _sub_path_order in item_rows:
+            is_playable = item.type_item == TypeItemEnum.RESOURCE or (
+                item.exercise is not None and bool(item.exercise.options)
+            )
+            if not is_playable:
+                continue
+            group_key = self._sub_step_group_key(item, sub_path_id)
+            groups_by_path.setdefault(path_id, {}).setdefault((sub_path_id, group_key), set()).add(
+                item.id
+            )
+
+        progress_rows = (
+            (
+                await session.execute(
+                    select(StudentPathProgress).where(
+                        StudentPathProgress.student_id.in_(student_ids),
+                        StudentPathProgress.path_id.in_(path_ids),
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        progress_by_student_path = {
+            (progress.student_id, progress.path_id): progress for progress in progress_rows
+        }
+
+        completed_rows = (
+            await session.execute(
+                select(
+                    StudentSubPathItemProgress.student_id,
+                    StudentSubPathItemProgress.path_id,
+                    StudentSubPathItemProgress.sub_path_item_id,
+                ).where(
+                    StudentSubPathItemProgress.student_id.in_(student_ids),
+                    StudentSubPathItemProgress.path_id.in_(path_ids),
+                    StudentSubPathItemProgress.status == ItemProgressStatusEnum.COMPLETED,
+                )
+            )
+        ).all()
+        completed_items: dict[tuple[uuid.UUID, int], set[int]] = {}
+        for student_id, path_id, item_id in completed_rows:
+            completed_items.setdefault((student_id, path_id), set()).add(item_id)
+
+        result: dict[tuple[uuid.UUID, int], dict[str, int]] = {}
+        for student_id in student_ids:
+            for path_id in path_ids:
+                groups = groups_by_path.get(path_id, {})
+                progress = progress_by_student_path.get((student_id, path_id))
+                completed_ids = completed_items.get((student_id, path_id), set())
+                current_position = (
+                    sub_path_positions.get(path_id, {}).get(progress.current_sub_path)
+                    if progress is not None
+                    else None
+                )
+
+                stage_fractions: list[float] = []
+                for sub_path_id, group_position in sorted(
+                    sub_path_positions.get(path_id, {}).items(),
+                    key=lambda item: item[1],
+                ):
+                    stage_groups = [
+                        item_ids
+                        for (group_sub_path_id, _group_key), item_ids in groups.items()
+                        if group_sub_path_id == sub_path_id
+                    ]
+                    stage_is_completed = bool(
+                        progress is not None and progress.path_status == PathStatusEnum.COMPLETED
+                    )
+                    if not stage_is_completed and current_position is not None:
+                        stage_is_completed = group_position < current_position
+                    if stage_is_completed:
+                        stage_fractions.append(1.0)
+                        continue
+                    if not stage_groups:
+                        stage_fractions.append(0.0)
+                        continue
+                    completed_groups = sum(
+                        1 for item_ids in stage_groups if item_ids.issubset(completed_ids)
+                    )
+                    stage_fractions.append(completed_groups / len(stage_groups))
+
+                total = len(stage_fractions)
+                completed = sum(1 for fraction in stage_fractions if fraction >= 1)
+                percentage = round((sum(stage_fractions) / total) * 100) if total else 0
+                result[(student_id, path_id)] = {
+                    "completed": completed,
+                    "total": total,
+                    "progress": percentage,
+                }
+        return result
+
     async def get_question_flow(
-        self, session: AsyncSession, path_id: int, sub_path_id: int
+        self,
+        session: AsyncSession,
+        path_id: int,
+        sub_path_id: int,
+        sub_step_id: str | None = None,
+        student_id: uuid.UUID | None = None,
     ) -> dict | None:
-        """Return the quiz question flow for one sub-path."""
+        """Return the question flow for one quiz sub-step."""
         subject = (
             await session.execute(
                 select(Subject)
@@ -278,22 +416,43 @@ class TrailReadService:
 
         sub_steps = await self._build_sub_steps(
             session=session,
-            student_id=uuid.UUID(int=0),
+            student_id=student_id or uuid.UUID(int=0),
             path_id=path_id,
             sub_path_id=sub_path_id,
             step_status="available",
             subject_payload=subject_payload,
         )
-        quiz = next((step for step in sub_steps if step["kind"] == "question"), None)
-        questions = quiz["questions"] if quiz else []
+        quiz = next(
+            (
+                step
+                for step in sub_steps
+                if step["kind"] == "question" and (sub_step_id is None or step["id"] == sub_step_id)
+            ),
+            None,
+        )
+        if quiz is None:
+            if sub_step_id is not None:
+                return None
+            return {
+                "assessmentId": str(sub_path_id),
+                "trailId": str(path_id),
+                "stepId": str(sub_path_id),
+                "subStepId": f"quiz-{sub_path_id}",
+                "stepTitle": "Questões",
+                "itemIds": [],
+                "questions": [],
+            }
+        if sub_step_id is not None and quiz["status"] != "available":
+            return None
 
         return {
             "assessmentId": str(sub_path_id),
             "trailId": str(path_id),
             "stepId": str(sub_path_id),
-            "subStepId": f"quiz-{sub_path_id}",
-            "stepTitle": "Questões",
-            "questions": questions,
+            "subStepId": quiz["id"],
+            "stepTitle": quiz["title"],
+            "itemIds": quiz["item_ids"],
+            "questions": quiz["questions"],
         }
 
     async def list_trails(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
@@ -338,6 +497,11 @@ class TrailReadService:
         progress_by_path: dict[int, StudentPathProgress] = {
             progress.path_id: progress for progress in progress_rows
         }
+        sub_step_progress = await self.sub_step_progress_by_path(
+            session=session,
+            student_ids=[student_id],
+            path_ids=[path.id for path, _content, _subject, _total in rows],
+        )
 
         result = []
         for path, content, subject, total_steps in rows:
@@ -346,10 +510,8 @@ class TrailReadService:
 
             if progress_record is None:
                 completed = 0
-                pct = 0
             elif progress_record.path_status == PathStatusEnum.COMPLETED:
                 completed = total
-                pct = 100
             else:
                 completed = (
                     await session.execute(
@@ -359,7 +521,7 @@ class TrailReadService:
                         )
                     )
                 ).scalar_one() or 0
-                pct = round((completed / total) * 100) if total > 0 else 0
+            pct = sub_step_progress.get((student_id, path.id), {}).get("progress", 0)
 
             result.append(
                 {
@@ -455,9 +617,21 @@ class TrailReadService:
                 }
             )
 
-        total = len(steps)
         completed_count = sum(1 for step in steps if step["status"] == "completed")
-        pct = round((completed_count / total) * 100) if total > 0 else 0
+        stage_fractions = []
+        for step in steps:
+            if step["status"] == "completed":
+                stage_fractions.append(1.0)
+                continue
+            sub_steps = step["sub_steps"]
+            if not sub_steps:
+                stage_fractions.append(0.0)
+                continue
+            completed_sub_steps = sum(
+                1 for sub_step in sub_steps if sub_step["status"] == "completed"
+            )
+            stage_fractions.append(completed_sub_steps / len(sub_steps))
+        pct = round((sum(stage_fractions) / len(stage_fractions)) * 100) if stage_fractions else 0
 
         return {
             "id": str(path.id),

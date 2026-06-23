@@ -181,6 +181,69 @@ def _seed_trail(student_id: str) -> dict:
     return asyncio.run(_insert())
 
 
+def _add_second_question_sub_step(seed: dict) -> dict:
+    """Add a second, separately grouped quiz to the seeded sub-path."""
+
+    async def _insert():
+        async with engine.begin() as conn:
+            content_id = (
+                await conn.execute(
+                    text("SELECT content_id FROM paths WHERE id = :path_id"),
+                    {"path_id": seed["path_id"]},
+                )
+            ).scalar_one()
+            exercise_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO exercises (content_id, statement, difficulty) "
+                        "VALUES (:content_id, :statement, 'EASY') RETURNING id"
+                    ),
+                    {
+                        "content_id": content_id,
+                        "statement": "Quanto é 3 + 4?",
+                    },
+                )
+            ).scalar_one()
+            await conn.execute(
+                text(
+                    "INSERT INTO options (exercise_id, text, correct) "
+                    "VALUES (:exercise_id, '6', false)"
+                ),
+                {"exercise_id": exercise_id},
+            )
+            correct_option_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO options (exercise_id, text, correct) "
+                        "VALUES (:exercise_id, '7', true) RETURNING id"
+                    ),
+                    {"exercise_id": exercise_id},
+                )
+            ).scalar_one()
+            item_id = (
+                await conn.execute(
+                    text(
+                        "INSERT INTO sub_paths_item "
+                        '(sub_path_id, type_item, exercise_id, group_key, title, "order") '
+                        "VALUES (:sub_path_id, 'EXERCISE', :exercise_id, "
+                        "'second-quiz', 'Segundo questionário', 2) RETURNING id"
+                    ),
+                    {
+                        "sub_path_id": seed["sub_path_id"],
+                        "exercise_id": exercise_id,
+                    },
+                )
+            ).scalar_one()
+            return {
+                "exercise_id": exercise_id,
+                "correct_option_id": correct_option_id,
+                "item_id": item_id,
+                "sub_step_id": f"quiz-{seed['sub_path_id']}-second-quiz",
+            }
+
+    return asyncio.run(_insert())
+
+
 def _seed_incomplete_path() -> int:
     """Insert a path with one sub-path but NO items (not playable). Returns path_id."""
 
@@ -438,6 +501,53 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(body["completed_steps"], 1)
         next_step = next(st for st in body["steps"] if st["id"] == str(s["next_sub_path_id"]))
         self.assertEqual(next_step["status"], "available")
+
+    def test_completing_first_quiz_group_keeps_sibling_sub_step_open(self):
+        s = self.seed
+        second = _add_second_question_sub_step(s)
+        self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/items/{s['resource_item_id']}/complete",
+            headers=self.student_headers,
+            json={"answers": []},
+        )
+
+        first_sub_step_id = f"quiz-{s['sub_path_id']}"
+        flow = self.client.get(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/sub-steps/{first_sub_step_id}/questions",
+            headers=self.student_headers,
+        )
+        self.assertEqual(flow.status_code, 200)
+        self.assertEqual(flow.json()["subStepId"], first_sub_step_id)
+        self.assertEqual(
+            [question["id"] for question in flow.json()["questions"]],
+            [str(s["exercise_id"])],
+        )
+
+        response = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/sub-steps/{first_sub_step_id}/complete",
+            headers=self.student_headers,
+            json={
+                "answers": [
+                    {
+                        "exercise_id": s["exercise_id"],
+                        "option_id": s["correct_option_id"],
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        body = response.json()
+        self.assertEqual(body["current_sub_path"], s["sub_path_id"])
+        self.assertEqual(body["path_status"], "on_going")
+        step = next(item for item in body["steps"] if item["id"] == str(s["sub_path_id"]))
+        statuses = {sub_step["id"]: sub_step["status"] for sub_step in step["sub_steps"]}
+        self.assertEqual(statuses[first_sub_step_id], "completed")
+        self.assertEqual(statuses[second["sub_step_id"]], "available")
+        self.assertEqual(step["status"], "available")
 
     def test_validate_answer_reports_selected_option_correctness(self):
         s = self.seed
