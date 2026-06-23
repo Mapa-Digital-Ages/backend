@@ -2,6 +2,7 @@
 
 import unittest
 import uuid
+from unittest.mock import MagicMock
 
 import tests.keys_test  # noqa: F401
 from sqlalchemy import select
@@ -22,6 +23,26 @@ from md_backend.models.db_models import (
 from md_backend.services.trail.progress_service import TrailProgressService
 from md_backend.services.trail.read_service import TrailReadService
 from md_backend.utils.database import AsyncSessionLocal, init_db
+
+
+class TestTrailProgressPosition(unittest.TestCase):
+    def test_retake_does_not_move_completed_or_more_advanced_progress_backwards(self):
+        completed = MagicMock(
+            path_status=PathStatusEnum.COMPLETED,
+            current_sub_path=20,
+        )
+        advanced = MagicMock(
+            path_status=PathStatusEnum.ON_GOING,
+            current_sub_path=20,
+        )
+        current = MagicMock(
+            path_status=PathStatusEnum.ON_GOING,
+            current_sub_path=10,
+        )
+
+        self.assertFalse(TrailProgressService._can_change_path_position(completed, 10))
+        self.assertFalse(TrailProgressService._can_change_path_position(advanced, 10))
+        self.assertTrue(TrailProgressService._can_change_path_position(current, 10))
 
 
 class TestTrailProgressService(unittest.IsolatedAsyncioTestCase):

@@ -590,6 +590,53 @@ class TestPathRouter(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(resp.json()["path_status"], "completed")
 
+    def test_retake_completed_quiz_keeps_completed_path_position(self):
+        s = self.seed
+        self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/items/{s['resource_item_id']}/complete",
+            headers=self.student_headers,
+            json={"answers": []},
+        )
+        self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/items/{s['exercise_item_id']}/complete",
+            headers=self.student_headers,
+            json={
+                "answers": [
+                    {
+                        "exercise_id": s["exercise_id"],
+                        "option_id": s["correct_option_id"],
+                    }
+                ]
+            },
+        )
+        self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['next_sub_path_id']}/complete",
+            headers=self.student_headers,
+            json={"answers": []},
+        )
+
+        sub_step_id = f"quiz-{s['sub_path_id']}"
+        response = self.client.post(
+            f"/api/student/{self.student_id}/trails/{s['path_id']}"
+            f"/steps/{s['sub_path_id']}/sub-steps/{sub_step_id}/complete",
+            headers=self.student_headers,
+            json={
+                "answers": [
+                    {
+                        "exercise_id": s["exercise_id"],
+                        "option_id": s["correct_option_id"],
+                    }
+                ]
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["path_status"], "completed")
+        self.assertEqual(response.json()["current_sub_path"], s["next_sub_path_id"])
+
     def test_list_reports_partial_progress_after_advancing(self):
         s = self.seed
         # complete the first sub-path -> advances to the second (1 of 2 done)
