@@ -1,5 +1,7 @@
 """Read and serialization service for adaptive trails."""
 
+import hashlib
+import random
 import uuid
 
 from sqlalchemy import func, or_, select
@@ -33,6 +35,18 @@ class TrailReadService:
             "label": subject.name,
             "color": subject.color,
         }
+
+    @staticmethod
+    def _ordered_options(
+        options: list[Option],
+        student_id: uuid.UUID,
+        exercise_id: int,
+    ) -> list[Option]:
+        """Shuffle options deterministically for one student and exercise."""
+        seed_bytes = hashlib.sha256(f"{student_id}:{exercise_id}".encode()).digest()
+        shuffled = list(options)
+        random.Random(int.from_bytes(seed_bytes)).shuffle(shuffled)
+        return shuffled
 
     @staticmethod
     def _sub_step_group_key(item: SubPathItem, sub_path_id: int) -> str:
@@ -153,7 +167,11 @@ class TrailReadService:
                             "question": exercise.statement,
                             "options": [
                                 {"id": str(option.id), "label": option.text}
-                                for option in exercise.options
+                                for option in self._ordered_options(
+                                    exercise.options,
+                                    student_id,
+                                    exercise.id,
+                                )
                             ],
                             "subject": subject_payload,
                         }
@@ -216,7 +234,11 @@ class TrailReadService:
                         "question": exercise.statement,
                         "options": [
                             {"id": str(option.id), "label": option.text}
-                            for option in exercise.options
+                            for option in self._ordered_options(
+                                exercise.options,
+                                student_id,
+                                exercise.id,
+                            )
                         ],
                         "subject": subject_payload,
                     }
@@ -442,7 +464,7 @@ class TrailReadService:
                 "itemIds": [],
                 "questions": [],
             }
-        if sub_step_id is not None and quiz["status"] != "available":
+        if sub_step_id is not None and quiz["status"] not in {"available", "completed"}:
             return None
 
         return {

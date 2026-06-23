@@ -29,6 +29,17 @@ class TrailProgressService:
         """Create a progress service."""
         self._read = read_service or TrailReadService()
 
+    @staticmethod
+    def _can_change_path_position(
+        progress: StudentPathProgress,
+        submitted_sub_path_id: int,
+    ) -> bool:
+        """Return whether a completion may advance the student's current position."""
+        return (
+            progress.path_status != PathStatusEnum.COMPLETED
+            and progress.current_sub_path == submitted_sub_path_id
+        )
+
     async def _completed_item_ids(
         self,
         session: AsyncSession,
@@ -321,7 +332,13 @@ class TrailProgressService:
                 completed_item_ids | set(selected_item_ids)
             )
 
-        if sub_path_completed:
+        can_change_path_position = self._can_change_path_position(
+            path_progress,
+            sub_path_id,
+        )
+        if not can_change_path_position:
+            path_progress.updated_at = now
+        elif sub_path_completed:
             score = correct if total > 0 else None
             next_id = await self._resolve_next_sub_path(
                 session=session, path_id=path_id, sub_path_id=sub_path_id, score=score
