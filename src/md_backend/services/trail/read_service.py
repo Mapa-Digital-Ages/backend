@@ -274,6 +274,20 @@ class TrailReadService:
         if not student_ids or not path_ids:
             return {}
 
+        position_rows = (
+            await session.execute(
+                select(SubPath.path_id, SubPath.id, SubPath.order)
+                .where(SubPath.path_id.in_(path_ids))
+                .order_by(SubPath.path_id, SubPath.order, SubPath.id)
+            )
+        ).all()
+        sub_path_positions: dict[int, dict[int, tuple[int, int]]] = {}
+        for path_id, sub_path_id, sub_path_order in position_rows:
+            sub_path_positions.setdefault(path_id, {})[sub_path_id] = (
+                sub_path_order,
+                sub_path_id,
+            )
+
         item_rows = (
             await session.execute(
                 select(SubPathItem, SubPath.path_id, SubPath.id, SubPath.order)
@@ -287,8 +301,7 @@ class TrailReadService:
         ).all()
 
         groups_by_path: dict[int, dict[tuple[int, str], set[int]]] = {}
-        sub_path_positions: dict[int, dict[int, tuple[int, int]]] = {}
-        for item, path_id, sub_path_id, sub_path_order in item_rows:
+        for item, path_id, sub_path_id, _sub_path_order in item_rows:
             is_playable = item.type_item == TypeItemEnum.RESOURCE or (
                 item.exercise is not None and bool(item.exercise.options)
             )
@@ -297,10 +310,6 @@ class TrailReadService:
             group_key = self._sub_step_group_key(item, sub_path_id)
             groups_by_path.setdefault(path_id, {}).setdefault((sub_path_id, group_key), set()).add(
                 item.id
-            )
-            sub_path_positions.setdefault(path_id, {})[sub_path_id] = (
-                sub_path_order,
-                sub_path_id,
             )
 
         progress_rows = (
@@ -340,7 +349,6 @@ class TrailReadService:
         for student_id in student_ids:
             for path_id in path_ids:
                 groups = groups_by_path.get(path_id, {})
-                total = len(groups)
                 progress = progress_by_student_path.get((student_id, path_id))
                 completed_ids = completed_items.get((student_id, path_id), set())
                 current_position = (
@@ -349,20 +357,35 @@ class TrailReadService:
                     else None
                 )
 
-                completed = 0
-                for (sub_path_id, _group_key), item_ids in groups.items():
-                    group_position = sub_path_positions[path_id][sub_path_id]
-                    is_completed = bool(
+                stage_fractions: list[float] = []
+                for sub_path_id, group_position in sorted(
+                    sub_path_positions.get(path_id, {}).items(),
+                    key=lambda item: item[1],
+                ):
+                    stage_groups = [
+                        item_ids
+                        for (group_sub_path_id, _group_key), item_ids in groups.items()
+                        if group_sub_path_id == sub_path_id
+                    ]
+                    stage_is_completed = bool(
                         progress is not None and progress.path_status == PathStatusEnum.COMPLETED
                     )
-                    if not is_completed and current_position is not None:
-                        is_completed = group_position < current_position
-                    if not is_completed:
-                        is_completed = item_ids.issubset(completed_ids)
-                    if is_completed:
-                        completed += 1
+                    if not stage_is_completed and current_position is not None:
+                        stage_is_completed = group_position < current_position
+                    if stage_is_completed:
+                        stage_fractions.append(1.0)
+                        continue
+                    if not stage_groups:
+                        stage_fractions.append(0.0)
+                        continue
+                    completed_groups = sum(
+                        1 for item_ids in stage_groups if item_ids.issubset(completed_ids)
+                    )
+                    stage_fractions.append(completed_groups / len(stage_groups))
 
-                percentage = round((completed / total) * 100) if total else 0
+                total = len(stage_fractions)
+                completed = sum(1 for fraction in stage_fractions if fraction >= 1)
+                percentage = round((sum(stage_fractions) / total) * 100) if total else 0
                 result[(student_id, path_id)] = {
                     "completed": completed,
                     "total": total,
@@ -408,7 +431,17 @@ class TrailReadService:
             None,
         )
         if quiz is None:
-            return None
+            if sub_step_id is not None:
+                return None
+            return {
+                "assessmentId": str(sub_path_id),
+                "trailId": str(path_id),
+                "stepId": str(sub_path_id),
+                "subStepId": f"quiz-{sub_path_id}",
+                "stepTitle": "Questões",
+                "itemIds": [],
+                "questions": [],
+            }
         if sub_step_id is not None and quiz["status"] != "available":
             return None
 
@@ -585,14 +618,20 @@ class TrailReadService:
             )
 
         completed_count = sum(1 for step in steps if step["status"] == "completed")
-        total_sub_steps = sum(len(step["sub_steps"]) for step in steps)
-        completed_sub_steps = sum(
-            1
-            for step in steps
-            for sub_step in step["sub_steps"]
-            if sub_step["status"] == "completed"
-        )
-        pct = round((completed_sub_steps / total_sub_steps) * 100) if total_sub_steps > 0 else 0
+        stage_fractions = []
+        for step in steps:
+            if step["status"] == "completed":
+                stage_fractions.append(1.0)
+                continue
+            sub_steps = step["sub_steps"]
+            if not sub_steps:
+                stage_fractions.append(0.0)
+                continue
+            completed_sub_steps = sum(
+                1 for sub_step in sub_steps if sub_step["status"] == "completed"
+            )
+            stage_fractions.append(completed_sub_steps / len(sub_steps))
+        pct = round((sum(stage_fractions) / len(stage_fractions)) * 100) if stage_fractions else 0
 
         return {
             "id": str(path.id),

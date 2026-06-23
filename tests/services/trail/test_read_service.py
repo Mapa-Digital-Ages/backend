@@ -109,6 +109,12 @@ class TestTrailReadServiceSubStepProgress(unittest.TestCase):
             item.exercise = None
             return item
 
+        positions_result = MagicMock()
+        positions_result.all.return_value = [
+            (1, 10, 1),
+            (2, 20, 1),
+            (2, 30, 2),
+        ]
         item_result = MagicMock()
         item_result.all.return_value = [
             (resource_item(1, "p1-a"), 1, 10, 1),
@@ -140,7 +146,12 @@ class TestTrailReadServiceSubStepProgress(unittest.TestCase):
             (student_id, 1, 1),
             (student_id, 2, 3),
         ]
-        session.execute.side_effect = [item_result, progress_result, completed_result]
+        session.execute.side_effect = [
+            positions_result,
+            item_result,
+            progress_result,
+            completed_result,
+        ]
 
         result = asyncio.run(
             service.sub_step_progress_by_path(
@@ -326,3 +337,23 @@ class TestTrailReadServiceGetTrailDetail(unittest.TestCase):
         self.assertEqual(flow["subStepId"], "quiz-10-second")
         self.assertEqual(flow["itemIds"], ["102"])
         self.assertEqual(flow["questions"], [{"id": "2"}])
+
+    def test_legacy_question_flow_is_empty_when_step_has_no_quiz(self):
+        session = AsyncMock()
+        subject = MagicMock(id=2, slug=None, name="Matemática", color="#F00")
+        subject_result = MagicMock()
+        subject_result.scalar_one_or_none.return_value = subject
+        session.execute.return_value = subject_result
+        self.service._build_sub_steps = AsyncMock(return_value=[])
+
+        flow = self._run(
+            self.service.get_question_flow(
+                session=session,
+                path_id=1,
+                sub_path_id=10,
+                student_id=self.student_id,
+            )
+        )
+
+        self.assertEqual(flow["questions"], [])
+        self.assertEqual(flow["subStepId"], "quiz-10")
