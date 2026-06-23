@@ -341,16 +341,59 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
                     "subjectId": "10",
                     "subjectLabel": "Matemática",
                     "subjectColor": "#123456",
+                    "startedTrailCount": 0,
                     "progress": 0,
                 },
                 {
                     "subjectId": "11",
                     "subjectLabel": "Português",
                     "subjectColor": None,
+                    "startedTrailCount": 0,
                     "progress": 0,
                 },
             ],
         )
+
+    def test_disciplines_progress_only_counts_started_trails_and_sorts_descending(self):
+        from md_backend.models.db_models import PathStatusEnum
+
+        service = StudentService()
+        student_id = uuid.uuid4()
+        catalog_result = MagicMock()
+        catalog_result.all.return_value = [
+            (1, 10, "Matemática", None, 100, 0),
+            (1, 10, "Matemática", None, 101, 1),
+            (2, 10, "Matemática", None, 200, 0),
+            (3, 11, "Português", None, 300, 0),
+            (4, 12, "Geografia", None, 400, 0),
+        ]
+        math_progress = MagicMock(
+            student_id=student_id,
+            path_id=1,
+            path_status=PathStatusEnum.ON_GOING,
+            current_sub_path=101,
+        )
+        geography_progress = MagicMock(
+            student_id=student_id,
+            path_id=4,
+            path_status=PathStatusEnum.COMPLETED,
+            current_sub_path=400,
+        )
+        progress_result = MagicMock()
+        progress_result.scalars.return_value.all.return_value = [
+            math_progress,
+            geography_progress,
+        ]
+        session = AsyncMock()
+        session.execute.side_effect = [catalog_result, progress_result]
+
+        result = asyncio.run(
+            service.get_disciplines_progress(session=session, student_id=student_id)
+        )
+
+        self.assertEqual([item["subjectLabel"] for item in result], ["Geografia", "Matemática"])
+        self.assertEqual([item["progress"] for item in result], [100, 50])
+        self.assertEqual([item["startedTrailCount"] for item in result], [1, 1])
 
     def test_task_to_dict_maps_completed_task(self):
         from md_backend.models.db_models import TaskStatusEnum
