@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import tests.keys_test  # noqa: F401
 
+from md_backend.models.db_models import PathStatusEnum, TypeItemEnum
 from md_backend.services.trail.read_service import TrailReadService
 
 
@@ -59,6 +60,9 @@ class TestTrailReadServiceListTrails(unittest.TestCase):
         progress_result = MagicMock()
         progress_result.scalars.return_value.all.return_value = []
         mock_session.execute.side_effect = [paths_result, progress_result]
+        self.service.sub_step_progress_by_path = AsyncMock(
+            return_value={(self.student_id, 1): {"completed": 0, "total": 3, "progress": 0}}
+        )
 
         result = self._run(self.service.list_trails(mock_session, self.student_id))
 
@@ -71,8 +75,6 @@ class TestTrailReadServiceListTrails(unittest.TestCase):
         self.assertEqual(trail["progress"], 0)
 
     def test_returns_completed_trail_when_status_is_completed(self):
-        from md_backend.models.db_models import PathStatusEnum
-
         mock_session = AsyncMock()
         paths_result = MagicMock()
         paths_result.all.return_value = [_make_row(1, "Álgebra", "Conteúdo", 2, "Mat", "#F00", 3)]
@@ -83,11 +85,73 @@ class TestTrailReadServiceListTrails(unittest.TestCase):
         progress_result = MagicMock()
         progress_result.scalars.return_value.all.return_value = [progress]
         mock_session.execute.side_effect = [paths_result, progress_result]
+        self.service.sub_step_progress_by_path = AsyncMock(
+            return_value={(self.student_id, 1): {"completed": 3, "total": 3, "progress": 100}}
+        )
 
         result = self._run(self.service.list_trails(mock_session, self.student_id))
 
         self.assertEqual(result[0]["progress"], 100)
         self.assertEqual(result[0]["completed"], 3)
+
+
+class TestTrailReadServiceSubStepProgress(unittest.TestCase):
+    def test_counts_completed_sub_steps_across_one_or_multiple_steps(self):
+        service = TrailReadService()
+        student_id = uuid.uuid4()
+        session = AsyncMock()
+
+        def resource_item(item_id: int, group_key: str):
+            item = MagicMock()
+            item.id = item_id
+            item.type_item = TypeItemEnum.RESOURCE
+            item.group_key = group_key
+            item.exercise = None
+            return item
+
+        item_result = MagicMock()
+        item_result.all.return_value = [
+            (resource_item(1, "p1-a"), 1, 10, 1),
+            (resource_item(2, "p1-b"), 1, 10, 1),
+            (resource_item(3, "p2-a"), 2, 20, 1),
+            (resource_item(4, "p2-b"), 2, 20, 1),
+            (resource_item(5, "p2-c"), 2, 30, 2),
+            (resource_item(6, "p2-d"), 2, 30, 2),
+        ]
+        path_one_progress = MagicMock(
+            student_id=student_id,
+            path_id=1,
+            current_sub_path=10,
+            path_status=PathStatusEnum.ON_GOING,
+        )
+        path_two_progress = MagicMock(
+            student_id=student_id,
+            path_id=2,
+            current_sub_path=20,
+            path_status=PathStatusEnum.ON_GOING,
+        )
+        progress_result = MagicMock()
+        progress_result.scalars.return_value.all.return_value = [
+            path_one_progress,
+            path_two_progress,
+        ]
+        completed_result = MagicMock()
+        completed_result.all.return_value = [
+            (student_id, 1, 1),
+            (student_id, 2, 3),
+        ]
+        session.execute.side_effect = [item_result, progress_result, completed_result]
+
+        result = asyncio.run(
+            service.sub_step_progress_by_path(
+                session=session,
+                student_ids=[student_id],
+                path_ids=[1, 2],
+            )
+        )
+
+        self.assertEqual(result[(student_id, 1)]["progress"], 50)
+        self.assertEqual(result[(student_id, 2)]["progress"], 25)
 
 
 class TestTrailReadServiceGetTrailDetail(unittest.TestCase):
@@ -155,8 +219,6 @@ class TestTrailReadServiceGetTrailDetail(unittest.TestCase):
         self.assertEqual(detail["progress"], 0)
 
     def test_step_status_is_available_when_student_is_on_that_sub_path(self):
-        from md_backend.models.db_models import PathStatusEnum
-
         sub = MagicMock()
         sub.id = 10
         progress = MagicMock()
@@ -189,6 +251,40 @@ class TestTrailReadServiceGetTrailDetail(unittest.TestCase):
 
         self.assertEqual(detail["steps"][0]["status"], "available")
         self.assertEqual(detail["steps"][1]["status"], "locked")
+
+    def test_detail_progress_counts_completed_sub_steps_across_all_steps(self):
+        first_step = MagicMock(id=10, title="Etapa 1", description=None)
+        second_step = MagicMock(id=20, title="Etapa 2", description=None)
+        progress = MagicMock(
+            current_sub_path=10,
+            path_status=PathStatusEnum.ON_GOING,
+        )
+        self.service._build_sub_steps = AsyncMock(
+            side_effect=[
+                [
+                    {"id": "a", "status": "completed"},
+                    {"id": "b", "status": "available"},
+                ],
+                [
+                    {"id": "c", "status": "locked"},
+                    {"id": "d", "status": "locked"},
+                ],
+            ]
+        )
+
+        detail = self._run(
+            self.service.get_trail_detail(
+                self._mock_session_for_detail(
+                    sub_paths=[first_step, second_step],
+                    progress=progress,
+                ),
+                self.student_id,
+                self.path_id,
+            )
+        )
+
+        self.assertEqual(detail["progress"], 25)
+        self.assertEqual(detail["completed_steps"], 0)
 
     def test_question_flow_selects_the_requested_quiz_group(self):
         session = AsyncMock()
