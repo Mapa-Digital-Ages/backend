@@ -301,34 +301,24 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         result = service._discipline_to_dict(row)
         self.assertEqual(result["progress"], 0)
 
-    def test_path_progress_percentage_maps_available_current_and_completed(self):
-        from md_backend.models.db_models import PathStatusEnum
-
-        service = StudentService()
-        progress = MagicMock()
-        progress.path_status = PathStatusEnum.ON_GOING
-        progress.current_sub_path = 20
-
-        self.assertEqual(service._path_progress_percentage(None, [10, 20, 30]), 0)
-        self.assertEqual(service._path_progress_percentage(progress, [10, 20, 30]), 33)
-
-        progress.path_status = PathStatusEnum.COMPLETED
-        self.assertEqual(service._path_progress_percentage(progress, [10, 20, 30]), 100)
-
     def test_disciplines_progress_includes_trail_subject_without_progress(self):
-        service = StudentService()
         student_id = uuid.uuid4()
+        trail_read_service = MagicMock()
+        trail_read_service.sub_step_progress_by_path = AsyncMock(
+            return_value={
+                (student_id, 1): {"progress": 0},
+                (student_id, 2): {"progress": 0},
+            }
+        )
+        service = StudentService(trail_read_service=trail_read_service)
 
         catalog_result = MagicMock()
         catalog_result.all.return_value = [
-            (1, 10, "Matemática", "#123456", 100, 0),
-            (1, 10, "Matemática", "#123456", 101, 1),
-            (2, 11, "Português", None, 200, 0),
+            (1, 10, "Matemática", "#123456"),
+            (2, 11, "Português", None),
         ]
-        progress_result = MagicMock()
-        progress_result.scalars.return_value.all.return_value = []
         session = AsyncMock()
-        session.execute.side_effect = [catalog_result, progress_result]
+        session.execute.return_value = catalog_result
 
         result = asyncio.run(
             service.get_disciplines_progress(session=session, student_id=student_id)
@@ -341,16 +331,48 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
                     "subjectId": "10",
                     "subjectLabel": "Matemática",
                     "subjectColor": "#123456",
+                    "startedTrailCount": 0,
                     "progress": 0,
                 },
                 {
                     "subjectId": "11",
                     "subjectLabel": "Português",
                     "subjectColor": None,
+                    "startedTrailCount": 0,
                     "progress": 0,
                 },
             ],
         )
+
+    def test_disciplines_progress_only_counts_started_trails_and_sorts_descending(self):
+        student_id = uuid.uuid4()
+        trail_read_service = MagicMock()
+        trail_read_service.sub_step_progress_by_path = AsyncMock(
+            return_value={
+                (student_id, 1): {"progress": 100},
+                (student_id, 2): {"progress": 50},
+                (student_id, 3): {"progress": 0},
+                (student_id, 4): {"progress": 80},
+            }
+        )
+        service = StudentService(trail_read_service=trail_read_service)
+        catalog_result = MagicMock()
+        catalog_result.all.return_value = [
+            (1, 10, "Matemática", None),
+            (2, 10, "Matemática", None),
+            (3, 10, "Matemática", None),
+            (4, 12, "Geografia", None),
+        ]
+        session = AsyncMock()
+        session.execute.return_value = catalog_result
+
+        result = asyncio.run(
+            service.get_disciplines_progress(session=session, student_id=student_id)
+        )
+
+        self.assertEqual([item["subjectLabel"] for item in result], ["Geografia", "Matemática"])
+        self.assertEqual([item["progress"] for item in result], [80, 75])
+        self.assertEqual([item["startedTrailCount"] for item in result], [1, 2])
 
     def test_task_to_dict_maps_completed_task(self):
         from md_backend.models.db_models import TaskStatusEnum

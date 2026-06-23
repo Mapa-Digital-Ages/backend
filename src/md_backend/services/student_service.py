@@ -20,13 +20,10 @@ from md_backend.models.db_models import (
     Content,
     GuardianProfile,
     Path,
-    PathStatusEnum,
     SchoolProfile,
     StudentGuardian,
-    StudentPathProgress,
     StudentProfile,
     Subject,
-    SubPath,
     Task,
     TaskStatusEnum,
     UserProfile,
@@ -34,6 +31,7 @@ from md_backend.models.db_models import (
 )
 from md_backend.services.csv_processor_service import CSVProcessorService
 from md_backend.services.password_reset_service import PasswordResetService
+from md_backend.services.trail.read_service import TrailReadService
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
 
@@ -104,6 +102,10 @@ _password_reset_service = PasswordResetService()
 
 class StudentService:
     """Service for student operations."""
+
+    def __init__(self, trail_read_service: TrailReadService | None = None) -> None:
+        """Create the service with the shared trail-progress reader."""
+        self._trail_read_service = trail_read_service or TrailReadService()
 
     async def create_student(
         self,
@@ -510,8 +512,9 @@ class StudentService:
     ) -> list[dict]:
         """Average trail completion per subject across the supplied students.
 
-        Every subject with at least one registered path is returned. Missing student
-        progress contributes 0%, so newly available trails are visible immediately.
+        Only paths above 0% contribute to the average. If nobody in the supplied
+        group has started a path, every subject with a registered path is returned
+        at 0% so the dashboard still exposes the available catalog.
         """
         if not student_ids:
             return []
@@ -522,42 +525,33 @@ class StudentService:
                 Subject.id,
                 Subject.name,
                 Subject.color,
-                SubPath.id,
-                SubPath.order,
             )
             .select_from(Path)
             .join(Content, Path.content_id == Content.id)
             .join(Subject, Content.subject_id == Subject.id)
-            .outerjoin(SubPath, SubPath.path_id == Path.id)
-            .order_by(Subject.name, Path.id, SubPath.order, SubPath.id)
+            .order_by(Subject.name, Path.id)
         )
         catalog_rows = (await session.execute(catalog_query)).all()
 
         paths: dict[int, dict] = {}
-        for path_id, subject_id, subject_name, subject_color, sub_path_id, _order in catalog_rows:
+        for path_id, subject_id, subject_name, subject_color in catalog_rows:
             path = paths.setdefault(
                 path_id,
                 {
                     "subject_id": subject_id,
                     "subject_name": subject_name,
                     "subject_color": subject_color,
-                    "steps": [],
                 },
             )
-            if sub_path_id is not None:
-                path["steps"].append(sub_path_id)
 
         if not paths:
             return []
 
-        progress_query = select(StudentPathProgress).where(
-            StudentPathProgress.student_id.in_(student_ids),
-            StudentPathProgress.path_id.in_(list(paths)),
+        progress_by_student_path = await self._trail_read_service.sub_step_progress_by_path(
+            session=session,
+            student_ids=student_ids,
+            path_ids=list(paths),
         )
-        progress_rows = (await session.execute(progress_query)).scalars().all()
-        progress_by_student_path = {
-            (progress.student_id, progress.path_id): progress for progress in progress_rows
-        }
 
         subjects: dict[int, dict] = {}
         for path_id, path in paths.items():
@@ -569,40 +563,33 @@ class StudentService:
                     "progress_values": [],
                 },
             )
-            steps = path["steps"]
             for student_id in student_ids:
-                progress = progress_by_student_path.get((student_id, path_id))
-                percentage = self._path_progress_percentage(progress, steps)
-                subject["progress_values"].append(percentage)
+                percentage = progress_by_student_path.get((student_id, path_id), {}).get(
+                    "progress", 0
+                )
+                if percentage > 0:
+                    subject["progress_values"].append(percentage)
 
+        has_started_trails = any(subject["progress_values"] for subject in subjects.values())
         result = []
         for subject_id, subject in subjects.items():
             values = subject["progress_values"]
+            if has_started_trails and not values:
+                continue
             average = round(sum(values) / len(values)) if values else 0
             result.append(
                 {
                     "subjectId": str(subject_id),
                     "subjectLabel": subject["name"],
                     "subjectColor": subject["color"],
+                    "startedTrailCount": len(values),
                     "progress": average,
                 }
             )
-        return sorted(result, key=lambda item: item["subjectLabel"].casefold())
-
-    @staticmethod
-    def _path_progress_percentage(progress, steps: list[int]) -> int:
-        """Calculate one path percentage using the same current-step semantics as trails."""
-        if progress is None:
-            return 0
-        if progress.path_status == PathStatusEnum.COMPLETED:
-            return 100
-        if not steps:
-            return 0
-        try:
-            completed = steps.index(progress.current_sub_path)
-        except ValueError:
-            return 0
-        return round((completed / len(steps)) * 100)
+        return sorted(
+            result,
+            key=lambda item: (-item["progress"], item["subjectLabel"].casefold()),
+        )
 
     async def get_tasks(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
         """All non-deactivated tasks for the student, newest first."""
