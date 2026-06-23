@@ -203,6 +203,35 @@ async def _migrate_sponsorship_tables(conn: AsyncConnection) -> None:
         "END $$",
     )
 
+    # Legacy databases used (school_id, company_id) as the primary key. That
+    # prevents a company from supporting a second request from the same school,
+    # while the current model identifies each partnership by its own UUID.
+    await _execute_optional_ddl(
+        conn,
+        "DO $$ DECLARE "
+        "rel oid := to_regclass('school_company_partnership'); "
+        "id_attnum smallint; "
+        "pk_name text; "
+        "pk_columns smallint[]; "
+        "BEGIN "
+        "IF rel IS NULL THEN RETURN; END IF; "
+        "SELECT attnum INTO id_attnum FROM pg_attribute "
+        "WHERE attrelid = rel AND attname = 'id' AND NOT attisdropped; "
+        "IF id_attnum IS NULL THEN RETURN; END IF; "
+        "SELECT conname, conkey INTO pk_name, pk_columns FROM pg_constraint "
+        "WHERE conrelid = rel AND contype = 'p'; "
+        "IF pk_name IS NOT NULL AND pk_columns <> ARRAY[id_attnum] THEN "
+        "EXECUTE format('ALTER TABLE school_company_partnership DROP CONSTRAINT %I', pk_name); "
+        "pk_name := NULL; "
+        "END IF; "
+        "ALTER TABLE school_company_partnership ALTER COLUMN id SET NOT NULL; "
+        "IF pk_name IS NULL THEN "
+        "ALTER TABLE school_company_partnership "
+        "ADD CONSTRAINT school_company_partnership_pkey PRIMARY KEY (id); "
+        "END IF; "
+        "END $$",
+    )
+
     await _execute_optional_ddl(
         conn,
         "ALTER TABLE school_company_partnership ADD COLUMN IF NOT EXISTS "
