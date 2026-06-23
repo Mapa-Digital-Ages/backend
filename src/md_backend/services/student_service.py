@@ -19,11 +19,14 @@ from md_backend.models.db_models import (
     ClassEnum,
     Content,
     GuardianProfile,
+    Path,
+    PathStatusEnum,
     SchoolProfile,
-    StudentContentProgress,
     StudentGuardian,
+    StudentPathProgress,
     StudentProfile,
     Subject,
+    SubPath,
     Task,
     TaskStatusEnum,
     UserProfile,
@@ -495,25 +498,111 @@ class StudentService:
     async def get_disciplines_progress(
         self, session: AsyncSession, student_id: uuid.UUID
     ) -> list[dict]:
-        """Average mastery (0-100) per subject for the given student."""
-        query = (
-            select(
-                Subject.id,
-                Subject.name,
-                func.avg(StudentContentProgress.mastery_level).label("avg_mastery"),
-            )
-            .join(Content, Content.subject_id == Subject.id)
-            .join(StudentContentProgress, StudentContentProgress.content_id == Content.id)
-            .where(
-                StudentContentProgress.student_id == student_id,
-                StudentContentProgress.deactivated_at.is_(None),
-            )
-            .group_by(Subject.id, Subject.name)
-            .order_by(Subject.name)
+        """Average adaptive-trail completion (0-100) per subject for one student."""
+        return await self.get_disciplines_progress_for_students(
+            session=session, student_ids=[student_id]
         )
 
-        rows = (await session.execute(query)).all()
-        return [self._discipline_to_dict(row) for row in rows]
+    async def get_disciplines_progress_for_students(
+        self,
+        session: AsyncSession,
+        student_ids: list[uuid.UUID],
+    ) -> list[dict]:
+        """Average trail completion per subject across the supplied students.
+
+        Every subject with at least one registered path is returned. Missing student
+        progress contributes 0%, so newly available trails are visible immediately.
+        """
+        if not student_ids:
+            return []
+
+        catalog_query = (
+            select(
+                Path.id,
+                Subject.id,
+                Subject.name,
+                Subject.color,
+                SubPath.id,
+                SubPath.order,
+            )
+            .select_from(Path)
+            .join(Content, Path.content_id == Content.id)
+            .join(Subject, Content.subject_id == Subject.id)
+            .outerjoin(SubPath, SubPath.path_id == Path.id)
+            .order_by(Subject.name, Path.id, SubPath.order, SubPath.id)
+        )
+        catalog_rows = (await session.execute(catalog_query)).all()
+
+        paths: dict[int, dict] = {}
+        for path_id, subject_id, subject_name, subject_color, sub_path_id, _order in catalog_rows:
+            path = paths.setdefault(
+                path_id,
+                {
+                    "subject_id": subject_id,
+                    "subject_name": subject_name,
+                    "subject_color": subject_color,
+                    "steps": [],
+                },
+            )
+            if sub_path_id is not None:
+                path["steps"].append(sub_path_id)
+
+        if not paths:
+            return []
+
+        progress_query = select(StudentPathProgress).where(
+            StudentPathProgress.student_id.in_(student_ids),
+            StudentPathProgress.path_id.in_(list(paths)),
+        )
+        progress_rows = (await session.execute(progress_query)).scalars().all()
+        progress_by_student_path = {
+            (progress.student_id, progress.path_id): progress for progress in progress_rows
+        }
+
+        subjects: dict[int, dict] = {}
+        for path_id, path in paths.items():
+            subject = subjects.setdefault(
+                path["subject_id"],
+                {
+                    "name": path["subject_name"],
+                    "color": path["subject_color"],
+                    "progress_values": [],
+                },
+            )
+            steps = path["steps"]
+            for student_id in student_ids:
+                progress = progress_by_student_path.get((student_id, path_id))
+                percentage = self._path_progress_percentage(progress, steps)
+                subject["progress_values"].append(percentage)
+
+        result = []
+        for subject_id, subject in subjects.items():
+            values = subject["progress_values"]
+            average = round(sum(values) / len(values)) if values else 0
+            result.append(
+                {
+                    "subjectId": str(subject_id),
+                    "subjectLabel": subject["name"],
+                    "subjectColor": subject["color"],
+                    "progress": average,
+                }
+            )
+        return sorted(result, key=lambda item: item["subjectLabel"].casefold())
+
+    @staticmethod
+    def _path_progress_percentage(progress, steps: list[int]) -> int:
+        """Calculate one path percentage using the same current-step semantics as trails."""
+        if progress is None:
+            return 0
+        if progress.path_status == PathStatusEnum.COMPLETED:
+            return 100
+        if not steps:
+            return 0
+        try:
+            completed = steps.index(progress.current_sub_path)
+        except ValueError:
+            return 0
+        return round((completed / len(steps)) * 100)
 
     async def get_tasks(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:
         """All non-deactivated tasks for the student, newest first."""
