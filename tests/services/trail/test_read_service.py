@@ -95,6 +95,29 @@ class TestTrailReadServiceListTrails(unittest.TestCase):
         self.assertEqual(result[0]["completed"], 3)
 
 
+class TestTrailReadServiceOptionOrdering(unittest.TestCase):
+    def test_option_order_is_stable_per_student_and_varies_between_students(self):
+        options = [MagicMock(id=option_id) for option_id in range(1, 5)]
+        first_student = uuid.UUID(int=1)
+
+        first_order = TrailReadService._ordered_options(options, first_student, 10)
+        repeated_order = TrailReadService._ordered_options(options, first_student, 10)
+        orders = {
+            tuple(
+                option.id
+                for option in TrailReadService._ordered_options(options, uuid.UUID(int=i), 10)
+            )
+            for i in range(1, 21)
+        }
+
+        self.assertEqual(
+            [option.id for option in first_order],
+            [option.id for option in repeated_order],
+        )
+        self.assertEqual(sorted(option.id for option in first_order), [1, 2, 3, 4])
+        self.assertGreater(len(orders), 1)
+
+
 class TestTrailReadServiceSubStepProgress(unittest.TestCase):
     def test_counts_completed_sub_steps_across_one_or_multiple_steps(self):
         service = TrailReadService()
@@ -337,6 +360,17 @@ class TestTrailReadServiceGetTrailDetail(unittest.TestCase):
         self.assertEqual(flow["subStepId"], "quiz-10-second")
         self.assertEqual(flow["itemIds"], ["102"])
         self.assertEqual(flow["questions"], [{"id": "2"}])
+
+        completed_flow = self._run(
+            self.service.get_question_flow(
+                session=session,
+                path_id=1,
+                sub_path_id=10,
+                sub_step_id="quiz-10-first",
+                student_id=self.student_id,
+            )
+        )
+        self.assertEqual(completed_flow["subStepId"], "quiz-10-first")
 
     def test_legacy_question_flow_is_empty_when_step_has_no_quiz(self):
         session = AsyncMock()
