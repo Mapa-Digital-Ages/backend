@@ -858,6 +858,29 @@ class TestPartnershipIntegration(unittest.TestCase):
         req = next(i for i in items if i["id"] == self.request_id)
         self.assertEqual(req["remaining_spots"], 6)
 
+    def test_company_can_support_two_requests_from_same_school(self):
+        second_request = self.client.post(
+            f"/api/school/{self.school_id}/requests",
+            json={"title": "Segundo pedido de bolsas", "requested_spots": 8},
+            headers=self.school_headers,
+        )
+        self.assertEqual(second_request.status_code, 201)
+
+        first_support = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": self.request_id, "granted_spots": 2},
+            headers=self.company_a_headers,
+        )
+        second_support = self.client.post(
+            f"/api/company/{self.company_a_id}/partnerships",
+            json={"request_id": second_request.json()["id"], "granted_spots": 3},
+            headers=self.company_a_headers,
+        )
+
+        self.assertEqual(first_support.status_code, 201)
+        self.assertEqual(second_support.status_code, 201)
+        self.assertNotEqual(first_support.json()["id"], second_support.json()["id"])
+
     def test_create_partnership_overbooking_returns_400(self):
         """Two companies trying to donate beyond available spots — second must get 400."""
         # Company A donates 7 (leaves 3)
