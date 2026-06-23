@@ -40,6 +40,75 @@ class TestSchoolServiceUnit(unittest.TestCase):
         mock_session.commit.assert_not_called()
         mock_session.refresh.assert_not_called()
 
+    def test_dashboard_groups_students_by_year_without_teacher_data(self):
+        student_service = MagicMock()
+        student_service.get_disciplines_progress_for_students = AsyncMock(
+            return_value=[
+                {
+                    "subjectId": "1",
+                    "subjectLabel": "Matemática",
+                    "subjectColor": None,
+                    "progress": 50,
+                }
+            ]
+        )
+        service = SchoolService(student_service=student_service)
+        school_id = uuid.uuid4()
+        school = MagicMock(deactivated_at=None)
+        first_student = uuid.uuid4()
+        second_student = uuid.uuid4()
+        third_student = uuid.uuid4()
+        query_result = MagicMock()
+        query_result.all.return_value = [
+            (first_student, MagicMock(value="5th class")),
+            (second_student, MagicMock(value="5th class")),
+            (third_student, MagicMock(value="7th class")),
+        ]
+        session = AsyncMock()
+        session.get.return_value = school
+        session.execute.return_value = query_result
+
+        result = asyncio.run(service.get_dashboard_data(session=session, school_id=school_id))
+
+        self.assertEqual(result["totalStudents"], 3)
+        self.assertEqual(result["activeClasses"], 2)
+        self.assertEqual(result["classes"][0]["grade"], "5º Ano")
+        self.assertEqual(result["classes"][0]["studentCount"], 2)
+        self.assertNotIn("tutorName", result["classes"][0])
+        self.assertEqual(result["classes"][0]["disciplines"][0]["progress"], 50)
+
+    def test_dashboard_route_rejects_non_school_user(self):
+        from md_backend.routes.school_router import get_school_dashboard
+
+        response = asyncio.run(
+            get_school_dashboard(
+                session=AsyncMock(),
+                current_user={"user_id": str(uuid.uuid4()), "is_school": False},
+            )
+        )
+
+        self.assertEqual(response.status_code, 403)
+
+    def test_dashboard_route_uses_authenticated_school(self):
+        from md_backend.routes.school_router import get_school_dashboard
+
+        school_id = uuid.uuid4()
+        session = AsyncMock()
+        payload = {"totalStudents": 0, "activeClasses": 0, "classes": []}
+        with patch(
+            "md_backend.routes.school_router.school_service.get_dashboard_data",
+            new=AsyncMock(return_value=payload),
+        ) as get_dashboard_data:
+            response = asyncio.run(
+                get_school_dashboard(
+                    session=session,
+                    current_user={"user_id": str(school_id), "is_school": True},
+                )
+            )
+
+        self.assertEqual(response.status_code, 200)
+        get_dashboard_data.assert_awaited_once_with(session=session, school_id=school_id)
+
 
 class TestSchoolServiceIntegration(unittest.TestCase):
     """Integration tests against /api/school via FastAPI TestClient."""

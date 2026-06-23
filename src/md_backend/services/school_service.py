@@ -20,6 +20,7 @@ from md_backend.models.db_models import (
 )
 from md_backend.services.csv_processor_service import CSVProcessorService, CSVRowError
 from md_backend.services.password_reset_service import PasswordResetService
+from md_backend.services.student_service import StudentService
 from md_backend.utils.email_sender import EmailSender
 from md_backend.utils.names import build_full_name
 from md_backend.utils.security import hash_password
@@ -41,12 +42,64 @@ class SchoolService:
         csv_processor: CSVProcessorService | None = None,
         email_sender: EmailSender | None = None,
         password_reset_service: PasswordResetService | None = None,
+        student_service: StudentService | None = None,
     ) -> None:
         """Initialize with optional overrides (defaults to the real collaborators)."""
         self._csv_processor = csv_processor or CSVProcessorService()
         self._password_reset_service = password_reset_service or PasswordResetService(
             email_sender=email_sender
         )
+        self._student_service = student_service or StudentService()
+
+    async def get_dashboard_data(
+        self,
+        session: AsyncSession,
+        school_id: uuid.UUID,
+    ) -> dict | None:
+        """Return active students grouped by school year with trail progress by subject."""
+        school = await session.get(SchoolProfile, school_id)
+        if school is None or school.deactivated_at is not None:
+            return None
+
+        rows = (
+            await session.execute(
+                select(StudentProfile.user_id, StudentProfile.student_class)
+                .join(UserProfile, UserProfile.id == StudentProfile.user_id)
+                .where(
+                    StudentProfile.school_id == school_id,
+                    StudentProfile.deactivated_at.is_(None),
+                    UserProfile.is_active.is_(True),
+                )
+                .order_by(StudentProfile.student_class, StudentProfile.user_id)
+            )
+        ).all()
+
+        students_by_class: dict[str, list[uuid.UUID]] = {}
+        for student_id, student_class in rows:
+            students_by_class.setdefault(student_class.value, []).append(student_id)
+
+        classes = []
+        for class_value, student_ids in students_by_class.items():
+            year = class_value.split("th", 1)[0]
+            disciplines = await self._student_service.get_disciplines_progress_for_students(
+                session=session,
+                student_ids=student_ids,
+            )
+            classes.append(
+                {
+                    "id": class_value.replace(" ", "-"),
+                    "grade": f"{year}º Ano",
+                    "studentCount": len(student_ids),
+                    "disciplines": disciplines,
+                }
+            )
+
+        classes.sort(key=lambda item: int(item["grade"].split("º", 1)[0]))
+        return {
+            "totalStudents": len(rows),
+            "activeClasses": len(classes),
+            "classes": classes,
+        }
 
     async def create_school(
         self,
