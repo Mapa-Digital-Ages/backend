@@ -301,6 +301,57 @@ class TestStudentServiceDictHelpers(unittest.TestCase):
         result = service._discipline_to_dict(row)
         self.assertEqual(result["progress"], 0)
 
+    def test_path_progress_percentage_maps_available_current_and_completed(self):
+        from md_backend.models.db_models import PathStatusEnum
+
+        service = StudentService()
+        progress = MagicMock()
+        progress.path_status = PathStatusEnum.ON_GOING
+        progress.current_sub_path = 20
+
+        self.assertEqual(service._path_progress_percentage(None, [10, 20, 30]), 0)
+        self.assertEqual(service._path_progress_percentage(progress, [10, 20, 30]), 33)
+
+        progress.path_status = PathStatusEnum.COMPLETED
+        self.assertEqual(service._path_progress_percentage(progress, [10, 20, 30]), 100)
+
+    def test_disciplines_progress_includes_trail_subject_without_progress(self):
+        service = StudentService()
+        student_id = uuid.uuid4()
+
+        catalog_result = MagicMock()
+        catalog_result.all.return_value = [
+            (1, 10, "Matemática", "#123456", 100, 0),
+            (1, 10, "Matemática", "#123456", 101, 1),
+            (2, 11, "Português", None, 200, 0),
+        ]
+        progress_result = MagicMock()
+        progress_result.scalars.return_value.all.return_value = []
+        session = AsyncMock()
+        session.execute.side_effect = [catalog_result, progress_result]
+
+        result = asyncio.run(
+            service.get_disciplines_progress(session=session, student_id=student_id)
+        )
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "subjectId": "10",
+                    "subjectLabel": "Matemática",
+                    "subjectColor": "#123456",
+                    "progress": 0,
+                },
+                {
+                    "subjectId": "11",
+                    "subjectLabel": "Português",
+                    "subjectColor": None,
+                    "progress": 0,
+                },
+            ],
+        )
+
     def test_task_to_dict_maps_completed_task(self):
         from md_backend.models.db_models import TaskStatusEnum
 

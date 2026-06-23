@@ -30,6 +30,30 @@ school_router = APIRouter(prefix="/school", tags=["School"])
 _VISIBLE_PARTNERSHIP_STATUSES = {"pending", "approved"}
 
 
+@school_router.get("/dashboard")
+async def get_school_dashboard(
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+) -> JSONResponse:
+    """Return the authenticated school's students and trail progress grouped by year."""
+    if not current_user.get("is_school"):
+        return JSONResponse(
+            content={"detail": "Access restricted to schools."},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    result = await school_service.get_dashboard_data(
+        session=session,
+        school_id=uuid.UUID(current_user["user_id"]),
+    )
+    if result is None:
+        return JSONResponse(
+            content={"detail": "School not found."},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
 @school_router.post(
     "",
     status_code=status.HTTP_201_CREATED,
