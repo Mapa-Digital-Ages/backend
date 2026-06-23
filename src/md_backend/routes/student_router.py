@@ -322,7 +322,7 @@ async def get_student_disciplines(
     session: AsyncSession = Depends(get_db_session),
     current_user: dict = Depends(get_current_approved_user),
 ):
-    """Mastery progress per subject for the student."""
+    """Started adaptive-trail progress per subject for the student."""
     denied = await _ensure_can_access_student(session, current_user, student_id)
     if denied is not None:
         return denied

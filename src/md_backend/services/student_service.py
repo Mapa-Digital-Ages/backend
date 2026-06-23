@@ -510,8 +510,9 @@ class StudentService:
     ) -> list[dict]:
         """Average trail completion per subject across the supplied students.
 
-        Every subject with at least one registered path is returned. Missing student
-        progress contributes 0%, so newly available trails are visible immediately.
+        Only paths above 0% contribute to the average. If nobody in the supplied
+        group has started a path, every subject with a registered path is returned
+        at 0% so the dashboard still exposes the available catalog.
         """
         if not student_ids:
             return []
@@ -573,21 +574,29 @@ class StudentService:
             for student_id in student_ids:
                 progress = progress_by_student_path.get((student_id, path_id))
                 percentage = self._path_progress_percentage(progress, steps)
-                subject["progress_values"].append(percentage)
+                if percentage > 0:
+                    subject["progress_values"].append(percentage)
 
+        has_started_trails = any(subject["progress_values"] for subject in subjects.values())
         result = []
         for subject_id, subject in subjects.items():
             values = subject["progress_values"]
+            if has_started_trails and not values:
+                continue
             average = round(sum(values) / len(values)) if values else 0
             result.append(
                 {
                     "subjectId": str(subject_id),
                     "subjectLabel": subject["name"],
                     "subjectColor": subject["color"],
+                    "startedTrailCount": len(values),
                     "progress": average,
                 }
             )
-        return sorted(result, key=lambda item: item["subjectLabel"].casefold())
+        return sorted(
+            result,
+            key=lambda item: (-item["progress"], item["subjectLabel"].casefold()),
+        )
 
     @staticmethod
     def _path_progress_percentage(progress, steps: list[int]) -> int:

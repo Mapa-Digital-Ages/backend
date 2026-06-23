@@ -48,6 +48,7 @@ class TestSchoolServiceUnit(unittest.TestCase):
                     "subjectId": "1",
                     "subjectLabel": "Matemática",
                     "subjectColor": None,
+                    "startedTrailCount": 1,
                     "progress": 50,
                 }
             ]
