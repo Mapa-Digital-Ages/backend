@@ -261,9 +261,14 @@ class TrailReadService:
         return result
 
     async def get_question_flow(
-        self, session: AsyncSession, path_id: int, sub_path_id: int
+        self,
+        session: AsyncSession,
+        path_id: int,
+        sub_path_id: int,
+        sub_step_id: str | None = None,
+        student_id: uuid.UUID | None = None,
     ) -> dict | None:
-        """Return the quiz question flow for one sub-path."""
+        """Return the question flow for one quiz sub-step."""
         subject = (
             await session.execute(
                 select(Subject)
@@ -278,22 +283,33 @@ class TrailReadService:
 
         sub_steps = await self._build_sub_steps(
             session=session,
-            student_id=uuid.UUID(int=0),
+            student_id=student_id or uuid.UUID(int=0),
             path_id=path_id,
             sub_path_id=sub_path_id,
             step_status="available",
             subject_payload=subject_payload,
         )
-        quiz = next((step for step in sub_steps if step["kind"] == "question"), None)
-        questions = quiz["questions"] if quiz else []
+        quiz = next(
+            (
+                step
+                for step in sub_steps
+                if step["kind"] == "question" and (sub_step_id is None or step["id"] == sub_step_id)
+            ),
+            None,
+        )
+        if quiz is None:
+            return None
+        if sub_step_id is not None and quiz["status"] != "available":
+            return None
 
         return {
             "assessmentId": str(sub_path_id),
             "trailId": str(path_id),
             "stepId": str(sub_path_id),
-            "subStepId": f"quiz-{sub_path_id}",
-            "stepTitle": "Questões",
-            "questions": questions,
+            "subStepId": quiz["id"],
+            "stepTitle": quiz["title"],
+            "itemIds": quiz["item_ids"],
+            "questions": quiz["questions"],
         }
 
     async def list_trails(self, session: AsyncSession, student_id: uuid.UUID) -> list[dict]:

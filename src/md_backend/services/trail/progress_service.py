@@ -177,7 +177,7 @@ class TrailProgressService:
         student_id: uuid.UUID,
         answers: list[dict],
         now: datetime.datetime,
-        expected_exercise_id: int | None,
+        expected_exercise_ids: set[int] | None,
     ) -> tuple[int, int]:
         """Grade answers server-side and record attempts."""
         correct = 0
@@ -187,8 +187,8 @@ class TrailProgressService:
                 await session.execute(select(Option).where(Option.id == answer["option_id"]))
             ).scalar_one_or_none()
             exercise_matches = option is not None and option.exercise_id == answer["exercise_id"]
-            if option is not None and expected_exercise_id is not None:
-                exercise_matches = exercise_matches and option.exercise_id == expected_exercise_id
+            if option is not None and expected_exercise_ids is not None:
+                exercise_matches = exercise_matches and option.exercise_id in expected_exercise_ids
             is_correct = bool(option is not None and option.correct and exercise_matches)
             if is_correct:
                 correct += 1
@@ -228,12 +228,14 @@ class TrailProgressService:
         *,
         sub_path_id: int | None = None,
         item_id: int | None = None,
+        item_ids: list[int] | None = None,
         answers: list[dict],
     ) -> dict | None:
         """Complete one item or a whole sub-path quiz."""
         now = datetime.datetime.now(datetime.UTC)
-        expected_exercise_id: int | None = None
-        item: SubPathItem | None = None
+        expected_exercise_ids: set[int] | None = None
+        selected_item_ids: list[int] = []
+        whole_sub_path = item_id is None and item_ids is None
 
         if item_id is not None:
             row = (
@@ -246,29 +248,56 @@ class TrailProgressService:
             if row is None:
                 return None
             selected_item, sub_path = row
-            item = selected_item
+            selected_item_ids = [selected_item.id]
             sub_path_id = sub_path.id
             if selected_item.type_item == TypeItemEnum.EXERCISE:
-                expected_exercise_id = selected_item.exercise_id
+                expected_exercise_ids = {selected_item.exercise_id}
+        elif item_ids is not None:
+            if sub_path_id is None or not item_ids:
+                return None
+            rows = (
+                await session.execute(
+                    select(SubPathItem, SubPath)
+                    .join(SubPath, SubPath.id == SubPathItem.sub_path_id)
+                    .where(
+                        SubPathItem.id.in_(item_ids),
+                        SubPath.id == sub_path_id,
+                        SubPath.path_id == path_id,
+                        SubPathItem.type_item == TypeItemEnum.EXERCISE,
+                    )
+                )
+            ).all()
+            if len(rows) != len(set(item_ids)):
+                return None
+            selected_items = [row[0] for row in rows]
+            if len({item.group_key for item in selected_items}) != 1:
+                return None
+            selected_item_ids = [item.id for item in selected_items]
+            expected_exercise_ids = {item.exercise_id for item in selected_items}
         elif sub_path_id is None:
             return None
+
+        if expected_exercise_ids is not None:
+            answered_exercise_ids = {answer["exercise_id"] for answer in answers}
+            if answered_exercise_ids != expected_exercise_ids:
+                return None
 
         correct, total = await self._grade_answers(
             session=session,
             student_id=student_id,
             answers=answers,
             now=now,
-            expected_exercise_id=expected_exercise_id,
+            expected_exercise_ids=expected_exercise_ids,
         )
 
         assert sub_path_id is not None
-        if item is not None:
+        for selected_item_id in selected_item_ids:
             await self._mark_item_completed(
                 session=session,
                 student_id=student_id,
                 path_id=path_id,
                 sub_path_id=sub_path_id,
-                item_id=item.id,
+                item_id=selected_item_id,
                 now=now,
             )
 
@@ -279,8 +308,8 @@ class TrailProgressService:
             current_sub_path=sub_path_id,
         )
 
-        sub_path_completed = item is None
-        if item is not None:
+        sub_path_completed = whole_sub_path
+        if selected_item_ids:
             playable_item_ids = await self._read.playable_item_ids(session, sub_path_id)
             completed_item_ids = await self._completed_item_ids(
                 session=session,
@@ -288,7 +317,9 @@ class TrailProgressService:
                 path_id=path_id,
                 sub_path_id=sub_path_id,
             )
-            sub_path_completed = set(playable_item_ids).issubset(completed_item_ids | {item.id})
+            sub_path_completed = set(playable_item_ids).issubset(
+                completed_item_ids | set(selected_item_ids)
+            )
 
         if sub_path_completed:
             score = correct if total > 0 else None
@@ -303,7 +334,7 @@ class TrailProgressService:
 
         await session.commit()
 
-        if item is None:
+        if whole_sub_path:
             path_status = path_progress.path_status
             return {
                 "correct": correct,
@@ -317,6 +348,9 @@ class TrailProgressService:
             session=session, student_id=student_id, path_id=path_id
         )
         if detail is not None:
+            path_status = path_progress.path_status
+            detail["current_sub_path"] = path_progress.current_sub_path
+            detail["path_status"] = path_status.value if path_status is not None else None
             detail["last_completion"] = {
                 "correct": correct,
                 "total": total,

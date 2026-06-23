@@ -189,3 +189,44 @@ class TestTrailReadServiceGetTrailDetail(unittest.TestCase):
 
         self.assertEqual(detail["steps"][0]["status"], "available")
         self.assertEqual(detail["steps"][1]["status"], "locked")
+
+    def test_question_flow_selects_the_requested_quiz_group(self):
+        session = AsyncMock()
+        subject = MagicMock(id=2, slug=None, name="Matemática", color="#F00")
+        subject_result = MagicMock()
+        subject_result.scalar_one_or_none.return_value = subject
+        session.execute.return_value = subject_result
+        self.service._build_sub_steps = AsyncMock(
+            return_value=[
+                {
+                    "id": "quiz-10-first",
+                    "item_ids": ["101"],
+                    "kind": "question",
+                    "title": "Primeiro quiz",
+                    "status": "completed",
+                    "questions": [{"id": "1"}],
+                },
+                {
+                    "id": "quiz-10-second",
+                    "item_ids": ["102"],
+                    "kind": "question",
+                    "title": "Segundo quiz",
+                    "status": "available",
+                    "questions": [{"id": "2"}],
+                },
+            ]
+        )
+
+        flow = self._run(
+            self.service.get_question_flow(
+                session=session,
+                path_id=1,
+                sub_path_id=10,
+                sub_step_id="quiz-10-second",
+                student_id=self.student_id,
+            )
+        )
+
+        self.assertEqual(flow["subStepId"], "quiz-10-second")
+        self.assertEqual(flow["itemIds"], ["102"])
+        self.assertEqual(flow["questions"], [{"id": "2"}])

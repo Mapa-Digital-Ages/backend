@@ -120,11 +120,48 @@ async def get_step_questions(
         )
 
     flow = await _read_service.get_question_flow(
-        session=session, path_id=path_id, sub_path_id=sub_path_id
+        session=session,
+        path_id=path_id,
+        sub_path_id=sub_path_id,
+        student_id=student_id,
     )
     if flow is None:
         return JSONResponse(
             content={"detail": "Trail not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+    return JSONResponse(content=flow, status_code=status.HTTP_200_OK)
+
+
+@path_router.get("/{path_id}/steps/{sub_path_id}/sub-steps/{sub_step_id}/questions")
+async def get_sub_step_questions(
+    student_id: uuid.UUID,
+    path_id: int,
+    sub_path_id: int,
+    sub_step_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Return the question flow for one specific quiz sub-step."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if not allowed:
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    flow = await _read_service.get_question_flow(
+        session=session,
+        path_id=path_id,
+        sub_path_id=sub_path_id,
+        sub_step_id=sub_step_id,
+        student_id=student_id,
+    )
+    if flow is None:
+        return JSONResponse(
+            content={"detail": "Quiz sub-step not found"},
             status_code=status.HTTP_404_NOT_FOUND,
         )
     return JSONResponse(content=flow, status_code=status.HTTP_200_OK)
@@ -227,4 +264,53 @@ async def complete_step(
         sub_path_id=sub_path_id,
         answers=[a.model_dump() for a in request.answers],
     )
+    return JSONResponse(content=result, status_code=status.HTTP_200_OK)
+
+
+@path_router.post("/{path_id}/steps/{sub_path_id}/sub-steps/{sub_step_id}/complete")
+async def complete_question_sub_step(
+    student_id: uuid.UUID,
+    path_id: int,
+    sub_path_id: int,
+    sub_step_id: str,
+    request: StepCompleteRequest,
+    session: AsyncSession = Depends(get_db_session),
+    current_user: dict = Depends(get_current_approved_user),
+):
+    """Complete one quiz group without completing sibling sub-steps."""
+    allowed = await can_access_student(
+        session=session, current_user=current_user, student_id=student_id
+    )
+    if not allowed:
+        return JSONResponse(
+            content={"detail": "Access denied"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
+
+    flow = await _read_service.get_question_flow(
+        session=session,
+        path_id=path_id,
+        sub_path_id=sub_path_id,
+        sub_step_id=sub_step_id,
+        student_id=student_id,
+    )
+    if flow is None:
+        return JSONResponse(
+            content={"detail": "Quiz sub-step not found"},
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
+
+    result = await _progress_service.complete(
+        session=session,
+        student_id=student_id,
+        path_id=path_id,
+        sub_path_id=sub_path_id,
+        item_ids=[int(item_id) for item_id in flow["itemIds"]],
+        answers=[answer.model_dump() for answer in request.answers],
+    )
+    if result is None:
+        return JSONResponse(
+            content={"detail": "Answers must cover every question in the sub-step"},
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
     return JSONResponse(content=result, status_code=status.HTTP_200_OK)
