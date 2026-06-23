@@ -242,12 +242,19 @@ async def create_partnership(
             status_code=status.HTTP_403_FORBIDDEN,
         )
 
-    result = await company_service.create_partnership(
-        company_id=user_id,
-        request_id=request.request_id,
-        granted_spots=request.granted_spots,
-        session=session,
-    )
+    try:
+        result = await company_service.create_partnership(
+            company_id=user_id,
+            request_id=request.request_id,
+            granted_spots=request.granted_spots,
+            session=session,
+        )
+    except IntegrityError:
+        await session.rollback()
+        return JSONResponse(
+            content={"detail": "Não foi possível registrar este apoio devido a um conflito."},
+            status_code=status.HTTP_409_CONFLICT,
+        )
 
     if result is None:
         return JSONResponse(
